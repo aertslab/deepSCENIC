@@ -9,7 +9,7 @@ import psutil
 import numpy as np
 from Bio import SeqIO
 from scipy import sparse
-from tf2rNet.basenji_utils import *
+from .basenji_utils import *
 
 
 def make_bed_seqs_from_df(input_bed, fasta_file, seq_len, stranded=False):
