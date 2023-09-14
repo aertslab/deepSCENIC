@@ -1,16 +1,11 @@
 """
-utility functions that support scBasset.
+utility functions from https://github.com/calico/scBasset
 """
-import anndata
 import h5py
 import time
 import os
-import psutil
 import numpy as np
-from Bio import SeqIO
-from scipy import sparse
-from .basenji_utils import *
-
+from src.tf2rNet.basenji_utils import *
 
 def make_bed_seqs_from_df(input_bed, fasta_file, seq_len, stranded=False):
     """Return BED regions as sequences and regions as a list of coordinate
@@ -157,6 +152,5 @@ def make_h5_sparse(regions_bed_df, h5_name, input_fasta, seq_len=1344, batch_siz
             t1 = time.time()
             total = t1-t0
             print('process %d peaks takes %.1f s' %(i*batch_size, total))
-    
     
         f.close()

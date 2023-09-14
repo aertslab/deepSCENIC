@@ -1,6 +1,5 @@
 """
 key functions from Dave Kelley's Basenji (https://github.com/calico/basenji)
-used to build scBasset architecture.
 """
 
 import random
