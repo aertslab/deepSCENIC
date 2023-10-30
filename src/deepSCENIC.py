@@ -21,6 +21,7 @@ from torch.utils.data.dataset import Dataset, TensorDataset
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics import F1Score
 from tqdm import tqdm
+from enformer_pytorch import Enformer
 
 from src.tf2rNet.models import MotifNet, final, Sei
 from src.tf2rNet.utils import *
@@ -88,7 +89,7 @@ def build_seq_dataloader(opt, ad=None, pretrain=False):
 
     return train_dataloader, test_dataloader, train_dataloader_shuffle, test_dataloader_shuffle
  
-def build_dataloader(data_rna, data_atac, opt):
+def build_dataloader(data_rna, data_atac, batch_size, opt):
     """ Build dataloader for VAE
   
         Params
@@ -101,27 +102,27 @@ def build_dataloader(data_rna, data_atac, opt):
     atac_region_name = list(data_atac.var_names)
 
     # Check if sparse data
-    if type(data_rna.layers['log_norm'])!=np.ndarray:
-        data_rna.layers['log_norm'] = data_rna.layers['log_norm'].toarray()
+    if type(data_rna.X)!=np.ndarray:
+        data_rna.X = data_rna.X.toarray()
     if type(data_atac.X)!=np.ndarray:
         data_atac.X = data_atac.X.toarray()
 
     # Build gene exp. dropout mask
-    Dropout_Mask_rna = (data_rna.layers['log_norm'] != 0).astype(np.float) # binary mask of exp matrix
+    Dropout_Mask_rna = (data_rna.X != 0).astype(np.float) # binary mask of exp matrix
 
     # Get scaled values
-    data_rna = pd.DataFrame(data_rna.layers['Z_scaled'], index=list(data_rna.obs_names), columns=rna_gene_name)
-    data_atac = pd.DataFrame(data_atac.layers['Z_scaled'], index=list(data_atac.obs_names), columns=atac_region_name)
+    # data_rna = pd.DataFrame(data_rna.X, index=list(data_rna.obs_names), columns=rna_gene_name)
+    # data_atac = pd.DataFrame(data_atac.X, index=list(data_atac.obs_names), columns=atac_region_name)
 
     num_genes_rna = data_rna.shape[1]
     num_regions_atac = data_atac.shape[1]
 
-    feat_rna = torch.FloatTensor(data_rna.values)
-    feat_atac = torch.FloatTensor(data_atac.values) 
+    feat_rna = torch.FloatTensor(data_rna.X)
+    feat_atac = torch.FloatTensor(data_atac.X) 
     data = TensorDataset(feat_rna, feat_atac, torch.LongTensor(list(range(len(feat_rna)))),
                          torch.FloatTensor(Dropout_Mask_rna))
 
-    dataloader = DataLoader(data, batch_size=opt.batch_size, shuffle=opt.train, num_workers=1)
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=opt.train, num_workers=1)
 
     return {'dataloader': dataloader, 'num_genes_rna': num_genes_rna, 'num_regions_atac': num_regions_atac, 'data_rna': data_rna, 'data_atac': data_atac, 'rna_gene_name': rna_gene_name, 'atac_region_name':atac_region_name}
 
@@ -141,7 +142,7 @@ class deepSCENIC:
         except:
             print('dir exist')
 
-    def init_data(self):
+    def init_data(self, test=False):
         # Read TFs list
         TFs_df = pd.read_csv(self.opt.TF_file, header=None, names=["name"], usecols=[0])
         TFs = set(TFs_df['name'])
@@ -149,13 +150,22 @@ class deepSCENIC:
         # Read region to gene mask
         r2g_dist_coo = load_npz(self.opt.r2g_mask)
 
-        # Read data
-        print("reading data...")
-        data_rna = sc.read(self.opt.data_rna_file)
-        data_atac = sc.read(self.opt.data_atac_file)
-        print("data read!")
-        print(data_rna)
-        print(data_atac)
+        if test==False:
+            # Read data
+            print("reading data...")
+            data_rna = sc.read(self.opt.data_rna_file)
+            data_atac = sc.read(self.opt.data_atac_file)
+            print("data read!")
+            print(data_rna)
+            print(data_atac)
+        else:
+            # Read data
+            print("reading data...")
+            data_rna = sc.read(self.opt.data_rna_file_test)
+            data_atac = sc.read(self.opt.data_atac_file_test)
+            print("data read!")
+            print(data_rna)
+            print(data_atac)
 
         # Get TFs index in rna data
         TFs_idx = np.where(data_rna.var_names.isin(TFs))[0]
@@ -163,14 +173,14 @@ class deepSCENIC:
         self.TFs = TFs
 
         # Check if sparse data
-        if type(data_rna.layers['log_norm'])!=np.ndarray:
-            data_rna_values = data_rna.layers['log_norm'].toarray()
+        if type(data_rna.X)!=np.ndarray:
+            data_rna.X = data_rna.X.toarray()
         else:
-            data_rna_values = data_rna.layers['log_norm']
+            data_rna.X = data_rna.X
         if type(data_atac.X)!=np.ndarray:
-            data_atac_values = data_atac.X.toarray()
+            data_atac.X = data_atac.X.toarray()
         else:
-            data_atac_values = data_atac.X
+            data_atac.X = data_atac.X
 
         self.n_cells = data_rna.shape[0]
         self.n_genes = data_rna.shape[1]
@@ -178,15 +188,17 @@ class deepSCENIC:
 
         # Binarize ATAC data
         if self.opt.bin_acc==True:
-            data_atac_values[data_atac_values > 0] = 1
+            data_atac.X[data_atac.X > 0] = 1
 
         # positive scaling of rna data    
-        data_rna_values = data_rna_values / data_rna_values.std(0)
+        data_rna.X = data_rna.X / data_rna.X.std(0)
         if self.opt.bin_acc==False:
             # positive scaling of atac data
-            data_atac_values = data_atac_values / data_atac_values.std(0)
-        data_rna.layers['Z_scaled'] = data_rna_values
-        data_atac.layers['Z_scaled'] = data_atac_values
+            sc.pp.normalize_total(data_atac)
+            sc.pp.log1p(data_atac)
+            data_atac.X = data_atac.X / data_atac.X.std(0)
+        # data_rna.X = data_rna_values
+        # data_atac.X = data_atac_values
 
         # Split data in train and test
         if self.opt.test_size > 0:
@@ -198,9 +210,9 @@ class deepSCENIC:
             data_atac = data_atac[cell_idxs_train,:].copy()
 
         # Build RNA/ATAC dataloader
-        train_dataloader = build_dataloader(data_rna, data_atac, self.opt)        
+        train_dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)        
         if self.opt.test_size > 0:
-            test_dataloader = build_dataloader(test_rna, test_atac, self.opt)
+            test_dataloader = build_dataloader(test_rna, test_atac, 16, self.opt)
         else:
             test_dataloader = None
 
@@ -209,7 +221,7 @@ class deepSCENIC:
 
         return train_dataloader, test_dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
 
-    def pretrain_TF2r(self, df, n_epochs=200, patience=10):
+    def pretrain_TF2r(self, ad, n_epochs=200, patience=10):
         """ Pretrain TF2r data on the df dataframe. Can be any kind of region data (with regions as rows and features as columns)
             (scATAC-seq, Chip-seq, pycisTarget output,...).
    
@@ -231,7 +243,6 @@ class deepSCENIC:
         writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
         # Read dataframe
-        ad = sc.read(df)
         if opt.TF2rNet_loss == 'bce':
             # Binarized values        
             ad.X[ad.X>0]=1
@@ -270,13 +281,13 @@ class deepSCENIC:
                 loss = tf2r_loss(pred, y.to(opt.device))
                 loss.backward()
                 optimizer.step()
-                
-                f1_pred = f1(pred.ravel(), y.to(opt.device).int().ravel())
                 loss_l.append(loss.detach().item())
                 # Tensorboard logs
                 n_iter = (epoch*len(train_seq_data_shuffle)) + i
                 writer.add_scalar('Loss/train', loss.item(), n_iter)
-                writer.add_scalar('F1/train', f1_pred, n_iter)
+                if opt.TF2rNet_loss == 'bce':
+                    f1_pred = f1(pred.ravel(), y.to(opt.device).int().ravel())
+                    writer.add_scalar('F1/train', f1_pred, n_iter)
                 del loss
             print('epoch:', epoch, 'loss:', np.mean(loss_l))
 
@@ -308,7 +319,201 @@ class deepSCENIC:
                     if early_stopping.early_stop:
                         break
 
-    def simulate_perturbation(self, vae_model_path, tf2r_model_path, perturbation, n_iter=5, tf2r_func_enc_model_path=None, keep_intermediate=False, adj_E1=None, adj_E1_pert=None, fc_upper_bound=99.9, fc_lower_bound=0):
+    def pretrain(self):        
+        # self.opt.train=False
+        opt = self.opt
+        if opt.device=='cuda':
+            Tensor = torch.cuda.FloatTensor
+        elif opt.device=='cpu':
+            Tensor = torch.FloatTensor
+
+        # Initialize Tensorboard writer
+        writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+
+        # Read dataframe
+        # Initialize dataloaders
+        print("Initializing data...")
+        self.opt.test_size=0
+        test_dataloader, _, TFs_idx, r2g_dist_coo, test_seq_dataloader, test_seq_dataloader_shuffle = self.init_data(test=True)
+        train_dataloader, _, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data()
+        
+
+        # Initialize TF2rNet model   
+        with open(self.opt.ppms_file, 'rb') as f:
+            PPMs = pickle.load(f) 
+        tf2rNet_func_encoder = Sei().float().to(self.opt.device)
+        tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
+
+        if self.opt.load_model is not None:
+            # Load tf2r fuctional encoder
+            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+            model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+            tf2rNet.load_state_dict(model_dict_tf2r)
+            vae.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
+            print("loaded models")   
+
+
+        # Initilialize explanation model 
+        # Define the concatenated model with a custom forward method
+        class ConcatModel(torch.nn.Module):
+            def __init__(self, models):
+                super(ConcatModel, self).__init__()
+                self.models = torch.nn.ModuleList(models)
+
+            def forward(self, seq, motif=False, explain=True):
+                if motif==False:
+                    # seq = torch.unsqueeze(seq, dim=0)
+                    for model in self.models:
+                        if isinstance(model, Enformer):
+                            x = model(seq, return_only_embeddings=True)
+                        elif isinstance(model, MotifNet):                 
+                            x = model(emb=x, motif=motif)
+                            # x = torch.unsqueeze(x, dim=0)
+                        else:
+                            x = model(seq, explain=explain)
+                    return x
+                else:
+                    # seq = torch.unsqueeze(seq, dim=0)
+                    for model in self.models:
+                        if isinstance(model, MotifNet):
+                            x = model(seq=seq, motif=motif, explain=explain)
+                    return x
+
+        # Initialize optimizer
+        optimizer =  optim.Adam([{'params':vae.parameters(), 'lr':1e-4}, {'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr }, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
+
+        adj_E1_mtf = None
+        best_loss = np.inf
+        train_dataloader_iter = iter(train_dataloader['dataloader']) # Initialize iterator for vae dataloader
+        for epoch in range(opt.n_epochs):
+            vae.train()
+            tf2rNet.train()
+            tf2rNet_func_encoder.train()
+ 
+            # if (adj_E1_mtf is None):
+            #     # Infer motif matching scores
+            #     with torch.no_grad():
+            #         mtf_pred_l = []
+            #         for _, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
+            #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
+            #             mtf_pred_l.append(mtf_pred)
+            #         adj_E1_mtf = torch.cat(mtf_pred_l).T                        
+            #         del mtf_pred_l, mtf_pred
+
+            for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader_shuffle, 0)):
+                seq = X[0].to(torch.int64).to(self.opt.device)
+                seq = F.one_hot(seq, num_classes=4).to(torch.float)
+                seq.requires_grad = True
+                tf_pred = tf2rNet_func_encoder(seq, explain=True)
+                tf_pred, seq_l1 = tf2rNet(emb=tf_pred, motif=False)
+                adj_E1 = tf_pred.T
+                # adj_E1 = adj_E1 * adj_E1_mtf[:, seq_data_batch_idx]
+  
+                # vae forward pass
+                try:
+                    data_batch = next(train_dataloader_iter)
+                except StopIteration:
+                    train_dataloader_iter = iter(train_dataloader['dataloader'])
+                    data_batch = next(train_dataloader_iter)
+                inputs_rna, inputs_atac, _, _ = data_batch
+                inputs_rna = Variable(inputs_rna.type(Tensor))
+                inputs_atac = Variable(inputs_atac.type(Tensor))
+
+                loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
+                        inputs_rna, inputs_atac, opt=self.opt, adj_E1=adj_E1, idxs=seq_data_batch_idx)
+                
+                loss = seq_l1 + loss
+                optimizer.zero_grad(True)
+                loss.backward()
+                # torch.nn.utils.clip_grad_value_(tf2rNet_func_encoder.parameters(), clip_value=1.0)
+                # torch.nn.utils.clip_grad_value_(tf2rNet.parameters(), clip_value=1.0)
+                if not j%self.opt.n_it_acc: 
+                    optimizer.step()
+                
+                
+                # Tensorboard logs
+                n_iter = (epoch*len(train_seq_dataloader_shuffle)) + j
+                writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
+                writer.add_scalar('Loss/rec_atac', loss_rec_atac.item(), n_iter)
+                writer.add_scalar('Loss/seq_l1', seq_l1.item(), n_iter)
+                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.item(), n_iter)
+                writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
+            print('epoch:', epoch)
+
+            # Save model
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': vae.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }, self.opt.save_name + '/model.pth')
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': tf2rNet.state_dict(),
+            }, self.opt.save_name + '/model_tf2r.pth')
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': tf2rNet_func_encoder.state_dict(),
+            }, self.opt.save_name + '/model_tf2r_encoder.pth')
+
+           
+            # Evaluate test set
+            if (self.opt.test_size > 0):
+                with torch.no_grad():
+                    vae.eval()
+                    loss_all, rec_atac, loss_kl_rna = [], [], []
+    
+                    # TF2rNet forward pass
+                    tf2rNet.eval()
+                    tf2rNet_func_encoder.eval()
+                    with torch.no_grad():
+                        tf_pred_l = []
+                        for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
+                            tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device))
+                            tf_pred, _ = tf2rNet(emb=tf_pred, motif=False)
+                            tf_pred_l.append(tf_pred)
+                        adj_E1 = torch.cat(tf_pred_l).T
+                        # adj_E1 = adj_E1 * adj_E1_mtf
+                        del tf_pred_l, tf_pred
+
+                        for i, data_batch in tqdm(enumerate(test_dataloader['dataloader'], 0), unit="batch", total=len(test_dataloader['dataloader'])):
+                            inputs_rna, inputs_atac, _, dropout_mask_rna  = data_batch
+                            inputs_rna = Variable(inputs_rna.type(Tensor))
+                            inputs_atac = Variable(inputs_atac.type(Tensor))
+
+                            _, _, loss_rec_atac, loss_gauss_rna,_, _, _, _, _, _, f1_atac = vae(
+                                inputs_rna, inputs_atac, dropout_mask_rna=dropout_mask_rna.to(self.opt.device), opt=self.opt, adj_E1=adj_E1)
+
+                        loss = loss_rec_atac + loss_gauss_rna
+                        if loss.detach().item() < best_loss:
+                            torch.save({
+                                'epoch': epoch,
+                                'model_state_dict': vae.state_dict(),
+                                'optimizer_state_dict': optimizer.state_dict(),
+                            }, self.opt.save_name + '/best_model.pth')
+                            torch.save({
+                                'epoch': epoch,
+                                'model_state_dict': tf2rNet.state_dict(),
+                            }, self.opt.save_name + '/best_model_tf2r.pth')
+                            best_loss = loss.detach().item()
+                             
+                        rec_atac.append(loss_rec_atac.item())
+                        loss_all.append(loss.detach().item())
+                        loss_kl_rna.append(loss_gauss_rna.item())
+   
+                    del loss, loss_rec_atac, loss_gauss_rna
+
+                    # Tensorboard logs
+                    writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
+                    writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
+                    writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
+
+                    del loss_all, rec_atac, loss_kl_rna
+
+
+       
+    def simulate_perturbation(self, vae_model_path, tf2r_model_path, perturbation, n_iter=5, ad=None, n_neighs=15, tf2r_func_enc_model_path=None, keep_intermediate=False, adj_E1=None, adj_E1_pert=None, fc_upper_bound=99.9, fc_lower_bound=0):
         """ Function for simulating TF perturbations.
             
             Params
@@ -326,16 +531,24 @@ class deepSCENIC:
             fc_lower_bound: Lower bound for fold change values. Default is 0.01 percentile.
         """
 
-        def _do_one_round_of_simulation(vae, perturbed_mtx, adj_E1, opt):
+        def generate_metacells(pred_mtx, conn_mtx):
+            meta_mtx = pred_mtx.copy()
+            meta_mtx.loc[:,:] = 0
+            for cell_idx in range(pred_mtx.shape[0]):
+                neigh_idxs = np.nonzero(conn_mtx[cell_idx,:].A)[1]
+                meta_mtx.iloc[cell_idx,:] = pred_mtx.iloc[neigh_idxs,:].mean(0)
+            return meta_mtx
+
+        def _do_one_round_of_simulation(vae, perturbed_mtx, TFs_idx, adj_E1, opt):
             data = TensorDataset(torch.FloatTensor(perturbed_mtx.values))
             dataloader = DataLoader(data, batch_size=opt.batch_size, shuffle=False, num_workers=1)
 
             y_pert_l = []
             with torch.no_grad():
                 vae.eval();
-                for batch in tqdm(dataloader, unit="batch", total=len(dataloader)):
+                for batch in dataloader:
                     perturbed_batch = batch[0]
-                    y_pert, _, _, _, _ = vae.predict(perturbed_batch.to(opt.device), adj_E1)
+                    y_pert, _, _, _, _ = vae.predict(perturbed_batch[:, TFs_idx].to(opt.device), adj_E1)
                     y_pert_l += [y_pert['x_rec'].cpu().numpy()]
 
             y_pert_l = np.vstack(y_pert_l)
@@ -386,25 +599,31 @@ class deepSCENIC:
                 adj_E1_mtf = torch.cat(tf_pred_mtf_l).T
                 adj_E1_ctx = torch.cat(tf_pred_ctx_l).T
                 adj_E1 = adj_E1_mtf * adj_E1_ctx
+            else:
+                adj_E1=adj_E1.to(self.opt.device)
             
             if keep_intermediate:
                 perturbation_over_iter = {}
                 fcs = {}
             #Reads original gene expression matrix
-            original_matrix = sc.read(self.opt.data_rna_file).to_df().copy()
+            if ad is None:
+                ad = sc.read(self.opt.data_rna_file)
+            # ad.X = ad.layers['log_norm']
+            sc.pp.neighbors(ad, n_neighbors=n_neighs)
+            conn_matrix = ad.obsp['connectivities']
+            original_matrix = ad.to_df().copy()
+            original_matrix.loc[:,:] = ad.X
             # Normalize data
             original_matrix = original_matrix / original_matrix.std(0)
             perturbed_matrix = original_matrix.copy()
             #do several iterations of perturbation
-            perturbed_pred_matrix_t_1 = _do_one_round_of_simulation(vae, original_matrix, adj_E1, self.opt)
+            perturbed_pred_matrix_t_1 = _do_one_round_of_simulation(vae, original_matrix, TFs_idx, adj_E1, self.opt)
             perturbed_pred_matrix_t_1[perturbed_pred_matrix_t_1<0] = 0
+            perturbed_pred_matrix_t_1 = generate_metacells(perturbed_pred_matrix_t_1, conn_matrix)
+
             # knock down TFs
             if len(perturbation.keys())>0:
                 for gene in perturbation.keys():
-                    # # get TF index
-                    # TF_idx = original_matrix.iloc[:, TFs_idx].columns.get_loc(gene)
-                    # print(TF_idx)
-                    # adj_E1[TF_idx, :] = 0
                     perturbed_matrix.loc[:, gene] = perturbation[gene]
             if adj_E1_pert is not None:
                 adj_E1 = adj_E1_pert
@@ -413,15 +632,20 @@ class deepSCENIC:
                  perturbation_over_iter['0'] = original_matrix.copy()
                  # Save predictions of unperturbed matrix
                  perturbation_over_iter['1'] = perturbed_pred_matrix_t_1.copy()
-            for i in range(n_iter):
+            for i in tqdm(range(n_iter)):
+                if len(perturbation.keys())>0:
+                    for gene in perturbation.keys():
+                        perturbed_matrix.loc[:, gene] = perturbation[gene]
+
                 # Save predictions of perturbed matrix
-                perturbed_pred_matrix_t_2 = _do_one_round_of_simulation(vae, perturbed_matrix, adj_E1, self.opt)
+                perturbed_pred_matrix_t_2 = _do_one_round_of_simulation(vae, perturbed_matrix, TFs_idx, adj_E1, self.opt)
                 perturbed_pred_matrix_t_2[perturbed_pred_matrix_t_2<0] = 0 # Remove negative values
+                perturbed_pred_matrix_t_2 = generate_metacells(perturbed_pred_matrix_t_2, conn_matrix)
+                
                 fc = (perturbed_pred_matrix_t_2 + 1e-8)/(perturbed_pred_matrix_t_1 + 1e-8) # compute fold change
-                fc = np.clip(fc, np.percentile(fc, fc_lower_bound), np.percentile(fc, fc_upper_bound)) # Remove outliers
                 perturbed_pred_matrix_t_1 = perturbed_pred_matrix_t_2.copy()
 
-                perturbed_matrix = perturbed_matrix * fc # Apply fold change compute new expression matrix
+                perturbed_matrix = (perturbed_matrix * fc).copy() # Apply fold change compute new expression matrix
 
                 if keep_intermediate:
                     perturbation_over_iter[str(i + 2)] = perturbed_matrix
@@ -555,11 +779,12 @@ class deepSCENIC:
             print("loaded weights for tf2r")
             tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device) 
         elif self.opt.load_model is not None:
-            # Load tf2r fuctional encoder
-            tf2rNet_func_encoder = Sei().float().to(self.opt.device)
-            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            # Load tf2r contex head
+            if not self.opt.enformer_embs_file:
+                # Load tf2r fuctional encoder
+                tf2rNet_func_encoder = Sei().float().to(self.opt.device)
+                model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+                tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+                # Load tf2r contex head
             tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
             model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
             tf2rNet.load_state_dict(model_dict_tf2r)   
@@ -583,11 +808,11 @@ class deepSCENIC:
             optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr * 1e-3}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr * 1e-3}])
         else:
             optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-        if self.opt.load_model is not None:
-            optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
-            if not self.opt.enformer_embs_file:
-                optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_tf2r_state_dict'])
-            print("loaded optim state")
+#        if self.opt.load_model is not None:
+#            optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
+#            if not self.opt.enformer_embs_file:
+#                optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_tf2r_state_dict'])
+#            print("loaded optim state")
 #        scheduler = lr_scheduler.CosineAnnealingLR(optimizer,
 #                              T_max = opt.n_epochs, # Maximum number of iterations.
 #                              eta_min = 1e-5,
@@ -651,6 +876,12 @@ class deepSCENIC:
                 
                 adj_E1 = adj_E1_old.clone()
                 adj_E1[:, seq_data_batch_idx] = tf_pred.T
+                if not (i+1)%self.opt.n_it_acc:
+                    del adj_E1_old
+                del tf_pred
+
+                # Apply motif prior
+                adj_E1 = adj_E1_mtf * adj_E1
 
                 # VAE forward pass
                 inputs_rna, inputs_atac, _, dropout_mask_rna = data_batch

@@ -7,21 +7,17 @@ from torch.nn import init
 from torch.nn.init import _calculate_fan_in_and_fan_out, _no_grad_uniform_
 from torchmetrics import F1Score
 
-def matmul_adj(X, E1, E2, TFs_idx, modality='atac'):
+def matmul_adj(X, E1, E2, TFs_idx):
     """ Custom matrix multiplication to zero out self regression of TFs.
     """
-    if modality=='atac':
-        X1 = F.relu(torch.matmul(X, E2))
-        X = torch.matmul(X1[:, TFs_idx], E1)
-        D = torch.einsum('ij,ji->i', E2[:, TFs_idx], E1)
-        Y_diag = torch.einsum('ij,j->ij', X, D)
-        X = X - Y_diag
-    elif modality=='rna':
-        X1 = torch.matmul(X, E1)
+    X1 = torch.matmul(X, E1)
+    if E2 is not None:
         X = torch.matmul(X1, E2)
-        D = torch.einsum('ij,ji->i', E1, E2[:,TFs_idx])
-        Y_diag = torch.einsum('ij,j->ij', X[:, TFs_idx], D)
-        X[:, TFs_idx] = X[:, TFs_idx] - Y_diag
+    else:
+        X=None
+#    D = torch.einsum('ij,ji->i', E1, E2[:,TFs_idx])
+#    Y_diag = torch.einsum('ij,j->ij', X[:, TFs_idx], D)
+#    X[:, TFs_idx] = X[:, TFs_idx] - Y_diag
 
     return X, X1
 
@@ -34,8 +30,9 @@ class LossFunctions:
     def reconstruction_loss(self, real, predicted, dropout_mask=None, rec_type='mse'):
         if rec_type == 'mse':
             if dropout_mask is None:
-                loss = torch.mean((real - predicted).pow(2))
+                loss = torch.mean((real - predicted).pow(2)) #+ (1- torch.mean(F.cosine_similarity(real, predicted, dim=1)))
             else:
+                dropout_mask = predicted!=0
                 loss = torch.mean(torch.sum((real - predicted).pow(2) * dropout_mask, dim=1) / torch.sum(dropout_mask, dim=1))
         elif rec_type == 'mae':
             if dropout_mask is None:
@@ -137,10 +134,10 @@ class InferenceNet(nn.Module):
             x = layer(x)
         return x
 
-    def forward(self, x, E1, E2, TFs_idx, modality=None):
+    def forward(self, x, E1, E2, TFs_idx):
         mu, logvar = self.qzxy(x) # Encoder pass
         z_reg = self.sample_latent(mu, logvar)  # Sample latent space
-        z, z1 = matmul_adj(z_reg, E1, E2, TFs_idx, modality=modality) # E1 and E2 multiplication
+        z, z1 = matmul_adj(z_reg, E1, E2, TFs_idx) # E1 and E2 multiplication
         output = {'mean'  : mu, 'logvar': logvar, 'gaussian': z, 'gaussian1': z1, 'z_reg':z_reg}
         return output
 
@@ -217,23 +214,42 @@ class VAE(nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)
 
-    def predict(self, x_rna, adj_E1=None):
-        x_rna_tfs = x_rna[:, self.TFs_idx]
+    def predict(self, x_rna_tfs, adj_E1=None):
+        #x_rna_tfs = x_rna[:, self.TFs_idx]
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
-        out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1), adj_E1, E2, self.TFs_idx, modality='rna')
-        z_rna, z_atac = matmul_adj(out_inf_rna['mean'], adj_E1, E2, self.TFs_idx, modality='rna')
+        out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1), adj_E1, E2, self.TFs_idx)
+        z_rna, z_atac = matmul_adj(out_inf_rna['mean'], adj_E1, E2, self.TFs_idx)
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(z_atac)
   
         return out_gen_rna, out_gen_atac, out_inf_rna['mean'], z_atac, z_rna
+    
+    def pretrain(self, x_rna_tfs, x_atac, opt=None, adj_E1=None, idxs=None):
 
+            out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1), adj_E1, None, self.TFs_idx)
+            out_gen_atac = self.generative_atac(out_inf_rna['gaussian1'])
 
-    def forward(self, x_rna, x_atac, dropout_mask_rna, dropout_mask_atac, opt=None, adj_E1=None):
+            if opt.bin_acc==True:
+                loss_acc = 'bce'
+                f1 = F1Score(task='binary',num_classes=1).to(opt.device)
+                f1_atac = f1(out_gen_atac['x_rec'].ravel(), x_atac[:, idxs].int().ravel())
+            else:
+                loss_acc = 'mse'
+                f1_atac = torch.Tensor([0])
+
+            loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], True, rec_type=loss_acc)
+            loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
+
+            loss = loss_gauss_rna + loss_rec_atac
+
+            return loss,  loss_rec_atac, loss_gauss_rna.detach(), f1_atac.detach()
+
+    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, opt=None, adj_E1=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
-        out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1), adj_E1, E2, self.TFs_idx, modality='rna')
+        out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1), adj_E1, E2, self.TFs_idx)
         out_gen_rna = self.generative_rna(out_inf_rna['gaussian'])
         out_gen_atac = self.generative_atac(out_inf_rna['gaussian1'])
 
@@ -242,7 +258,7 @@ class VAE(nn.Module):
             f1 = F1Score(task='binary',num_classes=1).to(opt.device)
             f1_atac = f1(out_gen_atac['x_rec'].ravel(), x_atac.int().ravel())
         else:
-            loss_acc = 'mae'
+            loss_acc = 'mse'
             f1_atac = torch.Tensor([0])
 
         loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type='mae')

@@ -83,7 +83,7 @@ def dna_1hot_2vec(seq, seq_len=None):
     seq = seq.upper()
 
     # map nt's to a matrix len(seq)x4 of 0's and 1's.
-    seq_code = np.zeros((seq_len, ), dtype="int8")
+    seq_code = np.random.randint(low=0, high=4, size=(seq_len, ), dtype="int8")
 
     for i in range(seq_len):
         if i >= seq_start and i - seq_start < len(seq):

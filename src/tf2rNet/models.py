@@ -386,18 +386,19 @@ class MotifNet(nn.Module):
         if motif==False:
             emb = emb.reshape(-1, 1, self.bottleneck_size)
             ctx_head = self.ctx_head_layer(emb).reshape(-1, self.emb_len, self.n_TFs).swapaxes(1,2)
+            l1 = ctx_head.abs().mean(-1).mean(-1).mean()
             ctx_head = torch.squeeze(self.ctx_lin(ctx_head))
-            return ctx_head.to(torch.float)
+            return ctx_head.to(torch.float), l1
         else:
             if explain==False:
                 seq = F.one_hot(seq.to(torch.int64), num_classes=4).to(torch.float)
             seq = torch.unsqueeze(seq.swapaxes(1,2), dim=1)
 
-            mtf_conv = torch.max(F.conv2d(seq, self.mtf_filters), dim=-1).values
-            mtf_conv_rc = torch.max(F.conv2d(torch.flip(seq, dims=(-2,-1)), self.mtf_filters), dim=-1).values
+            mtf_conv = F.conv2d(seq, self.mtf_filters)
+            mtf_conv_rc = F.conv2d(torch.flip(seq, dims=(-2,-1)), self.mtf_filters)
             # Normalize mtf activations
-            mtf_conv = (mtf_conv - self.mtf_filters_min[None,:,None]) / (self.mtf_filters_max - self.mtf_filters_min)[None,:,None]
-            mtf_conv_rc = (mtf_conv_rc - self.mtf_filters_min[None,:,None]) / (self.mtf_filters_max - self.mtf_filters_min)[None,:,None]
+            mtf_conv = torch.max((mtf_conv - self.mtf_filters_min[None,:,None,None]) / (self.mtf_filters_max - self.mtf_filters_min)[None,:,None,None], dim=-1).values
+            mtf_conv_rc = torch.max((mtf_conv_rc - self.mtf_filters_min[None,:,None,None]) / (self.mtf_filters_max - self.mtf_filters_min)[None,:,None,None], dim=-1).values
 
             mtf_conv = torch.max(torch.cat((mtf_conv, mtf_conv_rc), dim=-1), keepdim=True, dim=-1).values
             mtf_head_o = mtf_conv * self.annots
@@ -607,10 +608,11 @@ class Sei(nn.Module):
         self.f1 = F1Score(num_classes=1)
 
 
-    def forward(self, x, y=None):
+    def forward(self, x, y=None, explain=False):
         """Forward propagation of a batch.
         """
-        x = F.one_hot(x.to(torch.int64), num_classes=4).to(torch.float)
+        if explain==False:
+            x = F.one_hot(x.to(torch.int64), num_classes=4).to(torch.float)
         x = x.swapaxes(1,2)
         if self.training:
             if torch.randint(2, (1,)).item():
