@@ -213,7 +213,7 @@ def plot_deepexplainer_givenax(explainer: shap.explainers, fig, ntrack, track_no
                           subticks_frequency=10, ylab="DeepExplainer")
     return ax1
 
-def plot_mutagenesis_givenax(model, fig, ntrack, track_no, seq_onehot, num_classes, TF, TF_name=None, region_id=None, seq_len=196608, mutated_seq_len=500):
+def plot_mutagenesis_givenax(model, fig, ntrack, track_no, seq_onehot, num_classes, TF, TF_name=None, region_id=None, seq_len=640, mutated_seq_len=640):
     NUM_CLASSES = num_classes
     arrr_A = np.zeros((NUM_CLASSES, mutated_seq_len))
     arrr_C = np.zeros((NUM_CLASSES, mutated_seq_len))
@@ -232,36 +232,88 @@ def plot_mutagenesis_givenax(model, fig, ntrack, track_no, seq_onehot, num_class
             if new_X[mutloc, :][0] == 0:
                 new_X[mutloc, :] = np.array([1, 0, 0, 0], dtype='int8')
                 prediction_mutated = predict_mutated(model, new_X)
-                arrr_A[:, i] = (real_score - prediction_mutated)
+                arrr_A[:, i] = (prediction_mutated - real_score)
 
             if new_X[mutloc, :][1] == 0:
                 new_X[mutloc, :] = np.array([0, 1, 0, 0], dtype='int8')
                 prediction_mutated = predict_mutated(model, new_X)
-                arrr_C[:, i] = (real_score - prediction_mutated)
+                arrr_C[:, i] = (prediction_mutated - real_score)
 
             if new_X[mutloc, :][2] == 0:
                 new_X[mutloc, :] = np.array([0, 0, 1, 0], dtype='int8')
                 prediction_mutated = predict_mutated(model, new_X)
-                arrr_G[:, i] = (real_score - prediction_mutated)
+                arrr_G[:, i] = (prediction_mutated - real_score)
 
             if new_X[mutloc, :][3] == 0:
                 new_X[mutloc, :] = np.array([0, 0, 0, 1], dtype='int8')
                 prediction_mutated = predict_mutated(model, new_X)
-                arrr_T[:, i] = (real_score - prediction_mutated)
+                arrr_T[:, i] = (prediction_mutated - real_score)
 
     ax = fig.add_subplot(ntrack, 1, track_no)
     ax.set_ylabel('In silico\nMutagenesis\nTF_'+str(TF))
     if TF_name is not None:
         ax.set_title("TF_" + str(TF) + ' : ' + TF_name + ' for sequence region : ' + region_id)
-    ax.scatter(range(mutated_seq_len), -1*arrr_A[TF], label='A', color='green')
-    ax.scatter(range(mutated_seq_len), -1*arrr_C[TF], label='C', color='blue')
-    ax.scatter(range(mutated_seq_len), -1*arrr_G[TF], label='G', color='orange')
-    ax.scatter(range(mutated_seq_len), -1*arrr_T[TF], label='T', color='red')
+    ax.scatter(range(mutated_seq_len), arrr_A[TF], label='A', color='green')
+    ax.scatter(range(mutated_seq_len), arrr_C[TF], label='C', color='blue')
+    ax.scatter(range(mutated_seq_len), arrr_G[TF], label='G', color='orange')
+    ax.scatter(range(mutated_seq_len), arrr_T[TF], label='T', color='red')
     ax.legend()
     ax.axhline(y=0, linestyle='--', color='gray')
     ax.set_xlim((0, mutated_seq_len))
     _ = ax.set_xticks(np.arange(0, mutated_seq_len+1, 10))
     return ax
+
+def plot_TF_ism_givenax(model, fig, ntrack, track_no, seq_onehot, num_classes, TF, TF_name=None, region_id=None, seq_len=640, mutated_seq_len=640):
+    NUM_CLASSES = num_classes
+    arrr_A = np.zeros((NUM_CLASSES, mutated_seq_len))
+    arrr_C = np.zeros((NUM_CLASSES, mutated_seq_len))
+    arrr_G = np.zeros((NUM_CLASSES, mutated_seq_len))
+    arrr_T = np.zeros((NUM_CLASSES, mutated_seq_len))
+
+    model.eval()
+   
+    seq_start = seq_len//2-(mutated_seq_len//2)
+    seq_end = seq_len//2+(mutated_seq_len//2)
+    with torch.no_grad():
+        real_score = predict_mutated(model, seq_onehot)
+
+        for i, mutloc in tqdm(enumerate(range(seq_start, seq_end))):
+            new_X = np.copy(seq_onehot)
+            if new_X[mutloc, :][0] == 0:
+                new_X[mutloc, :] = np.array([1, 0, 0, 0], dtype='int8')
+                prediction_mutated = predict_mutated(model, new_X)
+                arrr_A[:, i] = (prediction_mutated - real_score)
+
+            if new_X[mutloc, :][1] == 0:
+                new_X[mutloc, :] = np.array([0, 1, 0, 0], dtype='int8')
+                prediction_mutated = predict_mutated(model, new_X)
+                arrr_C[:, i] = (prediction_mutated - real_score)
+
+            if new_X[mutloc, :][2] == 0:
+                new_X[mutloc, :] = np.array([0, 0, 1, 0], dtype='int8')
+                prediction_mutated = predict_mutated(model, new_X)
+                arrr_G[:, i] = (prediction_mutated - real_score)
+
+            if new_X[mutloc, :][3] == 0:
+                new_X[mutloc, :] = np.array([0, 0, 0, 1], dtype='int8')
+                prediction_mutated = predict_mutated(model, new_X)
+                arrr_T[:, i] = (prediction_mutated - real_score)
+
+    return arrr_A, arrr_C, arrr_G, arrr_T
+
+    # ax = fig.add_subplot(ntrack, 1, track_no)
+    # ax.set_ylabel('In silico\nMutagenesis\nTF_'+str(TF))
+    # if TF_name is not None:
+    #     ax.set_title("TF_" + str(TF) + ' : ' + TF_name + ' for sequence region : ' + region_id)
+    # ax.scatter(range(mutated_seq_len), arrr_A[TF], label='A', color='green')
+    # ax.scatter(range(mutated_seq_len), arrr_C[TF], label='C', color='blue')
+    # ax.scatter(range(mutated_seq_len), arrr_G[TF], label='G', color='orange')
+    # ax.scatter(range(mutated_seq_len), arrr_T[TF], label='T', color='red')
+    # ax.legend()
+    # ax.axhline(y=0, linestyle='--', color='gray')
+    # ax.set_xlim((0, mutated_seq_len))
+    # _ = ax.set_xticks(np.arange(0, mutated_seq_len+1, 10))
+    # return ax
 
 def plot_prediction_givenax(model, fig, ntrack, track_no, seq_onehot, num_classes):
     NUM_CLASSES = num_classes
@@ -830,8 +882,12 @@ def get_interaction_pr(region_to_gene_df,
 
     return pr_interact
 
-def format_region_to_bed(region_string, output_file):
+def format_region_to_bed(region_string, output_file, seq_len=500):
     chrom, start_end = region_string.split(":")
     start, end = start_end.split("-")
+    if (int(end)-int(start)) < seq_len:
+        center = int(start) + ((int(end)-int(start))//2)
+        start = center - seq_len//2
+        end = center + seq_len//2
     bed_string = f"{chrom}\t{start}\t{end}\n"
     output_file.write(bed_string)

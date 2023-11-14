@@ -358,11 +358,11 @@ class MotifNet(nn.Module):
         super(MotifNet, self).__init__()
         self.motif_names = motif_dict['dists'].keys()
         PPms_max_length = np.max([motif_dict['dists'][x].probs.shape[0] for x in self.motif_names])
-
-        self.mtf_filters = torch.stack([F.pad(motif_dict['dists'][x].probs, (0, 0, int(np.ceil((PPms_max_length - motif_dict['dists'][x].probs.shape[0])/2)), (PPms_max_length - motif_dict['dists'][x].probs.shape[0])//2), "constant", 0) for x in self.motif_names], dim=0).unsqueeze(1).swapaxes(2,3).float().to(dev)
+        mtf_filters = torch.stack([F.pad(motif_dict['dists'][x].probs, (0, 0, int(np.ceil((PPms_max_length - motif_dict['dists'][x].probs.shape[0])/2)), (PPms_max_length - motif_dict['dists'][x].probs.shape[0])//2), "constant", 0) for x in self.motif_names], dim=0).unsqueeze(1).swapaxes(2,3).float().to(dev)
+        self.mtf_filters = F.one_hot(torch.argmax(mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3)
         self.mtf_filters.requires_grad = False
-        self.mtf_filters_max =  torch.squeeze(torch.diagonal(F.conv2d(F.one_hot(torch.argmax(self.mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3), self.mtf_filters), dim1=0, dim2=1))
-        self.mtf_filters_min = torch.squeeze(torch.diagonal(F.conv2d(F.one_hot(torch.argmin(self.mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3), self.mtf_filters), dim1=0, dim2=1))
+        self.mtf_filters_max =  torch.squeeze(torch.diagonal(F.conv2d(F.one_hot(torch.argmax(mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3), self.mtf_filters), dim1=0, dim2=1))
+        self.mtf_filters_min = torch.squeeze(torch.diagonal(F.conv2d(F.one_hot(torch.argmin(mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3), self.mtf_filters), dim1=0, dim2=1))
 
         annots = pd.DataFrame(np.zeros((len(self.motif_names), len(tfs))), index=self.motif_names, columns=tfs)
         for mtf in self.motif_names:

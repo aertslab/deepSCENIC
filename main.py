@@ -10,6 +10,10 @@ parser.add_argument('--batch_size', type=int, default=64, help='The batch size u
 parser.add_argument('--TF2rNet_batch_size', type=int, default=1000, help='The batch size used for TF2rNet inference.')
 parser.add_argument('--data_rna_file', type=str, help='The input scRNA-seq file (.h5ad).')
 parser.add_argument('--data_atac_file', type=str, help='The input scATAC-seq file (.h5ad).')
+parser.add_argument('--data_rna_file_train', type=str, help='The input scRNA-seq file (.h5ad) containing training data.')
+parser.add_argument('--data_atac_file_train', type=str, help='The input scATAC-seq file (.h5ad) containing training data.')
+parser.add_argument('--data_rna_file_test', type=str, help='The input scRNA-seq file (.h5ad) containing test data.')
+parser.add_argument('--data_atac_file_test', type=str, help='The input scATAC-seq file (.h5ad) containing test data.')
 parser.add_argument('--bin_acc', default=False, action='store_true', help='Binarize scATAC-seq data.')
 parser.add_argument('--TF_file', type=str, help='List of trascription factors file.')
 parser.add_argument('--r2g_mask', type=str, help='Region to target gene mask.')
@@ -26,7 +30,6 @@ parser.add_argument('--load_tf2rNet_model', type=str, default=None, help='Load p
 parser.add_argument('--save_name', type=str, default='/tmp', help='Output directory.')
 parser.add_argument('--logs', type=str, default='/tmp', help='Tensorboard log dir.')
 parser.add_argument('--train', default=False, action='store_true', help='Specify if training.')
-parser.add_argument('--test_size', type=float, default=0.2, help='Test size (percentace) for train-test split.')
 parser.add_argument('--disable_dropout_loss', default=False, action='store_true', help='Weather to use dropout loss for recostructing scRNA-seq.')
 parser.add_argument('--enformer_embs_file', type=str, help='Path to nformer region embeddigns.')
 parser.add_argument('--ppms_file', type=str, help='Path to PPMs.')
@@ -43,7 +46,7 @@ if opt.task == 'deepSCENIC':
     print(opt)
     model = deepSCENIC(opt)
     model.train_model()
-if opt.task == 'pretrain_tf2r':
+if opt.task == 'pretrain':
     print(opt)
     model = deepSCENIC(opt)
-    model.pretrain_TF2r(opt.tf2r_df, n_epochs=opt.n_epochs)
+    model.pretrain()

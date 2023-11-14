@@ -2,7 +2,6 @@ import datetime
 import json
 import os
 import pickle
-import re
 from typing import Tuple
 import h5py
 import numpy as np
@@ -13,24 +12,25 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from scipy.sparse import load_npz
-from sklearn.model_selection import train_test_split
 from torch.autograd import Variable
-from torch.optim import lr_scheduler
-from torch.utils.data import DataLoader, random_split
+# from torch.optim import lr_scheduler
+from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset, TensorDataset
+from torch import nn
 from torch.utils.tensorboard import SummaryWriter
 from torchmetrics import F1Score
 from tqdm import tqdm
 from enformer_pytorch import Enformer
+from enformer_pytorch import GenomeIntervalDataset
 
-from src.tf2rNet.models import MotifNet, final, Sei
+from src.tf2rNet.models import MotifNet
 from src.tf2rNet.utils import *
 from src.model import VAE
-from src.utils import EarlyStopping
+from src.utils import EarlyStopping, format_region_to_bed
 
 
 ## Build dataloaders ##
-def build_seq_dataloader(opt, ad=None, pretrain=False):
+def build_seq_dataloader(opt, ad=None):
     """ Build dataloader for TF2rNet
             Params
             ------
@@ -44,50 +44,42 @@ def build_seq_dataloader(opt, ad=None, pretrain=False):
         tensors: Tuple[torch.Tensor, ...]
 
         def __init__(self, *tensors: torch.Tensor) -> None:
-            assert all(tensors[0].size(0) == tensor.size(0) for tensor in tensors), "Size mismatch between tensors"
+            assert all(len(tensors[0]) == len(tensor) for tensor in tensors), "Size mismatch between tensors"
             self.tensors = tensors
 
         def __getitem__(self, index):
             return (tuple(tensor[index] for tensor in self.tensors), index)
 
         def __len__(self):
-            return self.tensors[0].size(0)
+            return len(self.tensors[0])
 
-    peak = [re.split("[\-:]+", elem) for elem in ad.var_names]
-    peak = pd.DataFrame(peak, columns=['chr', 'start', 'end'])
+    output_file = open(opt.save_name + 'enhancer.bed', 'w')
+    [format_region_to_bed(r, output_file, seq_len=opt.seq_len) for r in ad.var_names.to_list()]
+    output_file.close()
 
-    make_h5_sparse(peak, '%s/all_seqs.h5'%opt.save_name, opt.fasta, opt.seq_len, opt.TF2rNet_batch_size)
-    with h5py.File('%s/all_seqs.h5'%opt.save_name, 'r') as hf:
-        X_seq = hf['X'][:].astype('float32')
+    ds = GenomeIntervalDataset(
+        bed_file = opt.save_name+ 'enhancer.bed',   # bed file - columns 0, 1, 2 must be <chromosome>, <start position>, <end position>
+        fasta_file = opt.fasta, # path to fasta file
+        return_seq_indices = False, # return nucleotide indices (ACGTN) or one hot encodings
+        shift_augs = (-3, +3),    # random shift augmentations from -2 to +2 basepairs
+        rc_aug = True, # use reverse complement augmentation with 50% probability
+        context_length = opt.seq_len, #sequence length to extract
+        return_augs = False  # return the augmentation meta data
+    )
 
     if opt.enformer_embs_file:    
         hf = h5py.File('%s'%opt.enformer_embs_file, 'r')
         X_emb = hf['X'][:]
         hf.close()
-        data = TensorDatasetWithIndex(torch.FloatTensor(X_seq), torch.FloatTensor(X_emb))
-    else:
-        if pretrain:
-            data = TensorDatasetWithIndex(torch.FloatTensor(X_seq), torch.FloatTensor(ad.X.T))
-        else:
-            data = TensorDatasetWithIndex(torch.FloatTensor(X_seq))
+        data = TensorDatasetWithIndex(ds, torch.FloatTensor(X_emb))
+    else:        
+        data = TensorDatasetWithIndex(ds)
 
-    train_dataloader =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=False, num_workers=1)
-    test_dataloader = None
+    dataloader =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=False, num_workers=0)
 
-    if pretrain:
-        # Define the sizes of the train and test splits
-        train_size = int((1-opt.test_size) * len(data))
-        test_size = len(data) - train_size
+    dataloader_shuffle =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=True, num_workers=0)
 
-        # Split the dataset into train and test sets
-        train_data, test_data = random_split(data, [train_size, test_size])
-        train_dataloader_shuffle =  DataLoader(train_data, batch_size=opt.TF2rNet_batch_size, shuffle=True, num_workers=1)
-        test_dataloader_shuffle = DataLoader(test_data, batch_size=opt.TF2rNet_batch_size, shuffle=True, num_workers=1)
-    else:
-        train_dataloader_shuffle =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=True, num_workers=1)
-        test_dataloader_shuffle = None
-
-    return train_dataloader, test_dataloader, train_dataloader_shuffle, test_dataloader_shuffle
+    return dataloader, dataloader_shuffle
  
 def build_dataloader(data_rna, data_atac, batch_size, opt):
     """ Build dataloader for VAE
@@ -122,7 +114,7 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
     data = TensorDataset(feat_rna, feat_atac, torch.LongTensor(list(range(len(feat_rna)))),
                          torch.FloatTensor(Dropout_Mask_rna))
 
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=opt.train, num_workers=1)
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=opt.train, num_workers=0)
 
     return {'dataloader': dataloader, 'num_genes_rna': num_genes_rna, 'num_regions_atac': num_regions_atac, 'data_rna': data_rna, 'data_atac': data_atac, 'rna_gene_name': rna_gene_name, 'atac_region_name':atac_region_name}
 
@@ -142,7 +134,7 @@ class deepSCENIC:
         except:
             print('dir exist')
 
-    def init_data(self, test=False):
+    def init_data(self, train=False, test=False):
         # Read TFs list
         TFs_df = pd.read_csv(self.opt.TF_file, header=None, names=["name"], usecols=[0])
         TFs = set(TFs_df['name'])
@@ -150,19 +142,27 @@ class deepSCENIC:
         # Read region to gene mask
         r2g_dist_coo = load_npz(self.opt.r2g_mask)
 
-        if test==False:
+        if train==True:
             # Read data
             print("reading data...")
-            data_rna = sc.read(self.opt.data_rna_file)
-            data_atac = sc.read(self.opt.data_atac_file)
+            data_rna = sc.read(self.opt.data_rna_file_train)
+            data_atac = sc.read(self.opt.data_atac_file_train)
+            print("data read!")
+            print(data_rna)
+            print(data_atac)
+        elif test==True:
+            # Read data
+            print("reading data...")
+            data_rna = sc.read(self.opt.data_rna_file_test)
+            data_atac = sc.read(self.opt.data_atac_file_test)
             print("data read!")
             print(data_rna)
             print(data_atac)
         else:
             # Read data
             print("reading data...")
-            data_rna = sc.read(self.opt.data_rna_file_test)
-            data_atac = sc.read(self.opt.data_atac_file_test)
+            data_rna = sc.read(self.opt.data_rna_file)
+            data_atac = sc.read(self.opt.data_atac_file)
             print("data read!")
             print(data_rna)
             print(data_atac)
@@ -200,319 +200,123 @@ class deepSCENIC:
         # data_rna.X = data_rna_values
         # data_atac.X = data_atac_values
 
-        # Split data in train and test
-        if self.opt.test_size > 0:
-            cell_idxs = data_rna.obs.index.values
-            cell_idxs_train, cell_idxs_test = train_test_split(cell_idxs, test_size=self.opt.test_size, random_state=42)
-            test_rna = data_rna[cell_idxs_test,:].copy()
-            data_rna = data_rna[cell_idxs_train,:].copy()
-            test_atac = data_atac[cell_idxs_test,:].copy()
-            data_atac = data_atac[cell_idxs_train,:].copy()
-
         # Build RNA/ATAC dataloader
-        train_dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)        
-        if self.opt.test_size > 0:
-            test_dataloader = build_dataloader(test_rna, test_atac, 16, self.opt)
-        else:
-            test_dataloader = None
+        dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)        
 
         # Build sequence dataloader
-        train_seq_dataloader, _, train_seq_data_shuffle, _ = build_seq_dataloader(self.opt, ad=data_atac)
+        train_seq_dataloader, train_seq_data_shuffle = build_seq_dataloader(self.opt, ad=data_atac)
 
-        return train_dataloader, test_dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
-
-    def pretrain_TF2r(self, ad, n_epochs=200, patience=10):
-        """ Pretrain TF2r data on the df dataframe. Can be any kind of region data (with regions as rows and features as columns)
-            (scATAC-seq, Chip-seq, pycisTarget output,...).
-   
-            Params
-            ------
-            df: dataframe for training.
-            n_epochs: Number of epochs
-            patience: patience parameter for early stopping
-        """
-        
-        opt = self.opt
-        if opt.device=='cuda':
-            Tensor = torch.cuda.FloatTensor
-        elif opt.device=='cpu':
-            Tensor = torch.FloatTensor
-        if patience is not None:
-            early_stopping = EarlyStopping(patience=patience)
-        # Initialize Tensorboard writer
-        writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-
-        # Read dataframe
-        if opt.TF2rNet_loss == 'bce':
-            # Binarized values        
-            ad.X[ad.X>0]=1
-        # Build sequence dataloader
-        _, _, train_seq_data_shuffle, test_seq_data_shuffle = build_seq_dataloader(self.opt, ad=ad, pretrain=True)
-        out_dim = ad.shape[0]
-        # Initialize TF2rNet model    
-        model = Sei().float().to(opt.device)
-        final1  = final(opt.TF2rNet_bottleneck_size * opt.emb_len, n_units=out_dim, flatten=False).float().to(opt.device)
-        # Initialize optimizer
-        optimizer = optim.Adam([{'params':model.parameters(), 'lr':opt.lr}, {'params':final1.parameters(), 'lr':opt.lr}])
-
-        # Define loss function
-        def tf2r_loss(pred, real):
-            """ TF2rNet loss function.
-            """
-            if opt.TF2rNet_loss == 'mse':
-                return torch.mean((real - pred).pow(2))
-            elif opt.TF2rNet_loss == 'bce':
-                return torch.mean(F.binary_cross_entropy_with_logits(pred, real))
-            else:
-                raise NameError('Loss function must be either mse or bce!')
-
-        # Initialize F1 score computation
-        f1 = F1Score(task='binary', num_classes=1).to(opt.device)
-        # Training
-        for epoch in range(n_epochs):
-            model.train()
-            loss_l = []
-            for i, (data_batch, _) in tqdm(enumerate(train_seq_data_shuffle, 0), unit="batch", total=len(train_seq_data_shuffle)):
-                optimizer.zero_grad()
-                X, y = data_batch
-                X = Variable(X.type(Tensor).to(opt.device))
-                X = model(X)
-                pred, _ = final1(X.reshape(-1, opt.TF2rNet_bottleneck_size * opt.emb_len))
-                loss = tf2r_loss(pred, y.to(opt.device))
-                loss.backward()
-                optimizer.step()
-                loss_l.append(loss.detach().item())
-                # Tensorboard logs
-                n_iter = (epoch*len(train_seq_data_shuffle)) + i
-                writer.add_scalar('Loss/train', loss.item(), n_iter)
-                if opt.TF2rNet_loss == 'bce':
-                    f1_pred = f1(pred.ravel(), y.to(opt.device).int().ravel())
-                    writer.add_scalar('F1/train', f1_pred, n_iter)
-                del loss
-            print('epoch:', epoch, 'loss:', np.mean(loss_l))
-
-            # Save model
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-            }, opt.save_name + '/TF2rNET_func_enc_pretrain.pth')
-
-            # Evaluate validation set
-            with torch.no_grad():
-                model.eval()
-                loss_l = []
-                for i, (data_batch, _) in tqdm(enumerate(test_seq_data_shuffle, 0), unit="batch", total=len(test_seq_data_shuffle)):
-                    X,y = data_batch
-                    X = Variable(X.type(Tensor).to(opt.device))
-                    X = model(X)   
-                    pred, _ = final1(X.reshape(-1, opt.TF2rNet_bottleneck_size * opt.emb_len))
-                    loss = tf2r_loss(pred, y.to(opt.device))
-                    loss_l.append(loss.detach().item())
-                    del loss
-
-                print('epoch:', epoch, 'test_loss:', np.mean(loss_l))
-                writer.add_scalar('Loss/val', np.mean(loss_l), epoch)
-                # Evaluate early stopping
-                if patience is not None:
-                    early_stopping(np.mean(loss_l))
-                    if early_stopping.early_stop:
-                        break
+        return dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
 
     def pretrain(self):        
-        # self.opt.train=False
         opt = self.opt
-        if opt.device=='cuda':
-            Tensor = torch.cuda.FloatTensor
-        elif opt.device=='cpu':
-            Tensor = torch.FloatTensor
 
         # Initialize Tensorboard writer
         writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
-        # Read dataframe
-        # Initialize dataloaders
-        print("Initializing data...")
-        self.opt.test_size=0
-        test_dataloader, _, TFs_idx, r2g_dist_coo, test_seq_dataloader, test_seq_dataloader_shuffle = self.init_data(test=True)
-        train_dataloader, _, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data()
-        
+        # Initialize data
+        _, _, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
+        dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, _  = self.init_data(train=True)
 
-        # Initialize TF2rNet model   
-        with open(self.opt.ppms_file, 'rb') as f:
-            PPMs = pickle.load(f) 
-        tf2rNet_func_encoder = Sei().float().to(self.opt.device)
-        tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
+        # Initialize models
+        with open(opt.ppms_file, 'rb') as f:
+            PPMs = pickle.load(f)
+        tf2rNet = MotifNet(PPMs, self.TFs, opt.TF2rNet_bottleneck_size, emb_len=opt.emb_len, explain=False, dev=opt.device).float().to(opt.device)
+        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=opt.emb_len, dropout_rate = 0.1).to(opt.device)
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, opt.n_hidden, dev=opt.device).float().to(opt.device)
+        # Load pretrained models
+        if opt.load_model is not None:
+            tf2rNet.load_state_dict(torch.load(opt.save_name + 'model_tf2r.pth',  map_location=torch.device(opt.device))['model_state_dict'])
+            tf2rNet_func_encoder.load_state_dict(torch.load(opt.save_name + 'model_tf2r_encoder.pth',  map_location=torch.device(opt.device))['model_state_dict'])
+            vae.load_state_dict(torch.load(opt.save_name + 'model.pth',  map_location=torch.device(opt.device))['model_state_dict'])       
 
-        if self.opt.load_model is not None:
-            # Load tf2r fuctional encoder
-            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet.load_state_dict(model_dict_tf2r)
-            vae.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
-            print("loaded models")   
+        optimizer =  optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':opt.lr}, {'params':tf2rNet.parameters(), 'lr':opt.lr}, {'params':vae.parameters(), 'lr':opt.lr}]) 
 
+        # Initialize Tensorboard writer
+        writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
-        # Initilialize explanation model 
-        # Define the concatenated model with a custom forward method
-        class ConcatModel(torch.nn.Module):
-            def __init__(self, models):
-                super(ConcatModel, self).__init__()
-                self.models = torch.nn.ModuleList(models)
-
-            def forward(self, seq, motif=False, explain=True):
-                if motif==False:
-                    # seq = torch.unsqueeze(seq, dim=0)
-                    for model in self.models:
-                        if isinstance(model, Enformer):
-                            x = model(seq, return_only_embeddings=True)
-                        elif isinstance(model, MotifNet):                 
-                            x = model(emb=x, motif=motif)
-                            # x = torch.unsqueeze(x, dim=0)
-                        else:
-                            x = model(seq, explain=explain)
-                    return x
-                else:
-                    # seq = torch.unsqueeze(seq, dim=0)
-                    for model in self.models:
-                        if isinstance(model, MotifNet):
-                            x = model(seq=seq, motif=motif, explain=explain)
-                    return x
-
-        # Initialize optimizer
-        optimizer =  optim.Adam([{'params':vae.parameters(), 'lr':1e-4}, {'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr }, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-
-        adj_E1_mtf = None
-        best_loss = np.inf
-        train_dataloader_iter = iter(train_dataloader['dataloader']) # Initialize iterator for vae dataloader
+        train_dataloader_iter = iter(dataloader['dataloader']) # Initialize iterator for vae dataloader
         for epoch in range(opt.n_epochs):
-            vae.train()
             tf2rNet.train()
             tf2rNet_func_encoder.train()
- 
-            # if (adj_E1_mtf is None):
-            #     # Infer motif matching scores
-            #     with torch.no_grad():
-            #         mtf_pred_l = []
-            #         for _, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
-            #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
-            #             mtf_pred_l.append(mtf_pred)
-            #         adj_E1_mtf = torch.cat(mtf_pred_l).T                        
-            #         del mtf_pred_l, mtf_pred
+            vae.train()
+            for j, (seq, seq_data_batch_idx) in tqdm(enumerate(seq_dataloader, 0)):
+                optimizer.zero_grad(True)
 
-            for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader_shuffle, 0)):
-                seq = X[0].to(torch.int64).to(self.opt.device)
-                seq = F.one_hot(seq, num_classes=4).to(torch.float)
-                seq.requires_grad = True
-                tf_pred = tf2rNet_func_encoder(seq, explain=True)
-                tf_pred, seq_l1 = tf2rNet(emb=tf_pred, motif=False)
-                adj_E1 = tf_pred.T
-                # adj_E1 = adj_E1 * adj_E1_mtf[:, seq_data_batch_idx]
-  
+                x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
+                X_E1, _ = tf2rNet(emb=x, motif=False)                
                 # vae forward pass
                 try:
                     data_batch = next(train_dataloader_iter)
                 except StopIteration:
-                    train_dataloader_iter = iter(train_dataloader['dataloader'])
+                    train_dataloader_iter = iter(dataloader['dataloader'])
                     data_batch = next(train_dataloader_iter)
                 inputs_rna, inputs_atac, _, _ = data_batch
-                inputs_rna = Variable(inputs_rna.type(Tensor))
-                inputs_atac = Variable(inputs_atac.type(Tensor))
-
+                x_rna_tfs = inputs_rna[:, TFs_idx]
+                
                 loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
-                        inputs_rna, inputs_atac, opt=self.opt, adj_E1=adj_E1, idxs=seq_data_batch_idx)
+                x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), opt=opt, adj_E1=X_E1.T, idxs=seq_data_batch_idx.to(opt.device))
                 
-                loss = seq_l1 + loss
-                optimizer.zero_grad(True)
+                E1_sparse = X_E1.T.abs().mean(1).mean()
+                loss = E1_sparse + loss
+                
                 loss.backward()
-                # torch.nn.utils.clip_grad_value_(tf2rNet_func_encoder.parameters(), clip_value=1.0)
-                # torch.nn.utils.clip_grad_value_(tf2rNet.parameters(), clip_value=1.0)
-                if not j%self.opt.n_it_acc: 
-                    optimizer.step()
-                
-                
+                optimizer.step()
+
                 # Tensorboard logs
-                n_iter = (epoch*len(train_seq_dataloader_shuffle)) + j
+                n_iter = (epoch*len(seq_dataloader)) + j
                 writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
                 writer.add_scalar('Loss/rec_atac', loss_rec_atac.item(), n_iter)
-                writer.add_scalar('Loss/seq_l1', seq_l1.item(), n_iter)
+                writer.add_scalar('Loss/l1_E1', E1_sparse.item(), n_iter)
                 writer.add_scalar('Loss/kl_rna', loss_gauss_rna.item(), n_iter)
                 writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
-            print('epoch:', epoch)
+
 
             # Save model
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': vae.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-            }, self.opt.save_name + '/model.pth')
+            }, opt.save_name + '/model.pth')
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': tf2rNet.state_dict(),
-            }, self.opt.save_name + '/model_tf2r.pth')
+            }, opt.save_name + '/model_tf2r.pth')
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': tf2rNet_func_encoder.state_dict(),
-            }, self.opt.save_name + '/model_tf2r_encoder.pth')
+            }, opt.save_name + '/model_tf2r_encoder.pth')    
 
-           
-            # Evaluate test set
-            if (self.opt.test_size > 0):
-                with torch.no_grad():
-                    vae.eval()
-                    loss_all, rec_atac, loss_kl_rna = [], [], []
-    
-                    # TF2rNet forward pass
-                    tf2rNet.eval()
-                    tf2rNet_func_encoder.eval()
-                    with torch.no_grad():
-                        tf_pred_l = []
-                        for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
-                            tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device))
-                            tf_pred, _ = tf2rNet(emb=tf_pred, motif=False)
-                            tf_pred_l.append(tf_pred)
-                        adj_E1 = torch.cat(tf_pred_l).T
-                        # adj_E1 = adj_E1 * adj_E1_mtf
-                        del tf_pred_l, tf_pred
+            tf2rNet.eval()
+            tf2rNet_func_encoder.eval()
+            vae.eval()
+            loss_all, rec_atac, loss_kl_rna = [], [], []
+            with torch.no_grad():
+                for j, (seq, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
+                    x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
+                    X_E1, _ = tf2rNet(emb=x, motif=False)     
+                    
+                    # vae forward pass
+                    try:
+                        data_batch = next(train_dataloader_iter)
+                    except StopIteration:
+                        train_dataloader_iter = iter(dataloader['dataloader'])
+                        data_batch = next(train_dataloader_iter)
+                    inputs_rna, inputs_atac, _, _ = data_batch
+                    x_rna_tfs = inputs_rna[:, TFs_idx]
+                
+                    loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
+                        x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), opt=opt, adj_E1=X_E1.T, idxs=seq_data_batch_idx.to(opt.device))
 
-                        for i, data_batch in tqdm(enumerate(test_dataloader['dataloader'], 0), unit="batch", total=len(test_dataloader['dataloader'])):
-                            inputs_rna, inputs_atac, _, dropout_mask_rna  = data_batch
-                            inputs_rna = Variable(inputs_rna.type(Tensor))
-                            inputs_atac = Variable(inputs_atac.type(Tensor))
-
-                            _, _, loss_rec_atac, loss_gauss_rna,_, _, _, _, _, _, f1_atac = vae(
-                                inputs_rna, inputs_atac, dropout_mask_rna=dropout_mask_rna.to(self.opt.device), opt=self.opt, adj_E1=adj_E1)
-
-                        loss = loss_rec_atac + loss_gauss_rna
-                        if loss.detach().item() < best_loss:
-                            torch.save({
-                                'epoch': epoch,
-                                'model_state_dict': vae.state_dict(),
-                                'optimizer_state_dict': optimizer.state_dict(),
-                            }, self.opt.save_name + '/best_model.pth')
-                            torch.save({
-                                'epoch': epoch,
-                                'model_state_dict': tf2rNet.state_dict(),
-                            }, self.opt.save_name + '/best_model_tf2r.pth')
-                            best_loss = loss.detach().item()
-                             
-                        rec_atac.append(loss_rec_atac.item())
-                        loss_all.append(loss.detach().item())
-                        loss_kl_rna.append(loss_gauss_rna.item())
-   
-                    del loss, loss_rec_atac, loss_gauss_rna
-
+                    loss = loss_rec_atac + loss_gauss_rna + X_E1.abs().mean(1).mean()
+                    rec_atac.append(loss_rec_atac.item())
+                    loss_all.append(loss.detach().item())
+                    loss_kl_rna.append(loss_gauss_rna.item())
                     # Tensorboard logs
                     writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
                     writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
                     writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
-
-                    del loss_all, rec_atac, loss_kl_rna
-
-
-       
+    
     def simulate_perturbation(self, vae_model_path, tf2r_model_path, perturbation, n_iter=5, ad=None, n_neighs=15, tf2r_func_enc_model_path=None, keep_intermediate=False, adj_E1=None, adj_E1_pert=None, fc_upper_bound=99.9, fc_lower_bound=0):
         """ Function for simulating TF perturbations.
             
@@ -541,7 +345,7 @@ class deepSCENIC:
 
         def _do_one_round_of_simulation(vae, perturbed_mtx, TFs_idx, adj_E1, opt):
             data = TensorDataset(torch.FloatTensor(perturbed_mtx.values))
-            dataloader = DataLoader(data, batch_size=opt.batch_size, shuffle=False, num_workers=1)
+            dataloader = DataLoader(data, batch_size=opt.batch_size, shuffle=False, num_workers=0)
 
             y_pert_l = []
             with torch.no_grad():
@@ -555,9 +359,8 @@ class deepSCENIC:
             return pd.DataFrame(y_pert_l, index=perturbed_mtx.index, columns=perturbed_mtx.columns)
 
         ### Initialize dataloaders
-        self.opt.test_size = 0
         self.opt.train = False
-        _, _, TFs_idx, r2g_dist_coo, seq_dataloader, _ = self.init_data()
+        _, TFs_idx, r2g_dist_coo, seq_dataloader, _ = self.init_data()
 
         # Initialize TF2rNet model
         with open(self.opt.ppms_file, 'rb') as f:
@@ -596,9 +399,9 @@ class deepSCENIC:
                         tf_pred_ctx = tf2rNet(emb=X[1].to(self.opt.device), motif=False)
                     tf_pred_ctx_l.append(tf_pred_ctx)
                     tf_pred_mtf_l.append(tf_pred_mtf)
-                adj_E1_mtf = torch.cat(tf_pred_mtf_l).T
+                # adj_E1_mtf = torch.cat(tf_pred_mtf_l).T
                 adj_E1_ctx = torch.cat(tf_pred_ctx_l).T
-                adj_E1 = adj_E1_mtf * adj_E1_ctx
+                # adj_E1 = adj_E1_mtf * adj_E1_ctx
             else:
                 adj_E1=adj_E1.to(self.opt.device)
             
@@ -655,7 +458,7 @@ class deepSCENIC:
             else:
                 return perturbed_matrix
 
-    def to_latent(self, vae_model_path, tf2r_model_path, tf2r_func_enc_model_path=None):
+    def to_latent(self):
         """ Function for saving model embeddings.
             
             Params
@@ -670,27 +473,26 @@ class deepSCENIC:
             Tensor = torch.FloatTensor
 
         ### Initialize dataloaders
-        self.opt.test_size = 0
         self.opt.train = False
-        dataloader, _, TFs_idx, r2g_dist_coo, train_seq_dataloader, _ = self.init_data()
+        dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, _ = self.init_data()
 
         # Initialize TF2rNet model
         with open(self.opt.ppms_file, 'rb') as f:
             PPMs = pickle.load(f)
-        model_dict_tf2rNet = torch.load(tf2r_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         if not self.opt.enformer_embs_file:
-            model_dict_tf2r_func_enc = torch.load(tf2r_func_enc_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet_func_encoder = Sei().float().to(self.opt.device)
-            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+            # Load tf2r fuctional encoder
+            tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
+            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
             tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            tf2rNet.load_state_dict(model_dict_tf2rNet)
-        else:
-            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-            tf2rNet.load_state_dict(model_dict_tf2rNet)
+            # Load tf2r contex head
+        tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+        model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet.load_state_dict(model_dict_tf2r)   
+        print("loaded weights for TF2rNet")
 
         # Initialize VAE
         vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
-        vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
+        vae.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
 
         with torch.no_grad(): 
             vae.eval()
@@ -701,7 +503,7 @@ class deepSCENIC:
             for _, (X, _) in tqdm(enumerate(train_seq_dataloader, 0)):
                 mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
                 mtf_pred_l.append(mtf_pred)
-            adj_E1_mtf = torch.cat(mtf_pred_l).T   
+            # adj_E1_mtf = torch.cat(mtf_pred_l).T   
             tf_pred_l = []
             for _, (X, _) in tqdm(enumerate(train_seq_dataloader, 0)):
                 if not self.opt.enformer_embs_file:
@@ -711,7 +513,7 @@ class deepSCENIC:
                     tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False)
                 tf_pred_l.append(tf_pred)
             adj_E1 = torch.cat(tf_pred_l).T
-            adj_E1 = adj_E1 * adj_E1_mtf
+            # adj_E1 = adj_E1 * adj_E1_mtf
     
             print("VAE forward...")
             z_rna_l = []
@@ -750,138 +552,89 @@ class deepSCENIC:
             np.save(self.opt.save_name + 'y_rna.npy', dec_rna_l)
             np.save(self.opt.save_name + 'y_atac.npy', dec_atac_l)
 
-    def train_model(self):
-        """ Function for training deepSCENIC model.
-        """
-        # Save hyperparams to file
-        with open(self.opt.save_name + "/hyperparma.txt", 'w') as f:
-            json.dump(self.opt.__dict__, f, indent=2)
-
+    def finetune_r2g_test(self):
         # Initialize Tensorboard logger
         writer = SummaryWriter(self.opt.logs + '/logs/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
-        # Initialize dataloaders
-        print("Initializing data...")
-        train_dataloader, test_dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data()
-
-        if self.opt.device=='cuda':
-            Tensor = torch.cuda.FloatTensor
-        elif self.opt.device=='cpu':
-            Tensor = torch.FloatTensor
+        ### Initialize dataloaders
+        self.opt.train = False
+        dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, seq_dataloader_shuffle  = self.init_data(test=True)
 
         # Initialize TF2rNet model
         with open(self.opt.ppms_file, 'rb') as f:
             PPMs = pickle.load(f)
-        if self.opt.load_tf2rNet_model is not None:
-            tf2rNet_func_encoder = Sei().float().to(self.opt.device)
-            model_dict_tf2r_func_enc = torch.load(self.opt.load_tf2rNet_model,  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            print("loaded weights for tf2r")
-            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device) 
-        elif self.opt.load_model is not None:
-            if not self.opt.enformer_embs_file:
-                # Load tf2r fuctional encoder
-                tf2rNet_func_encoder = Sei().float().to(self.opt.device)
-                model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-                tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-                # Load tf2r contex head
-            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-            model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet.load_state_dict(model_dict_tf2r)   
-        else:
-            if not self.opt.enformer_embs_file:
-                # Initialize tf2rNet cnn
-                tf2rNet_func_encoder = Sei().float().to(self.opt.device)
-                tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-            else:
-                tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-
-        # Initialize VAE model
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
-        if self.opt.load_model is not None:
-            vae.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
-            print("loaded weights for vae")
-
-        # Initialize optimizers
         if not self.opt.enformer_embs_file:
-            optimizer = optim.Adam(vae.parameters(), self.opt.lr)
-            optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr * 1e-3}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr * 1e-3}])
-        else:
-            optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-#        if self.opt.load_model is not None:
-#            optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
-#            if not self.opt.enformer_embs_file:
-#                optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_tf2r_state_dict'])
-#            print("loaded optim state")
-#        scheduler = lr_scheduler.CosineAnnealingLR(optimizer,
-#                              T_max = opt.n_epochs, # Maximum number of iterations.
-#                              eta_min = 1e-5,
-#                              verbose=True) # Minimum learning rate.
+            # Load tf2r fuctional encoder
+            tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
+            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+            # Load tf2r contex head
+        tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+        model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet.load_state_dict(model_dict_tf2r)   
+        print("loaded weights for TF2rNet")
 
-        adj_E1_mtf = None
+        # Initialize VAE
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
+        vae.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
+
+        # Freeze layers of vae
+        for name, param in vae.named_parameters():
+            if name == 'adj_E2':
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+        # Freeze layers of tf2r
+        for param in tf2rNet.parameters():
+            param.requires_grad = False
+        for param in tf2rNet_func_encoder.parameters():
+            param.requires_grad = False
+        
+        # Initialize optimizers
+        optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}])
+        if self.opt.load_model is not None:
+            optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
+    
+
+        # Training
+        # adj_E1_mtf = None
+        adj_E1 = None
         best_loss =  float('inf')
-        train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
+        seq_dataloader_shuffle_iterator = iter(seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         for epoch in range(self.opt.n_epochs):
             vae.train()
-            tf2rNet.train()
-            if not self.opt.enformer_embs_file:
-                tf2rNet_func_encoder.train()
- 
-            for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
+            tf2rNet.eval()
+            tf2rNet_func_encoder.eval()
+
+            for i, data_batch in tqdm(enumerate(dataloader['dataloader'], 0), unit="batch", total=len(dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
 
-                if (adj_E1_mtf is None):
-                    # Infer motif matching scores
-                    tf2rNet.eval()
-                    with torch.no_grad():
-                        mtf_pred_l = []
-                        for _, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
-                            mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
-                            mtf_pred_l.append(mtf_pred)
-                        adj_E1_mtf = torch.cat(mtf_pred_l).T                        
-                        del mtf_pred_l, mtf_pred
+                # if (adj_E1_mtf is None):
+                #     # Infer motif matching scores
+                #     with torch.no_grad():
+                #         mtf_pred_l = []
+                #         for _, (X, _) in tqdm(enumerate(seq_dataloader, 0)):
+                #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True, explain=True)
+                #             mtf_pred_l.append(mtf_pred)
+                #         adj_E1_mtf = torch.cat(mtf_pred_l).T                        
+                #         del mtf_pred_l, mtf_pred
 
                 # TF2rNet forward pass
-                if not i%self.opt.n_it_acc: # Accumulate gradients for TF2rNet every n_it_acc iterations
-                    tf2rNet.eval()
-                    if not self.opt.enformer_embs_file:
-                        tf2rNet_func_encoder.eval()
+                if adj_E1 is None:
                     with torch.no_grad():
                         tf_pred_l = []
-                        for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
+                        for j, (X, _) in tqdm(enumerate(seq_dataloader, 0)):
                             if not self.opt.enformer_embs_file:
-                                tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device))
-                                tf_pred = tf2rNet(emb=tf_pred, motif=False)
+                                tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                                tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
                             else:
-                                tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False)
+                                tf_pred, _ = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
                             tf_pred_l.append(tf_pred)
-                        adj_E1_old = torch.cat(tf_pred_l).T
-                    tf2rNet.train()
-                    if not self.opt.enformer_embs_file:
-                        tf2rNet_func_encoder.train()
+                        adj_E1 = torch.cat(tf_pred_l).T
                     del tf_pred_l, tf_pred
-
-                # train on n random regions for backpropagating gradients
-                try:
-                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
-                except StopIteration:
-                    train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle)
-                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
-                if not self.opt.enformer_embs_file:
-                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device))
-                    tf_pred = tf2rNet(emb=tf_pred, motif=False)
-                else:
-                    tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False)
-                
-                adj_E1 = adj_E1_old.clone()
-                adj_E1[:, seq_data_batch_idx] = tf_pred.T
-                if not (i+1)%self.opt.n_it_acc:
-                    del adj_E1_old
-                del tf_pred
-
-                # Apply motif prior
-                adj_E1 = adj_E1_mtf * adj_E1
+                    # Apply motif prior
+                    # adj_E1 = adj_E1_mtf * adj_E1
 
                 # VAE forward pass
                 inputs_rna, inputs_atac, _, dropout_mask_rna = data_batch
@@ -898,10 +651,193 @@ class deepSCENIC:
                         dropout_mask_atac=None, opt=self.opt, adj_E1=adj_E1)
 
                 # Compute sparse loss
-                with torch.no_grad():
-                    E1_sparse = adj_E1.abs().mean(1).mean()
-                    E2_sparse = vae.adj_E2.abs().mean()
+                E2_sparse = vae.adj_E2.abs().mean()
 
+                loss = loss + E2_sparse
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad(True)
+                
+                # Tensorboard logs
+                n_iter = (epoch*len(dataloader['dataloader'])) + i 
+                writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
+                writer.add_scalar('Loss/rec_rna', loss_rec_rna.item(), n_iter)
+                writer.add_scalar('Loss/rec_atac', loss_rec_atac.item(), n_iter)
+                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.item(), n_iter)
+                writer.add_scalar('Loss/l1_E2', E2_sparse.detach().item(), n_iter)
+                writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
+            print('epoch:', epoch)
+
+            # Save tf2r matrix
+            torch.save({'vae_E2_test': vae.adj_E2.state_dict()}, self.opt.save_name + '/E2_test.pth')
+        
+    def train_model(self):
+        """ Function for training deepSCENIC model.
+        """
+        # Save hyperparams to file
+        with open(self.opt.save_name + "/hyperparma.txt", 'w') as f:
+            json.dump(self.opt.__dict__, f, indent=2)
+
+        # Initialize Tensorboard logger
+        writer = SummaryWriter(self.opt.logs + '/logs/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
+
+        # Initialize dataloaders
+        print("Initializing data...")
+        test_dataloader, _, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
+        train_dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
+
+        if self.opt.device=='cuda':
+            Tensor = torch.cuda.FloatTensor
+        elif self.opt.device=='cpu':
+            Tensor = torch.FloatTensor
+
+        # Initialize TF2rNet model
+        with open(self.opt.ppms_file, 'rb') as f:
+            PPMs = pickle.load(f)
+        if self.opt.load_tf2rNet_model is not None:
+            tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=self.opt.emb_len, dropout_rate = 0.1).to(self.opt.device)
+            model_dict_tf2r_func_enc = torch.load(self.opt.load_tf2rNet_model,  map_location=torch.device(self.opt.device))['model_state_dict']
+            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+            print("loaded weights for tf2r")
+            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device) 
+        elif self.opt.load_model is not None:
+            if not self.opt.enformer_embs_file:
+                # Load tf2r fuctional encoder
+                tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=self.opt.emb_len, dropout_rate = 0.1).to(self.opt.device)
+                model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+                tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+                # Load tf2r contex head
+            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+            model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+            tf2rNet.load_state_dict(model_dict_tf2r)   
+            print("loaded weights for TF2rNet")
+        else:
+            if not self.opt.enformer_embs_file:
+                # Initialize tf2rNet cnn
+                tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=self.opt.emb_len, dropout_rate = 0.1).to(self.opt.device)
+                tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+            else:
+                tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+
+        # Initialize VAE model        
+        if self.opt.load_model is not None:
+            vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
+            vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
+            if vae.adj_E2.shape != vae_d['adj_E2'].shape:
+                vae.adj_E2 = nn.Parameter(vae_d['adj_E2'])
+                print("reshaped E2 weights for vae")
+            vae.load_state_dict(vae_d)
+            vae.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=self.opt.device, requires_grad=True) + vae.eps)
+            print("loaded weights for vae")
+        else:
+            vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
+
+        # Initialize optimizers
+        if not self.opt.enformer_embs_file:
+            optimizer = optim.Adam(vae.parameters(), self.opt.lr)
+            optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
+        else:
+            optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
+#        if self.opt.load_model is not None:
+#            optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
+#            if not self.opt.enformer_embs_file:
+#                optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_tf2r_state_dict'])
+#            print("loaded optim state")
+#        scheduler = lr_scheduler.CosineAnnealingLR(optimizer,
+#                              T_max = opt.n_epochs, # Maximum number of iterations.
+#                              eta_min = 1e-5,
+#                              verbose=True) # Minimum learning rate.
+
+        # Training
+        # adj_E1_mtf = None
+        # adj_E1_mtf_test = None
+        best_loss =  float('inf')
+        train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
+        for epoch in range(self.opt.n_epochs):
+            vae.train()
+            tf2rNet.train()
+            if not self.opt.enformer_embs_file:
+                tf2rNet_func_encoder.train()
+ 
+            for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
+                torch.backends.cudnn.enabled = True
+                torch.backends.cudnn.benchmark = True
+
+                # if (adj_E1_mtf is None):
+                #     # Infer motif matching scores
+                #     tf2rNet.eval()
+                #     with torch.no_grad():
+                #         mtf_pred_l = []
+                #         for _, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
+                #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True, explain=True)
+                #             mtf_pred_l.append(mtf_pred)
+                #         adj_E1_mtf = torch.cat(mtf_pred_l).T                        
+                #         del mtf_pred_l, mtf_pred
+
+                # TF2rNet forward pass
+                if not i%self.opt.n_it_acc: # Accumulate gradients for TF2rNet every n_it_acc iterations
+                    tf2rNet.eval()
+                    if not self.opt.enformer_embs_file:
+                        tf2rNet_func_encoder.eval()
+                    with torch.no_grad():
+                        tf_pred_l = []
+                        # seq_l1_l = []
+                        for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
+                            if not self.opt.enformer_embs_file:
+                                tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                                tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                            else:
+                                tf_pred, _ = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
+                            tf_pred_l.append(tf_pred)
+                            # seq_l1_l.append(seq_l1)
+                        adj_E1_old = torch.cat(tf_pred_l).T
+                        # seq_l1_l = torch.stack(seq_l1_l).mean()
+                    tf2rNet.train()
+                    if not self.opt.enformer_embs_file:
+                        tf2rNet_func_encoder.train()
+                    del tf_pred_l, tf_pred
+
+                # train on n random regions for backpropagating gradients
+                try:
+                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
+                except StopIteration:
+                    train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle)
+                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
+                if not self.opt.enformer_embs_file:
+                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                    tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                else:
+                    tf_pred, _ = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
+                
+                adj_E1 = adj_E1_old.clone()
+                adj_E1[:, seq_data_batch_idx] = tf_pred.T
+                if not (i+1)%self.opt.n_it_acc:
+                    del adj_E1_old
+                del tf_pred
+
+                # Apply motif prior
+                # adj_E1 = adj_E1_mtf * adj_E1
+
+                # VAE forward pass
+                inputs_rna, inputs_atac, _, dropout_mask_rna = data_batch
+                inputs_rna = Variable(inputs_rna.type(Tensor))
+                inputs_atac = Variable(inputs_atac.type(Tensor))
+
+                if self.opt.dropout_loss:
+                    loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
+                        inputs_rna, inputs_atac, dropout_mask_rna=dropout_mask_rna.to(self.opt.device),
+                        dropout_mask_atac=True, opt=self.opt, adj_E1=adj_E1)
+                else:
+                    loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _, _,  _, _, _, _, f1_atac = vae(
+                        inputs_rna, inputs_atac, dropout_mask_rna=None,
+                        dropout_mask_atac=None, opt=self.opt, adj_E1=adj_E1)
+
+                # Compute sparse loss
+                # with torch.no_grad():
+                E1_sparse = adj_E1.abs().mean(1).mean()
+                E2_sparse = vae.adj_E2.abs().mean()
+
+                loss = loss + E1_sparse + E2_sparse
                 loss.backward()
                 if not i%self.opt.n_it_acc: # Accumulate gradients for TF2rNet every n_it_acc iterations
                     optimizer.step()
@@ -921,80 +857,98 @@ class deepSCENIC:
                 writer.add_scalar('Loss/l1_E1', E1_sparse.detach().item(), n_iter)
                 writer.add_scalar('Loss/l1_E2', E2_sparse.detach().item(), n_iter)
                 writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
+
+                # Save model
+                if not i%100:
+                    if not self.opt.enformer_embs_file:
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': vae.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'optimizer_tf2r_state_dict': optim_func_enc.state_dict(),
+                        }, self.opt.save_name + '/model.pth')
+                    else:
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': vae.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                        }, self.opt.save_name + '/model.pth')
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': tf2rNet.state_dict(),
+                    }, self.opt.save_name + '/model_tf2r.pth')
+                    if not self.opt.enformer_embs_file:
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': tf2rNet_func_encoder.state_dict(),
+                        }, self.opt.save_name + '/model_tf2r_encoder.pth')
+
             print('epoch:', epoch)
-
-            # Save model
-            if not self.opt.enformer_embs_file:
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': vae.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                    'optimizer_tf2r_state_dict': optim_func_enc.state_dict(),
-                }, self.opt.save_name + '/model.pth')
-            else:
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': vae.state_dict(),
-                    'optimizer_state_dict': optimizer.state_dict(),
-                }, self.opt.save_name + '/model.pth')
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': tf2rNet.state_dict(),
-            }, self.opt.save_name + '/model_tf2r.pth')
-            if not self.opt.enformer_embs_file:
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': tf2rNet_func_encoder.state_dict(),
-                }, self.opt.save_name + '/model_tf2r_encoder.pth')
-
-           
             # Evaluate test set
-            if (self.opt.test_size > 0):
-                with torch.no_grad():
-                    vae.eval()
-                    loss_all, rec_rna, rec_atac, loss_kl_rna, loss_sparse = [], [], [], [], []
-                    for i, data_batch in tqdm(enumerate(test_dataloader['dataloader'], 0), unit="batch", total=len(test_dataloader['dataloader'])):
-                        inputs_rna, inputs_atac, _, dropout_mask_rna  = data_batch
-                        inputs_rna = Variable(inputs_rna.type(Tensor))
-                        inputs_atac = Variable(inputs_atac.type(Tensor))
+            with torch.no_grad():
+                vae.eval()
+                tf2rNet.eval()
+                tf2rNet_func_encoder.eval()
+                # if (adj_E1_mtf_test is None):
+                #     # Infer motif matching scores
+                #     with torch.no_grad():
+                #         mtf_pred_l = []
+                #         for _, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
+                #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True, explain=True)
+                #             mtf_pred_l.append(mtf_pred)
+                #         adj_E1_mtf_test = torch.cat(mtf_pred_l).T                        
+                #         del mtf_pred_l, mtf_pred
 
-                        if self.opt.dropout_loss:
-                            loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _, _, _, _, _, _, _ = vae(
-                                inputs_rna, inputs_atac, dropout_mask_rna=dropout_mask_rna.to(self.opt.device),
-                                dropout_mask_atac=True, opt=self.opt, adj_E1=adj_E1)
-                        else:
-                            loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _, _, _, _, _, _, _ = vae(
-                                inputs_rna, inputs_atac, dropout_mask_rna=None,
-                                dropout_mask_atac=None, opt=self.opt, adj_E1=adj_E1)
-    
-                        sparse_loss = adj_E1.abs().mean(1).mean()
+                tf_pred_l = []
+                for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
+                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                    tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                    tf_pred_l.append(tf_pred)
+                adj_E1 = torch.cat(tf_pred_l).T
+                # adj_E1 = adj_E1 * adj_E1_mtf_test
+                del tf_pred_l, tf_pred
 
-                        if loss.detach().item() < best_loss:
-                            torch.save({
-                                'epoch': epoch,
-                                'model_state_dict': vae.state_dict(),
-                                'optimizer_state_dict': optimizer.state_dict(),
-                            }, self.opt.save_name + '/best_model.pth')
-                            torch.save({
-                                'epoch': epoch,
-                                'model_state_dict': tf2rNet.state_dict(),
-                            }, self.opt.save_name + '/best_model_tf2r.pth')
-                            best_loss = loss.detach().item()
-                             
-                        rec_rna.append(loss_rec_rna.item())
-                        rec_atac.append(loss_rec_atac.item())
-                        loss_all.append(loss.detach().item())
-                        loss_kl_rna.append(loss_gauss_rna.item())
-                        loss_sparse.append(sparse_loss.detach().item())
-   
-                    del loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, sparse_loss
+                
+                loss_all, f1_score, rec_atac, loss_kl_rna, loss_sparse = [], [], [], [], []
+                for i, data_batch in tqdm(enumerate(test_dataloader['dataloader'], 0), unit="batch", total=len(test_dataloader['dataloader'])):
+                    inputs_rna, inputs_atac, _, dropout_mask_rna  = data_batch
+                    inputs_rna = Variable(inputs_rna.type(Tensor))
+                    inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                    # Tensorboard logs
-                    writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
-                    writer.add_scalar('Test/rec_rna', np.mean(rec_rna), epoch)
-                    writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
-                    writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
-                    writer.add_scalar('Test/l1_A', np.mean(loss_sparse), epoch)
+                    x_rna_tfs = inputs_rna[:, TFs_idx]
 
-                    del loss_all, rec_rna, rec_atac, loss_kl_rna, loss_sparse
+                    loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
+                        x_rna_tfs.to(self.opt.device), inputs_atac.to(self.opt.device), opt=self.opt, adj_E1=adj_E1, idxs=torch.arange(adj_E1.shape[1], device=self.opt.device))
+
+                    sparse_loss = adj_E1.abs().mean(1).mean()
+                    loss = loss_rec_atac + loss_gauss_rna + sparse_loss
+
+                    if loss.detach().item() < best_loss:
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': vae.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                        }, self.opt.save_name + '/best_model.pth')
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': tf2rNet.state_dict(),
+                        }, self.opt.save_name + '/best_model_tf2r.pth')
+                        best_loss = loss.detach().item()
+                            
+                    rec_atac.append(loss_rec_atac.item())
+                    loss_all.append(loss.detach().item())
+                    loss_kl_rna.append(loss_gauss_rna.item())
+                    loss_sparse.append(sparse_loss.detach().item())
+                    f1_score.append(f1_atac.detach().item())
+
+                del loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, sparse_loss
+
+                # Tensorboard logs
+                writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
+                writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
+                writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
+                writer.add_scalar('Test/l1_A', np.mean(loss_sparse), epoch)
+                writer.add_scalar('Test/f1_atac', np.mean(f1_score), epoch)
+
+                del loss_all, rec_atac, loss_kl_rna, loss_sparse
 #                    scheduler.step()
