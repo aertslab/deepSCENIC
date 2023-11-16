@@ -933,6 +933,10 @@ class deepSCENIC:
                             'epoch': epoch,
                             'model_state_dict': tf2rNet.state_dict(),
                         }, self.opt.save_name + '/best_model_tf2r.pth')
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': tf2rNet_func_encoder.state_dict(),
+                        }, self.opt.save_name + '/best_model_tf2r_encoder.pth')                        
                         best_loss = loss.detach().item()
                             
                     rec_atac.append(loss_rec_atac.item())
