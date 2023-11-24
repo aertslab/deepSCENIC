@@ -386,9 +386,8 @@ class MotifNet(nn.Module):
         if motif==False:
             emb = emb.reshape(-1, 1, self.bottleneck_size)
             ctx_head = self.ctx_head_layer(emb).reshape(-1, self.emb_len, self.n_TFs).swapaxes(1,2)
-            l1 = ctx_head.abs().mean(-1).mean(-1).mean()
             ctx_head = torch.squeeze(self.ctx_lin(ctx_head))
-            return ctx_head.to(torch.float), l1
+            return ctx_head.to(torch.float)
         else:
             if explain==False:
                 seq = F.one_hot(seq.to(torch.int64), num_classes=4).to(torch.float)

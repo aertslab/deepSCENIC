@@ -50,3 +50,7 @@ if opt.task == 'pretrain':
     print(opt)
     model = deepSCENIC(opt)
     model.pretrain()
+if opt.task == 'finetue_E2':
+    print(opt)
+    model = deepSCENIC(opt)
+    model.finetune_r2g_test()

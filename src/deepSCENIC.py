@@ -146,6 +146,7 @@ class deepSCENIC:
             # Read data
             print("reading data...")
             data_rna = sc.read(self.opt.data_rna_file_train)
+            data_stds = data_rna.X.std(0)
             data_atac = sc.read(self.opt.data_atac_file_train)
             print("data read!")
             print(data_rna)
@@ -154,6 +155,10 @@ class deepSCENIC:
             # Read data
             print("reading data...")
             data_rna = sc.read(self.opt.data_rna_file_test)
+            data_idxs = sc.read(self.opt.data_rna_file_train).obs.index
+            data_rna_full = sc.read(self.opt.data_rna_file)
+            data_rna_full = data_rna_full[data_idxs, data_rna.var_names]
+            data_stds = data_rna_full.X.std(0)
             data_atac = sc.read(self.opt.data_atac_file_test)
             print("data read!")
             print(data_rna)
@@ -161,6 +166,10 @@ class deepSCENIC:
         else:
             # Read data
             print("reading data...")
+            data_idxs = sc.read(self.opt.data_rna_file_train).obs.index
+            data_rna = sc.read(self.opt.data_rna_file)
+            data_rna = data_rna[data_idxs]
+            data_stds = data_rna.X.std(0)
             data_rna = sc.read(self.opt.data_rna_file)
             data_atac = sc.read(self.opt.data_atac_file)
             print("data read!")
@@ -191,7 +200,7 @@ class deepSCENIC:
             data_atac.X[data_atac.X > 0] = 1
 
         # positive scaling of rna data    
-        data_rna.X = data_rna.X / data_rna.X.std(0)
+        data_rna.X = data_rna.X / data_stds
         if self.opt.bin_acc==False:
             # positive scaling of atac data
             sc.pp.normalize_total(data_atac)
@@ -244,7 +253,7 @@ class deepSCENIC:
                 optimizer.zero_grad(True)
 
                 x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
-                X_E1, _ = tf2rNet(emb=x, motif=False)                
+                X_E1 = tf2rNet(emb=x, motif=False)                
                 # vae forward pass
                 try:
                     data_batch = next(train_dataloader_iter)
@@ -294,7 +303,7 @@ class deepSCENIC:
             with torch.no_grad():
                 for j, (seq, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
                     x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
-                    X_E1, _ = tf2rNet(emb=x, motif=False)     
+                    X_E1 = tf2rNet(emb=x, motif=False)     
                     
                     # vae forward pass
                     try:
@@ -499,15 +508,15 @@ class deepSCENIC:
             tf2rNet.eval()
 
             # Infer tf2r scores
-            mtf_pred_l = []
-            for _, (X, _) in tqdm(enumerate(train_seq_dataloader, 0)):
-                mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
-                mtf_pred_l.append(mtf_pred)
+            # mtf_pred_l = []
+            # for _, (X, _) in tqdm(enumerate(train_seq_dataloader, 0)):
+            #     mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
+            #     mtf_pred_l.append(mtf_pred)
             # adj_E1_mtf = torch.cat(mtf_pred_l).T   
             tf_pred_l = []
             for _, (X, _) in tqdm(enumerate(train_seq_dataloader, 0)):
                 if not self.opt.enformer_embs_file:
-                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device))
+                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
                     tf_pred = tf2rNet(emb=tf_pred, motif=False)
                 else:
                     tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False)
@@ -553,12 +562,17 @@ class deepSCENIC:
             np.save(self.opt.save_name + 'y_atac.npy', dec_atac_l)
 
     def finetune_r2g_test(self):
+        if self.opt.device=='cuda':
+            Tensor = torch.cuda.FloatTensor
+        elif self.opt.device=='cpu':
+            Tensor = torch.FloatTensor
+
         # Initialize Tensorboard logger
         writer = SummaryWriter(self.opt.logs + '/logs/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
-        ### Initialize dataloaders
+        ### Initialize dataloaderss
         self.opt.train = False
-        dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, seq_dataloader_shuffle  = self.init_data(test=True)
+        dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, _  = self.init_data(test=True)
 
         # Initialize TF2rNet model
         with open(self.opt.ppms_file, 'rb') as f:
@@ -576,8 +590,12 @@ class deepSCENIC:
 
         # Initialize VAE
         vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
-        vae.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
-
+        # Exclude 'adj_E2' from the state dict
+        state_dict = torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+        if 'adj_E2' in state_dict:
+            del state_dict['adj_E2']
+        vae.load_state_dict(state_dict, strict=False)
+        vae.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=self.opt.device, requires_grad=True) + vae.eps)
         # Freeze layers of vae
         for name, param in vae.named_parameters():
             if name == 'adj_E2':
@@ -591,16 +609,14 @@ class deepSCENIC:
             param.requires_grad = False
         
         # Initialize optimizers
-        optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}])
-        if self.opt.load_model is not None:
-            optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
+        optimizer = optim.Adam([{'params': vae.adj_E2, 'lr':self.opt.lr}])
+        # if self.opt.load_model is not None:
+        #     optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
     
 
         # Training
         # adj_E1_mtf = None
         adj_E1 = None
-        best_loss =  float('inf')
-        seq_dataloader_shuffle_iterator = iter(seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         for epoch in range(self.opt.n_epochs):
             vae.train()
             tf2rNet.eval()
@@ -610,16 +626,6 @@ class deepSCENIC:
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
 
-                # if (adj_E1_mtf is None):
-                #     # Infer motif matching scores
-                #     with torch.no_grad():
-                #         mtf_pred_l = []
-                #         for _, (X, _) in tqdm(enumerate(seq_dataloader, 0)):
-                #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True, explain=True)
-                #             mtf_pred_l.append(mtf_pred)
-                #         adj_E1_mtf = torch.cat(mtf_pred_l).T                        
-                #         del mtf_pred_l, mtf_pred
-
                 # TF2rNet forward pass
                 if adj_E1 is None:
                     with torch.no_grad():
@@ -627,14 +633,12 @@ class deepSCENIC:
                         for j, (X, _) in tqdm(enumerate(seq_dataloader, 0)):
                             if not self.opt.enformer_embs_file:
                                 tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                                tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                                tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
                             else:
-                                tf_pred, _ = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
+                                tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
                             tf_pred_l.append(tf_pred)
                         adj_E1 = torch.cat(tf_pred_l).T
                     del tf_pred_l, tf_pred
-                    # Apply motif prior
-                    # adj_E1 = adj_E1_mtf * adj_E1
 
                 # VAE forward pass
                 inputs_rna, inputs_atac, _, dropout_mask_rna = data_batch
@@ -669,7 +673,7 @@ class deepSCENIC:
             print('epoch:', epoch)
 
             # Save tf2r matrix
-            torch.save({'vae_E2_test': vae.adj_E2.state_dict()}, self.opt.save_name + '/E2_test.pth')
+            torch.save({'vae_E2_test': vae.adj_E2}, self.opt.save_name + '/E2_test.pth')
         
     def train_model(self):
         """ Function for training deepSCENIC model.
@@ -785,9 +789,9 @@ class deepSCENIC:
                         for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
                             if not self.opt.enformer_embs_file:
                                 tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                                tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                                tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
                             else:
-                                tf_pred, _ = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
+                                tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
                             tf_pred_l.append(tf_pred)
                             # seq_l1_l.append(seq_l1)
                         adj_E1_old = torch.cat(tf_pred_l).T
@@ -805,9 +809,9 @@ class deepSCENIC:
                     X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
                 if not self.opt.enformer_embs_file:
                     tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                    tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                    tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
                 else:
-                    tf_pred, _ = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
+                    tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
                 
                 adj_E1 = adj_E1_old.clone()
                 adj_E1[:, seq_data_batch_idx] = tf_pred.T
@@ -902,7 +906,7 @@ class deepSCENIC:
                 tf_pred_l = []
                 for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
                     tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                    tf_pred, _ = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                    tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
                     tf_pred_l.append(tf_pred)
                 adj_E1 = torch.cat(tf_pred_l).T
                 # adj_E1 = adj_E1 * adj_E1_mtf_test
