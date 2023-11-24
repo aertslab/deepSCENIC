@@ -742,19 +742,8 @@ class deepSCENIC:
             optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
         else:
             optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-#        if self.opt.load_model is not None:
-#            optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
-#            if not self.opt.enformer_embs_file:
-#                optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_tf2r_state_dict'])
-#            print("loaded optim state")
-#        scheduler = lr_scheduler.CosineAnnealingLR(optimizer,
-#                              T_max = opt.n_epochs, # Maximum number of iterations.
-#                              eta_min = 1e-5,
-#                              verbose=True) # Minimum learning rate.
 
-        # Training
-        # adj_E1_mtf = None
-        # adj_E1_mtf_test = None
+        adj_E1 = None
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         for epoch in range(self.opt.n_epochs):
@@ -766,20 +755,8 @@ class deepSCENIC:
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
-
-                # if (adj_E1_mtf is None):
-                #     # Infer motif matching scores
-                #     tf2rNet.eval()
-                #     with torch.no_grad():
-                #         mtf_pred_l = []
-                #         for _, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
-                #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True, explain=True)
-                #             mtf_pred_l.append(mtf_pred)
-                #         adj_E1_mtf = torch.cat(mtf_pred_l).T                        
-                #         del mtf_pred_l, mtf_pred
-
                 # TF2rNet forward pass
-                if not i%self.opt.n_it_acc: # Accumulate gradients for TF2rNet every n_it_acc iterations
+                if (adj_E1 is None) | (epoch>self.opt.warmup_vae):
                     tf2rNet.eval()
                     if not self.opt.enformer_embs_file:
                         tf2rNet_func_encoder.eval()
@@ -793,31 +770,28 @@ class deepSCENIC:
                             else:
                                 tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
                             tf_pred_l.append(tf_pred)
-                            # seq_l1_l.append(seq_l1)
                         adj_E1_old = torch.cat(tf_pred_l).T
-                        # seq_l1_l = torch.stack(seq_l1_l).mean()
+                    adj_E1 = adj_E1_old.clone()
                     tf2rNet.train()
                     if not self.opt.enformer_embs_file:
                         tf2rNet_func_encoder.train()
                     del tf_pred_l, tf_pred
 
-                # train on n random regions for backpropagating gradients
-                try:
-                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
-                except StopIteration:
-                    train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle)
-                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
-                if not self.opt.enformer_embs_file:
-                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                    tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
-                else:
-                    tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
-                
-                adj_E1 = adj_E1_old.clone()
-                adj_E1[:, seq_data_batch_idx] = tf_pred.T
-                if not (i+1)%self.opt.n_it_acc:
-                    del adj_E1_old
-                del tf_pred
+                if epoch>self.opt.warmup_vae:
+                    # train on n random regions for backpropagating gradients
+                    try:
+                        X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
+                    except StopIteration:
+                        train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle)
+                        X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
+                    if not self.opt.enformer_embs_file:
+                        tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                        tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                    else:
+                        tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
+                    
+                    adj_E1[:, seq_data_batch_idx] = tf_pred.T
+                    del tf_pred, adj_E1_old
 
                 # Apply motif prior
                 # adj_E1 = adj_E1_mtf * adj_E1
@@ -843,14 +817,13 @@ class deepSCENIC:
 
                 loss = loss + E1_sparse + E2_sparse
                 loss.backward()
-                if not i%self.opt.n_it_acc: # Accumulate gradients for TF2rNet every n_it_acc iterations
-                    optimizer.step()
-                    if (not self.opt.enformer_embs_file):
-                        optim_func_enc.step()
-                    # Reset optimizers
-                    optimizer.zero_grad(True)
-                    if (not self.opt.enformer_embs_file):
-                        optim_func_enc.zero_grad(True)                        
+                optimizer.step()
+                if (not self.opt.enformer_embs_file):
+                    optim_func_enc.step()
+                # Reset optimizers
+                optimizer.zero_grad(True)
+                if (not self.opt.enformer_embs_file):
+                    optim_func_enc.zero_grad(True)                        
 
                 # Tensorboard logs
                 n_iter = (epoch*len(train_dataloader['dataloader'])) + i 

@@ -3,7 +3,7 @@ from src.deepSCENIC import deepSCENIC
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--n_epochs', type=int, default=300, help='Number of training epochs')
-parser.add_argument('--n_it_acc', type=int, default=1, help='Number of iterations for accumulating gradients')
+parser.add_argument('--warmup_vae', type=int, default=0, help='Number of iterations for accumulating gradients')
 parser.add_argument('--task', type=str, default='deepSCENIC',
                     help='Determine which task to run. Select from (deepSCENIC: train the whole model; pretrain_tf2r: pretrain tf2r network)')
 parser.add_argument('--batch_size', type=int, default=64, help='The batch size used in the training process.')
