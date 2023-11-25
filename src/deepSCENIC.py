@@ -744,6 +744,7 @@ class deepSCENIC:
             optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
 
         adj_E1 = None
+        adj_E1_test = None
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         for epoch in range(self.opt.n_epochs):
@@ -866,24 +867,15 @@ class deepSCENIC:
                 vae.eval()
                 tf2rNet.eval()
                 tf2rNet_func_encoder.eval()
-                # if (adj_E1_mtf_test is None):
-                #     # Infer motif matching scores
-                #     with torch.no_grad():
-                #         mtf_pred_l = []
-                #         for _, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
-                #             mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True, explain=True)
-                #             mtf_pred_l.append(mtf_pred)
-                #         adj_E1_mtf_test = torch.cat(mtf_pred_l).T                        
-                #         del mtf_pred_l, mtf_pred
 
-                tf_pred_l = []
-                for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
-                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                    tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
-                    tf_pred_l.append(tf_pred)
-                adj_E1 = torch.cat(tf_pred_l).T
-                # adj_E1 = adj_E1 * adj_E1_mtf_test
-                del tf_pred_l, tf_pred
+                if adj_E1_test is None:
+                    tf_pred_l = []
+                    for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
+                        tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                        tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
+                        tf_pred_l.append(tf_pred)
+                    adj_E1_test = torch.cat(tf_pred_l).T
+                    del tf_pred_l, tf_pred
 
                 
                 loss_all, f1_score, rec_atac, loss_kl_rna, loss_sparse = [], [], [], [], []
@@ -895,9 +887,9 @@ class deepSCENIC:
                     x_rna_tfs = inputs_rna[:, TFs_idx]
 
                     loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
-                        x_rna_tfs.to(self.opt.device), inputs_atac.to(self.opt.device), opt=self.opt, adj_E1=adj_E1, idxs=torch.arange(adj_E1.shape[1], device=self.opt.device))
+                        x_rna_tfs.to(self.opt.device), inputs_atac.to(self.opt.device), opt=self.opt, adj_E1=adj_E1_test, idxs=torch.arange(adj_E1_test.shape[1], device=self.opt.device))
 
-                    sparse_loss = adj_E1.abs().mean(1).mean()
+                    sparse_loss = adj_E1_test.abs().mean(1).mean()
                     loss = loss_rec_atac + loss_gauss_rna + sparse_loss
 
                     if loss.detach().item() < best_loss:
