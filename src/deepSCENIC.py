@@ -145,8 +145,12 @@ class deepSCENIC:
         if train==True:
             # Read data
             print("reading data...")
+            data_rna_full = sc.read(self.opt.data_rna_file)
             data_rna = sc.read(self.opt.data_rna_file_train)
-            data_stds = data_rna.X.std(0)
+            try:
+                data_stds = data_rna_full[:, data_rna.var_names].X.std(0)
+            except AttributeError:
+                data_stds = data_rna_full[:, data_rna.var_names].X.toarray().std(0)
             data_atac = sc.read(self.opt.data_atac_file_train)
             print("data read!")
             print(data_rna)
@@ -154,23 +158,24 @@ class deepSCENIC:
         elif test==True:
             # Read data
             print("reading data...")
-            data_rna = sc.read(self.opt.data_rna_file_test)
-            data_idxs = sc.read(self.opt.data_rna_file_train).obs.index
             data_rna_full = sc.read(self.opt.data_rna_file)
-            data_rna_full = data_rna_full[data_idxs, data_rna.var_names]
-            data_stds = data_rna_full.X.std(0)
+            data_rna = sc.read(self.opt.data_rna_file_test)
+            try:
+                data_stds = data_rna_full[:, data_rna.var_names].X.std(0)
+            except AttributeError:
+                data_stds = data_rna_full[:, data_rna.var_names].X.toarray().std(0)
             data_atac = sc.read(self.opt.data_atac_file_test)
             print("data read!")
             print(data_rna)
             print(data_atac)
         else:
-            # Read data
+            # Read datas
             print("reading data...")
-            data_idxs = sc.read(self.opt.data_rna_file_train).obs.index
             data_rna = sc.read(self.opt.data_rna_file)
-            data_rna = data_rna[data_idxs]
-            data_stds = data_rna.X.std(0)
-            data_rna = sc.read(self.opt.data_rna_file)
+            try:
+                data_stds = data_rna.X.std(0)
+            except AttributeError:
+                data_stds = data_rna.X.toarray().std(0)
             data_atac = sc.read(self.opt.data_atac_file)
             print("data read!")
             print(data_rna)
@@ -198,16 +203,14 @@ class deepSCENIC:
         # Binarize ATAC data
         if self.opt.bin_acc==True:
             data_atac.X[data_atac.X > 0] = 1
+        else:
+            data_atac_full = sc.read(self.opt.data_atac_file)
+            prob_max = data_atac_full.X.max()
+            prob_min = data_atac_full.X.min()
+            data_atac.X = (data_atac.X - prob_min) / (prob_max - prob_min)
 
         # positive scaling of rna data    
         data_rna.X = data_rna.X / data_stds
-        if self.opt.bin_acc==False:
-            # positive scaling of atac data
-            sc.pp.normalize_total(data_atac)
-            sc.pp.log1p(data_atac)
-            data_atac.X = data_atac.X / data_atac.X.std(0)
-        # data_rna.X = data_rna_values
-        # data_atac.X = data_atac_values
 
         # Build RNA/ATAC dataloader
         dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)        
@@ -467,7 +470,7 @@ class deepSCENIC:
             else:
                 return perturbed_matrix
 
-    def to_latent(self):
+    def to_latent(self, adj_E1, adj_E2):
         """ Function for saving model embeddings.
             
             Params
@@ -483,7 +486,7 @@ class deepSCENIC:
 
         ### Initialize dataloaders
         self.opt.train = False
-        dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, _ = self.init_data()
+        dataloader, TFs_idx, r2g_dist_coo, _, _ = self.init_data()
 
         # Initialize TF2rNet model
         with open(self.opt.ppms_file, 'rb') as f:
@@ -501,29 +504,10 @@ class deepSCENIC:
 
         # Initialize VAE
         vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
-        vae.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
-
+        vae.load_state_dict(torch.load(self.opt.save_name + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict'])
+        vae.adj_E2 = nn.Parameter(adj_E2)
         with torch.no_grad(): 
             vae.eval()
-            tf2rNet.eval()
-
-            # Infer tf2r scores
-            # mtf_pred_l = []
-            # for _, (X, _) in tqdm(enumerate(train_seq_dataloader, 0)):
-            #     mtf_pred  = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
-            #     mtf_pred_l.append(mtf_pred)
-            # adj_E1_mtf = torch.cat(mtf_pred_l).T   
-            tf_pred_l = []
-            for _, (X, _) in tqdm(enumerate(train_seq_dataloader, 0)):
-                if not self.opt.enformer_embs_file:
-                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                    tf_pred = tf2rNet(emb=tf_pred, motif=False)
-                else:
-                    tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False)
-                tf_pred_l.append(tf_pred)
-            adj_E1 = torch.cat(tf_pred_l).T
-            # adj_E1 = adj_E1 * adj_E1_mtf
-    
             print("VAE forward...")
             z_rna_l = []
             z_tf_mu_l = []
@@ -537,16 +521,15 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                _, _, _, _, dec_rna, dec_atac, hidden_rna, hidden_tf_reg, hidden_tf_var, hidden_rna_atac, _  = vae(
-                        inputs_rna, inputs_atac, dropout_mask_rna=None,
-                        dropout_mask_atac=None, opt=self.opt, adj_E1=adj_E1)
+                out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna = vae.predict(
+                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2)
 
-                z_rna_l += [hidden_rna.cpu().numpy()]
-                z_tf_mu_l += [hidden_tf_reg.cpu().numpy()]
-                z_tf_var_l += [hidden_tf_var.cpu().numpy()]
-                z_rna_atac_l += [hidden_rna_atac.cpu().numpy()]
-                dec_rna_l += [dec_rna.cpu().numpy()]
-                dec_atac_l += [dec_atac.cpu().numpy()]
+                z_rna_l += [z_rna.cpu().numpy()]
+                z_tf_mu_l += [out_inf_rna['mean'].cpu().numpy()]
+                z_tf_var_l += [out_inf_rna['logvar'].cpu().numpy()]
+                z_rna_atac_l += [enh_act.cpu().numpy()]
+                dec_rna_l += [out_gen_rna['x_rec'].cpu().numpy()]
+                dec_atac_l += [out_gen_atac['x_rec'].cpu().numpy()]
 
             z_rna_l = np.vstack(z_rna_l)
             z_rna_atac_l = np.vstack(z_rna_atac_l)
@@ -757,7 +740,7 @@ class deepSCENIC:
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
                 # TF2rNet forward pass
-                if (adj_E1 is None) | (epoch>self.opt.warmup_vae):
+                if epoch>=self.opt.warmup_vae:
                     tf2rNet.eval()
                     if not self.opt.enformer_embs_file:
                         tf2rNet_func_encoder.eval()
@@ -771,14 +754,14 @@ class deepSCENIC:
                             else:
                                 tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
                             tf_pred_l.append(tf_pred)
-                        adj_E1_old = torch.cat(tf_pred_l).T
+                        adj_E1_old = torch.cat(tf_pred_l)
                     adj_E1 = adj_E1_old.clone()
                     tf2rNet.train()
                     if not self.opt.enformer_embs_file:
                         tf2rNet_func_encoder.train()
                     del tf_pred_l, tf_pred
 
-                if epoch>self.opt.warmup_vae:
+                if epoch>=self.opt.warmup_vae:
                     # train on n random regions for backpropagating gradients
                     try:
                         X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
@@ -791,7 +774,7 @@ class deepSCENIC:
                     else:
                         tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
                     
-                    adj_E1[:, seq_data_batch_idx] = tf_pred.T
+                    adj_E1[seq_data_batch_idx, :] = tf_pred
                     del tf_pred, adj_E1_old
 
                 # Apply motif prior
@@ -805,7 +788,7 @@ class deepSCENIC:
                 if self.opt.dropout_loss:
                     loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
                         inputs_rna, inputs_atac, dropout_mask_rna=dropout_mask_rna.to(self.opt.device),
-                        dropout_mask_atac=True, opt=self.opt, adj_E1=adj_E1)
+                        dropout_mask_atac=None, opt=self.opt, adj_E1=adj_E1)
                 else:
                     loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _, _,  _, _, _, _, f1_atac = vae(
                         inputs_rna, inputs_atac, dropout_mask_rna=None,
