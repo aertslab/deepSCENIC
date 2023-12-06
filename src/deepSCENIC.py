@@ -66,17 +66,9 @@ def build_seq_dataloader(opt, ad=None):
         context_length = opt.seq_len, #sequence length to extract
         return_augs = False  # return the augmentation meta data
     )
-
-    if opt.enformer_embs_file:    
-        hf = h5py.File('%s'%opt.enformer_embs_file, 'r')
-        X_emb = hf['X'][:]
-        hf.close()
-        data = TensorDatasetWithIndex(ds, torch.FloatTensor(X_emb))
-    else:        
-        data = TensorDatasetWithIndex(ds)
-
+     
+    data = TensorDatasetWithIndex(ds)
     dataloader =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=False, num_workers=0)
-
     dataloader_shuffle =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=True, num_workers=0)
 
     return dataloader, dataloader_shuffle
@@ -165,7 +157,7 @@ class deepSCENIC:
             print(data_rna)
             print(data_atac)
         else:
-            # Read datas
+            # Read data
             print("reading data...")
             data_rna = sc.read(self.opt.data_rna_file)
             try:
@@ -220,11 +212,8 @@ class deepSCENIC:
         # Initialize data
         _, _, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
         dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, _  = self.init_data(train=True)
-
         # Initialize models
-        with open(opt.ppms_file, 'rb') as f:
-            PPMs = pickle.load(f)
-        tf2rNet = MotifNet(PPMs, self.TFs, opt.TF2rNet_bottleneck_size, emb_len=opt.emb_len, explain=False, dev=opt.device).float().to(opt.device)
+        tf2rNet = MotifNet(self.TFs, opt.TF2rNet_bottleneck_size, emb_len=opt.emb_len, dev=opt.device).float().to(opt.device)
         tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=opt.emb_len, dropout_rate = 0.1).to(opt.device)
         vae = VAE(TFs_idx, r2g_dist_coo, 1, opt.n_hidden, dev=opt.device).float().to(opt.device)
         # Load pretrained models
@@ -247,7 +236,7 @@ class deepSCENIC:
                 optimizer.zero_grad(True)
 
                 x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
-                X_E1 = tf2rNet(emb=x, motif=False)                
+                X_E1 = tf2rNet(emb=x) 
                 # vae forward pass
                 try:
                     data_batch = next(train_dataloader_iter)
@@ -258,9 +247,9 @@ class deepSCENIC:
                 x_rna_tfs = inputs_rna[:, TFs_idx]
                 
                 loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
-                x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), opt=opt, adj_E1=X_E1.T, idxs=seq_data_batch_idx.to(opt.device))
+                x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), opt=opt, adj_E1=X_E1, idxs=seq_data_batch_idx.to(opt.device))
                 
-                E1_sparse = X_E1.T.abs().mean(1).mean()
+                E1_sparse = X_E1.abs().mean(1).mean()
                 loss = E1_sparse + loss
                 
                 loss.backward()
@@ -297,7 +286,7 @@ class deepSCENIC:
             with torch.no_grad():
                 for j, (seq, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
                     x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
-                    X_E1 = tf2rNet(emb=x, motif=False)     
+                    X_E1 = tf2rNet(emb=x)     
                     
                     # vae forward pass
                     try:
@@ -309,7 +298,7 @@ class deepSCENIC:
                     x_rna_tfs = inputs_rna[:, TFs_idx]
                 
                     loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
-                        x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), opt=opt, adj_E1=X_E1.T, idxs=seq_data_batch_idx.to(opt.device))
+                        x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), opt=opt, adj_E1=X_E1, idxs=seq_data_batch_idx.to(opt.device))
 
                     loss = loss_rec_atac + loss_gauss_rna + X_E1.abs().mean(1).mean()
                     rec_atac.append(loss_rec_atac.item())
@@ -366,21 +355,13 @@ class deepSCENIC:
         _, TFs_idx, r2g_dist_coo, seq_dataloader, _ = self.init_data()
 
         # Initialize TF2rNet model
-        with open(self.opt.ppms_file, 'rb') as f:
-            PPMs = pickle.load(f)
         model_dict_tf2rNet = torch.load(tf2r_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
-        if not self.opt.enformer_embs_file:
-            # Load pretrained TF2rNet functional encoder model
-            model_dict_tf2r_func_enc = torch.load(tf2r_func_enc_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet_func_encoder = Sei().float().to(self.opt.device)
-            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            tf2rNet.load_state_dict(model_dict_tf2rNet)
-            tf2rNet_func_encoder.eval()
-        else:
-            # Load pretrained MotifNet model
-            tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-            tf2rNet.load_state_dict(model_dict_tf2rNet)
+        model_dict_tf2r_func_enc = torch.load(tf2r_func_enc_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
+        tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
+        tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+        tf2rNet.load_state_dict(model_dict_tf2rNet)
+        tf2rNet_func_encoder.eval()
 
         # Load pretrained VAE model
         vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
@@ -391,20 +372,12 @@ class deepSCENIC:
             tf2rNet.eval()
             if adj_E1 is None:
                 # TF2rNet forward pass
-                tf_pred_mtf_l = []
-                tf_pred_ctx_l = []
+                tf_pred_l = []
                 for j, (X, _) in tqdm(enumerate(seq_dataloader, 0), total=len(seq_dataloader)):
-                    tf_pred_mtf = tf2rNet(seq=X[0].to(self.opt.device), motif=True)
-                    if not self.opt.enformer_embs_file:
-                        tf_pred_ctx = tf2rNet_func_encoder(X[0].to(self.opt.device))
-                        tf_pred_ctx = tf2rNet(emb=tf_pred_ctx, motif=False)
-                    else:
-                        tf_pred_ctx = tf2rNet(emb=X[1].to(self.opt.device), motif=False)
-                    tf_pred_ctx_l.append(tf_pred_ctx)
-                    tf_pred_mtf_l.append(tf_pred_mtf)
-                # adj_E1_mtf = torch.cat(tf_pred_mtf_l).T
-                adj_E1_ctx = torch.cat(tf_pred_ctx_l).T
-                # adj_E1 = adj_E1_mtf * adj_E1_ctx
+                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device))
+                    tf_pred = tf2rNet(emb=tf_pred)
+                    tf_pred_l.append(tf_pred)
+                adj_E1 = torch.cat(tf_pred_l)
             else:
                 adj_E1=adj_E1.to(self.opt.device)
             
@@ -480,15 +453,12 @@ class deepSCENIC:
         dataloader, TFs_idx, r2g_dist_coo, _, _ = self.init_data()
 
         # Initialize TF2rNet model
-        with open(self.opt.ppms_file, 'rb') as f:
-            PPMs = pickle.load(f)
-        if not self.opt.enformer_embs_file:
-            # Load tf2r fuctional encoder
-            tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
-            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            # Load tf2r contex head
-        tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+        # Load tf2r fuctional encoder
+        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
+        model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+        # Load tf2r contex head
+        tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
         model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
         tf2rNet.load_state_dict(model_dict_tf2r)   
         print("loaded weights for TF2rNet")
@@ -508,7 +478,7 @@ class deepSCENIC:
             dec_atac_l = []
             for _, data_batch in tqdm(enumerate(dataloader['dataloader'], 0), unit="batch", total=len(dataloader['dataloader'])):
                 # VAE forward pass
-                inputs_rna, inputs_atac,  _ = data_batch
+                inputs_rna, inputs_atac, _ = data_batch
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
@@ -548,16 +518,12 @@ class deepSCENIC:
         self.opt.train = False
         dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, _  = self.init_data(test=True)
 
-        # Initialize TF2rNet model
-        with open(self.opt.ppms_file, 'rb') as f:
-            PPMs = pickle.load(f)
-        if not self.opt.enformer_embs_file:
-            # Load tf2r fuctional encoder
-            tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
-            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-            tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            # Load tf2r contex head
-        tf2rNet = MotifNet(PPMs, self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+        # Load tf2r fuctional encoder
+        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
+        model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+        # Load tf2r contex head
+        tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
         model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
         tf2rNet.load_state_dict(model_dict_tf2r)   
         print("loaded weights for TF2rNet")
@@ -570,12 +536,14 @@ class deepSCENIC:
             del state_dict['adj_E2']
         vae.load_state_dict(state_dict, strict=False)
         vae.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=self.opt.device, requires_grad=True) + vae.eps)
+        
         # Freeze layers of vae
         for name, param in vae.named_parameters():
             if name == 'adj_E2':
                 param.requires_grad = True
             else:
                 param.requires_grad = False
+
         # Freeze layers of tf2r
         for param in tf2rNet.parameters():
             param.requires_grad = False
@@ -584,12 +552,8 @@ class deepSCENIC:
         
         # Initialize optimizers
         optimizer = optim.Adam([{'params': vae.adj_E2, 'lr':self.opt.lr}])
-        # if self.opt.load_model is not None:
-        #     optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['optimizer_state_dict'])
-    
 
         # Training
-        # adj_E1_mtf = None
         adj_E1 = None
         for epoch in range(self.opt.n_epochs):
             vae.train()
@@ -605,13 +569,10 @@ class deepSCENIC:
                     with torch.no_grad():
                         tf_pred_l = []
                         for j, (X, _) in tqdm(enumerate(seq_dataloader, 0)):
-                            if not self.opt.enformer_embs_file:
-                                tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                                tf_pred = tf2rNet(emb=tf_pred, motif=False, explain=True)
-                            else:
-                                tf_pred = tf2rNet(emb=X[1].to(self.opt.device), motif=False, explain=True)
+                            tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                            tf_pred = tf2rNet(emb=tf_pred)
                             tf_pred_l.append(tf_pred)
-                        adj_E1 = torch.cat(tf_pred_l).T
+                        adj_E1 = torch.cat(tf_pred_l)
                     del tf_pred_l, tf_pred
 
                 # VAE forward pass
@@ -668,45 +629,29 @@ class deepSCENIC:
             Tensor = torch.FloatTensor
 
         # Initialize TF2rNet model
-        if self.opt.load_tf2rNet_model is not None:
-            tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=self.opt.emb_len, dropout_rate = 0.1).to(self.opt.device)
-            model_dict_tf2r_func_enc = torch.load(self.opt.load_tf2rNet_model,  map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=self.opt.emb_len, dropout_rate = 0.1).to(self.opt.device)
+        tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
+        if self.opt.load_model is not None:
+            # Load tf2r fuctional encoder
+            model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
             tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            print("loaded weights for tf2r")
-            tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device) 
-        elif self.opt.load_model is not None:
-            if not self.opt.enformer_embs_file:
-                # Load tf2r fuctional encoder
-                tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=self.opt.emb_len, dropout_rate = 0.1).to(self.opt.device)
-                model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-                tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-                # Load tf2r contex head
-            tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+            # Load tf2r contex head
             model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
             tf2rNet.load_state_dict(model_dict_tf2r)   
             print("loaded weights for TF2rNet")
-        else:
-            if not self.opt.enformer_embs_file:
-                # Initialize tf2rNet cnn
-                tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=self.opt.emb_len, dropout_rate = 0.1).to(self.opt.device)
-                tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
-            else:
-                tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, explain=False, dev=self.opt.device).float().to(self.opt.device)
+            
 
         # Initialize VAE model        
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
         if self.opt.load_model is not None:
-            vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
-            vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
-            print("loaded weights for vae")
-        else:
-            vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
+            if os.path.exists(self.opt.load_model + 'model.pth'):
+                vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
+                vae.load_state_dict(vae_d)
+                print("loaded weights for vae")
 
         # Initialize optimizers
-        if not self.opt.enformer_embs_file:
-            optimizer = optim.Adam(vae.parameters(), self.opt.lr)
-            optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-        else:
-            optimizer = optim.Adam([{'params': vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
+        optimizer = optim.Adam(vae.parameters(), self.opt.lr)
+        optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
 
         adj_E1 = None
         adj_E1_test = None
@@ -715,8 +660,7 @@ class deepSCENIC:
         for epoch in range(self.opt.n_epochs):
             vae.train()
             tf2rNet.train()
-            if not self.opt.enformer_embs_file:
-                tf2rNet_func_encoder.train()
+            tf2rNet_func_encoder.train()
  
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
@@ -724,23 +668,18 @@ class deepSCENIC:
                 # TF2rNet forward pass
                 if epoch>=self.opt.warmup_vae:
                     tf2rNet.eval()
-                    if not self.opt.enformer_embs_file:
-                        tf2rNet_func_encoder.eval()
+                    tf2rNet_func_encoder.eval()
                     with torch.no_grad():
                         tf_pred_l = []
                         # seq_l1_l = []
                         for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
-                            if not self.opt.enformer_embs_file:
-                                tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                                tf_pred = tf2rNet(emb=tf_pred, explain=True)
-                            else:
-                                tf_pred = tf2rNet(emb=X[1].to(self.opt.device), explain=True)
+                            tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                            tf_pred = tf2rNet(emb=tf_pred)
                             tf_pred_l.append(tf_pred)
                         adj_E1_old = torch.cat(tf_pred_l)
                     adj_E1 = adj_E1_old.clone()
                     tf2rNet.train()
-                    if not self.opt.enformer_embs_file:
-                        tf2rNet_func_encoder.train()
+                    tf2rNet_func_encoder.train()
                     del tf_pred_l, tf_pred
 
                 if epoch>=self.opt.warmup_vae:
@@ -750,11 +689,8 @@ class deepSCENIC:
                     except StopIteration:
                         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle)
                         X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
-                    if not self.opt.enformer_embs_file:
-                        tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                        tf_pred = tf2rNet(emb=tf_pred, explain=True)
-                    else:
-                        tf_pred = tf2rNet(emb=X[1].to(self.opt.device), explain=True)
+                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                    tf_pred = tf2rNet(emb=tf_pred)
                     
                     adj_E1[seq_data_batch_idx, :] = tf_pred
                     del tf_pred, adj_E1_old
@@ -783,12 +719,10 @@ class deepSCENIC:
                 loss = loss + E1_sparse + E2_sparse
                 loss.backward()
                 optimizer.step()
-                if (not self.opt.enformer_embs_file):
-                    optim_func_enc.step()
+                optim_func_enc.step()
                 # Reset optimizers
                 optimizer.zero_grad(True)
-                if (not self.opt.enformer_embs_file):
-                    optim_func_enc.zero_grad(True)                        
+                optim_func_enc.zero_grad(True)                        
 
                 # Tensorboard logs
                 n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
@@ -802,28 +736,20 @@ class deepSCENIC:
 
                 # Save model
                 if not i%100:
-                    if not self.opt.enformer_embs_file:
-                        torch.save({
-                            'epoch': epoch,
-                            'model_state_dict': vae.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict(),
-                            'optimizer_tf2r_state_dict': optim_func_enc.state_dict(),
-                        }, self.opt.save_name + '/model.pth')
-                    else:
-                        torch.save({
-                            'epoch': epoch,
-                            'model_state_dict': vae.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict(),
-                        }, self.opt.save_name + '/model.pth')
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': vae.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'optimizer_tf2r_state_dict': optim_func_enc.state_dict(),
+                    }, self.opt.save_name + '/model.pth')
                     torch.save({
                         'epoch': epoch,
                         'model_state_dict': tf2rNet.state_dict(),
                     }, self.opt.save_name + '/model_tf2r.pth')
-                    if not self.opt.enformer_embs_file:
-                        torch.save({
-                            'epoch': epoch,
-                            'model_state_dict': tf2rNet_func_encoder.state_dict(),
-                        }, self.opt.save_name + '/model_tf2r_encoder.pth')
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': tf2rNet_func_encoder.state_dict(),
+                    }, self.opt.save_name + '/model_tf2r_encoder.pth')
 
             print('epoch:', epoch)
             # Evaluate test set
@@ -836,9 +762,9 @@ class deepSCENIC:
                     tf_pred_l = []
                     for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
                         tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                        tf_pred = tf2rNet(emb=tf_pred, explain=True)
+                        tf_pred = tf2rNet(emb=tf_pred)
                         tf_pred_l.append(tf_pred)
-                    adj_E1_test = torch.cat(tf_pred_l).T
+                    adj_E1_test = torch.cat(tf_pred_l)
                     del tf_pred_l, tf_pred
 
                 

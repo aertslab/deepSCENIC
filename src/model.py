@@ -203,7 +203,7 @@ class VAE(nn.Module):
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1)
+        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T).clamp(min=0)
         z_rna = torch.matmul(enh_act, adj_E2)
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)
@@ -213,7 +213,7 @@ class VAE(nn.Module):
     def pretrain(self, x_rna_tfs, x_atac, opt=None, adj_E1=None, idxs=None):
 
             out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-            enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1)
+            enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T).clamp(min=0)
             out_gen_atac = self.generative_atac(enh_act)
 
             if opt.bin_acc==True:
