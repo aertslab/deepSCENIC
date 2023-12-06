@@ -254,7 +254,7 @@ class deepSCENIC:
                 except StopIteration:
                     train_dataloader_iter = iter(dataloader['dataloader'])
                     data_batch = next(train_dataloader_iter)
-                inputs_rna, inputs_atac = data_batch
+                inputs_rna, inputs_atac, _ = data_batch
                 x_rna_tfs = inputs_rna[:, TFs_idx]
                 
                 loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
@@ -305,7 +305,7 @@ class deepSCENIC:
                     except StopIteration:
                         train_dataloader_iter = iter(dataloader['dataloader'])
                         data_batch = next(train_dataloader_iter)
-                    inputs_rna, inputs_atac = data_batch
+                    inputs_rna, inputs_atac, _ = data_batch
                     x_rna_tfs = inputs_rna[:, TFs_idx]
                 
                     loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
@@ -508,7 +508,7 @@ class deepSCENIC:
             dec_atac_l = []
             for _, data_batch in tqdm(enumerate(dataloader['dataloader'], 0), unit="batch", total=len(dataloader['dataloader'])):
                 # VAE forward pass
-                inputs_rna, inputs_atac = data_batch
+                inputs_rna, inputs_atac,  _ = data_batch
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
@@ -615,13 +615,16 @@ class deepSCENIC:
                     del tf_pred_l, tf_pred
 
                 # VAE forward pass
-                inputs_rna, inputs_atac = data_batch
+                inputs_rna, inputs_atac, _ = data_batch
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
                 loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
-                        inputs_rna, inputs_atac, dropout_mask_rna=self.opt.dropout_loss,
-                        dropout_mask_atac=self.opt.dropout_loss, opt=self.opt, adj_E1=adj_E1)
+                    inputs_rna,
+                    inputs_atac,
+                    dropout_mask_rna=self.opt.dropout_loss,
+                    dropout_mask_atac=self.opt.dropout_loss,
+                    opt=self.opt, adj_E1=adj_E1)
                 
                 # Compute sparse loss
                 E2_sparse = vae.adj_E2.abs().mean()
@@ -696,11 +699,6 @@ class deepSCENIC:
         if self.opt.load_model is not None:
             vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
             vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
-            if vae.adj_E2.shape != vae_d['adj_E2'].shape:
-                vae.adj_E2 = nn.Parameter(vae_d['adj_E2'])
-                print("reshaped E2 weights for vae")
-            vae.load_state_dict(vae_d)
-            vae.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=self.opt.device, requires_grad=True) + vae.eps)
             print("loaded weights for vae")
         else:
             vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
@@ -767,13 +765,17 @@ class deepSCENIC:
                 # adj_E1 = adj_E1_mtf * adj_E1
 
                 # VAE forward pass
-                inputs_rna, inputs_atac = data_batch
+                inputs_rna, inputs_atac, _ = data_batch
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
                 loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
-                        inputs_rna, inputs_atac, dropout_mask_rna=self.opt.dropout_loss,
-                        dropout_mask_atac=self.opt.dropout_loss, opt=self.opt, adj_E1=adj_E1)
+                    inputs_rna,
+                    inputs_atac,
+                    dropout_mask_rna=self.opt.dropout_loss,
+                    dropout_mask_atac=self.opt.dropout_loss, 
+                    opt=self.opt,
+                    adj_E1=adj_E1)
                 
                 # Compute sparse loss
                 # with torch.no_grad():
@@ -844,7 +846,7 @@ class deepSCENIC:
                 
                 loss_all, f1_score, rec_atac, loss_kl_rna, loss_sparse = [], [], [], [], []
                 for i, data_batch in tqdm(enumerate(test_dataloader['dataloader'], 0), unit="batch", total=len(test_dataloader['dataloader'])):
-                    inputs_rna, inputs_atac  = data_batch
+                    inputs_rna, inputs_atac, _  = data_batch
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
