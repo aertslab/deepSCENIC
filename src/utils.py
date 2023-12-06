@@ -8,7 +8,6 @@ import pandas as pd
 import pyBigWig
 import pyranges as pr
 import seaborn as sns
-import shap
 import torch
 from matplotlib import cm
 from scenicplus.scenicplus_class import SCENICPLUS
@@ -195,7 +194,7 @@ def plot_weights(array, fig, n, n1, n2, title='', ylab='',
     return fig, ax
 
 
-def plot_deepexplainer_givenax(explainer: shap.explainers, fig, ntrack, track_no, seq_onehot, TF, TF_name, region_id):
+def plot_deepexplainer_givenax(explainer, fig, ntrack, track_no, seq_onehot, TF, TF_name, region_id):
     """
         When trying to use deepexplainer with a relu, we will get the following error message:
             RuntimeError: The size of tensor a (8) must match the size of tensor b (64) at non-singleton dimension 2

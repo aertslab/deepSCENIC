@@ -354,21 +354,8 @@ class TF2rNet(nn.Module):
         return current
 
 class MotifNet(nn.Module):
-    def __init__(self, motif_dict, tfs, bottleneck_size, emb_len=5, explain=False, dev='cuda'):
+    def __init__(self, tfs, bottleneck_size, emb_len=5, explain=False, dev='cuda'):
         super(MotifNet, self).__init__()
-        self.motif_names = motif_dict['dists'].keys()
-        PPms_max_length = np.max([motif_dict['dists'][x].probs.shape[0] for x in self.motif_names])
-        mtf_filters = torch.stack([F.pad(motif_dict['dists'][x].probs, (0, 0, int(np.ceil((PPms_max_length - motif_dict['dists'][x].probs.shape[0])/2)), (PPms_max_length - motif_dict['dists'][x].probs.shape[0])//2), "constant", 0) for x in self.motif_names], dim=0).unsqueeze(1).swapaxes(2,3).float().to(dev)
-        self.mtf_filters = F.one_hot(torch.argmax(mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3)
-        self.mtf_filters.requires_grad = False
-        self.mtf_filters_max =  torch.squeeze(torch.diagonal(F.conv2d(F.one_hot(torch.argmax(mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3), self.mtf_filters), dim1=0, dim2=1))
-        self.mtf_filters_min = torch.squeeze(torch.diagonal(F.conv2d(F.one_hot(torch.argmin(mtf_filters, dim=2), num_classes=4).float().swapaxes(2,3), self.mtf_filters), dim1=0, dim2=1))
-
-        annots = pd.DataFrame(np.zeros((len(self.motif_names), len(tfs))), index=self.motif_names, columns=tfs)
-        for mtf in self.motif_names:
-            annots.loc[mtf, annots.columns.isin(motif_dict['annot'][mtf])] = 1
-        self.annots = torch.tensor(annots.values, requires_grad=False).to(dev)
-
         self.ctx_head_layer = nn.Conv1d(in_channels = 1,
             out_channels = len(tfs),
             kernel_size = bottleneck_size,
@@ -382,27 +369,11 @@ class MotifNet(nn.Module):
         self.bottleneck_size = bottleneck_size
         self.device = dev
 
-    def forward(self, seq=None, emb=None, motif=False, explain=False):
-        if motif==False:
-            emb = emb.reshape(-1, 1, self.bottleneck_size)
-            ctx_head = self.ctx_head_layer(emb).reshape(-1, self.emb_len, self.n_TFs).swapaxes(1,2)
-            ctx_head = torch.squeeze(self.ctx_lin(ctx_head))
-            return ctx_head.to(torch.float)
-        else:
-            if explain==False:
-                seq = F.one_hot(seq.to(torch.int64), num_classes=4).to(torch.float)
-            seq = torch.unsqueeze(seq.swapaxes(1,2), dim=1)
-
-            mtf_conv = F.conv2d(seq, self.mtf_filters)
-            mtf_conv_rc = F.conv2d(torch.flip(seq, dims=(-2,-1)), self.mtf_filters)
-            # Normalize mtf activations
-            mtf_conv = torch.max((mtf_conv - self.mtf_filters_min[None,:,None,None]) / (self.mtf_filters_max - self.mtf_filters_min)[None,:,None,None], dim=-1).values
-            mtf_conv_rc = torch.max((mtf_conv_rc - self.mtf_filters_min[None,:,None,None]) / (self.mtf_filters_max - self.mtf_filters_min)[None,:,None,None], dim=-1).values
-
-            mtf_conv = torch.max(torch.cat((mtf_conv, mtf_conv_rc), dim=-1), keepdim=True, dim=-1).values
-            mtf_head_o = mtf_conv * self.annots
-            mtf_head_o = torch.max(mtf_head_o, dim=1).values
-            return mtf_head_o.to(torch.float)
+    def forward(self, seq=None, emb=None, explain=False):
+        emb = emb.reshape(-1, 1, self.bottleneck_size)
+        ctx_head = self.ctx_head_layer(emb).reshape(-1, self.emb_len, self.n_TFs).swapaxes(1,2)
+        ctx_head = torch.squeeze(self.ctx_lin(ctx_head))
+        return ctx_head.to(torch.float)
 
 class LossFunctions:
     def bce_loss(self, real, predicted):
