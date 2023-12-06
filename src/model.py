@@ -16,21 +16,19 @@ class LossFunctions:
 
     def reconstruction_loss(self, real, predicted, dropout_mask=None, rec_type='mse'):
         if rec_type == 'mse':
-            if dropout_mask is None:
+            if dropout_mask==False:
                 loss = torch.mean((real - predicted).pow(2)) #+ (1- torch.mean(F.cosine_similarity(real, predicted, dim=1)))
             else:
-                dropout_mask = predicted!=0
-                loss = torch.mean(torch.sum((real - predicted).pow(2) * dropout_mask, dim=1) / torch.sum(dropout_mask, dim=1))
+                mask = real!=0
+                loss = torch.mean(torch.sum((real - predicted).pow(2) * mask, dim=1) / torch.sum(mask, dim=1))
         elif rec_type == 'mae':
-            if dropout_mask is None:
+            if dropout_mask==False:
                 loss = torch.mean((real - predicted).abs())
             else:
-                loss = torch.mean(torch.sum((real - predicted).abs() * dropout_mask, dim=1) / torch.sum(dropout_mask, dim=1))
+                mask = real!=0
+                loss = torch.mean(torch.sum((real - predicted).abs() * mask, dim=1) / torch.sum(mask, dim=1))
         elif rec_type == 'bce':
-            if dropout_mask is None:
-                loss = F.binary_cross_entropy_with_logits(predicted, real, reduction='none').mean()
-            else:
-                return F.binary_cross_entropy_with_logits(predicted, real, reduction='none').mean()
+            loss = F.binary_cross_entropy_with_logits(predicted, real, reduction='none').mean()
         else:
             raise Exception
         return loss
