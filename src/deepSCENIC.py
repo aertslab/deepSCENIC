@@ -203,11 +203,6 @@ class deepSCENIC:
         # Binarize ATAC data
         if self.opt.bin_acc==True:
             data_atac.X[data_atac.X > 0] = 1
-        else:
-            data_atac_full = sc.read(self.opt.data_atac_file)
-            prob_max = data_atac_full.X.max()
-            prob_min = data_atac_full.X.min()
-            data_atac.X = (data_atac.X - prob_min) / (prob_max - prob_min)
 
         # positive scaling of rna data    
         data_rna.X = data_rna.X / data_stds
