@@ -224,9 +224,6 @@ class deepSCENIC:
 
         optimizer =  optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':opt.lr}, {'params':tf2rNet.parameters(), 'lr':opt.lr}, {'params':vae.parameters(), 'lr':opt.lr}]) 
 
-        # Initialize Tensorboard writer
-        writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-
         train_dataloader_iter = iter(dataloader['dataloader']) # Initialize iterator for vae dataloader
         for epoch in range(opt.n_epochs):
             tf2rNet.train()
@@ -774,10 +771,8 @@ class deepSCENIC:
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                    x_rna_tfs = inputs_rna[:, TFs_idx]
-
-                    loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
-                        x_rna_tfs.to(self.opt.device), inputs_atac.to(self.opt.device), opt=self.opt, adj_E1=adj_E1_test, idxs=torch.arange(adj_E1_test.shape[1], device=self.opt.device))
+                    loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.predict(
+                       inputs_rna, adj_E1=adj_E1_test)
 
                     sparse_loss = adj_E1_test.abs().mean(1).mean()
                     loss = loss_rec_atac + loss_gauss_rna + sparse_loss

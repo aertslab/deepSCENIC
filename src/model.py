@@ -173,7 +173,7 @@ class GenerativeNetATAC(nn.Module):
 class VAE(nn.Module):
     def __init__(self, TFs_idx, r2g_dist_coo, x_dim, z_dim, dev):
         super(VAE, self).__init__()
-        self.eps = 1e-8
+        self.eps = 1e-6
         self.r2g_dist = torch.sparse_coo_tensor(torch.tensor([r2g_dist_coo.row.tolist(), r2g_dist_coo.col.tolist()]), torch.tensor(1/r2g_dist_coo.data).float(), r2g_dist_coo.shape, requires_grad=False).coalesce().float().to(dev)
         self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=dev, requires_grad=True) + self.eps)
         self.TFs_idx = torch.tensor(TFs_idx).to(dev)
@@ -203,17 +203,22 @@ class VAE(nn.Module):
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T).clamp(min=0)
-        z_rna = torch.matmul(enh_act, adj_E2)
-        out_gen_rna = self.generative_rna(z_rna)
+        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+        enh_act[enh_act<0] = 0
         out_gen_atac = self.generative_atac(enh_act)
-
+        if adj_E2 is not None:
+            z_rna = torch.matmul(enh_act, adj_E2)
+            out_gen_rna = self.generative_rna(z_rna)
+        else:
+            z_rna = None
+            out_gen_rna = None
         return out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna
     
     def pretrain(self, x_rna_tfs, x_atac, opt=None, adj_E1=None, idxs=None):
 
             out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-            enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T).clamp(min=0)
+            enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+            enh_act[enh_act<0] = 0
             out_gen_atac = self.generative_atac(enh_act)
 
             if opt.bin_acc==True:
@@ -224,7 +229,7 @@ class VAE(nn.Module):
                 loss_acc = 'mae'
                 f1_atac = torch.Tensor([0])
 
-            loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], None, rec_type=loss_acc)
+            loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], False, rec_type=loss_acc)
             loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
 
             loss = loss_gauss_rna + loss_rec_atac
@@ -237,7 +242,8 @@ class VAE(nn.Module):
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T).clamp(min=0)
+        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+        enh_act[enh_act<0] = 0
         z_rna = torch.matmul(enh_act, E2)
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)
