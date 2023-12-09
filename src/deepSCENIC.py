@@ -649,6 +649,8 @@ class deepSCENIC:
         # Initialize optimizers
         optimizer = optim.Adam(vae.parameters(), self.opt.lr)
         optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
+        optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['optimizer_state_dict'])
+        optim_func_enc.load_state_dict(torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['optimizer_tf2r_state_dict'])
 
         adj_E1 = None
         adj_E1_test = None
@@ -771,8 +773,21 @@ class deepSCENIC:
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                    loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.predict(
+                    _, out_gen_atac, out_inf_rna, _, _= vae.predict(
                        inputs_rna, adj_E1=adj_E1_test)
+                    
+                    if self.opt.bin_acc==True:
+                        loss_acc = 'bce'
+                        f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)
+                        f1_atac = f1(out_gen_atac['x_rec'].ravel(), inputs_atac.int().ravel())
+                    else:
+                        loss_acc = 'mae'
+                        f1_atac = torch.Tensor([0])
+                    
+                    loss_rec_atac = vae.losses.reconstruction_loss(inputs_atac, out_gen_atac['x_rec'], False, rec_type=loss_acc)
+                    loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
+
+                    loss = loss_gauss_rna + loss_rec_atac
 
                     sparse_loss = adj_E1_test.abs().mean(1).mean()
                     loss = loss_rec_atac + loss_gauss_rna + sparse_loss
@@ -799,7 +814,7 @@ class deepSCENIC:
                     loss_sparse.append(sparse_loss.detach().item())
                     f1_score.append(f1_atac.detach().item())
 
-                del loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, sparse_loss
+                del loss, loss_rec_atac, loss_gauss_rna, sparse_loss
 
                 # Tensorboard logs
                 writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
