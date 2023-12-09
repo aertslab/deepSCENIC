@@ -204,7 +204,6 @@ class VAE(nn.Module):
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
         enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
-        enh_act[enh_act<0] = 0
         out_gen_atac = self.generative_atac(enh_act)
         if adj_E2 is not None:
             z_rna = torch.matmul(enh_act, adj_E2)
@@ -218,7 +217,6 @@ class VAE(nn.Module):
 
             out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
             enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
-            enh_act[enh_act<0] = 0
             out_gen_atac = self.generative_atac(enh_act)
 
             if opt.bin_acc==True:
@@ -243,7 +241,7 @@ class VAE(nn.Module):
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
         enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
-        enh_act[enh_act<0] = 0
+        # enh_act[enh_act<0] = 0
         z_rna = torch.matmul(enh_act, E2)
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)
