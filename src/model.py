@@ -208,6 +208,7 @@ class VAE(nn.Module):
         if adj_E2 is not None:
             z_rna = torch.matmul(enh_act, adj_E2)
             out_gen_rna = self.generative_rna(z_rna)
+            out_gen_rna['x_rec'][out_gen_rna['x_rec']<0] = 0
         else:
             z_rna = None
             out_gen_rna = None
@@ -245,6 +246,8 @@ class VAE(nn.Module):
         z_rna = torch.matmul(enh_act, E2)
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)
+
+        out_gen_rna['x_rec'][out_gen_rna['x_rec']<0] = 0
 
         if opt.bin_acc==True:
             loss_acc = 'bce'
