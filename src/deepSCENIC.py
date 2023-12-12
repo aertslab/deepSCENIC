@@ -587,7 +587,7 @@ class deepSCENIC:
                 # Compute sparse loss
                 E2_sparse = vae.adj_E2.abs().mean()
 
-                loss = loss + E2_sparse
+                loss = loss_rec_rna + loss_gauss_rna + E2_sparse
                 loss.backward()
                 optimizer.step()
                 optimizer.zero_grad(True)
