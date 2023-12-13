@@ -729,9 +729,9 @@ class deepSCENIC:
                 # Tensorboard logs
                 n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
                 writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
-                writer.add_scalar('Loss/rec_rna', loss_rec_rna.detach.item(), n_iter)
-                writer.add_scalar('Loss/rec_atac', loss_rec_atac.detach.item(), n_iter)
-                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.detach.item(), n_iter)
+                writer.add_scalar('Loss/rec_rna', loss_rec_rna.detach().item(), n_iter)
+                writer.add_scalar('Loss/rec_atac', loss_rec_atac.detach().item(), n_iter)
+                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.detach().item(), n_iter)
                 writer.add_scalar('Loss/l1_E1', E1_sparse.detach().item(), n_iter)
                 writer.add_scalar('Loss/l1_E2', E2_sparse.detach().item(), n_iter)
                 writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)

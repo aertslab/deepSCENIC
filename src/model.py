@@ -262,4 +262,4 @@ class VAE(nn.Module):
 
         loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac
 
-        return loss, loss_rec_rna, loss_rec_atac.detatch(), loss_gauss_rna, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
+        return loss, loss_rec_rna, loss_rec_atac.detach(), loss_gauss_rna, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
