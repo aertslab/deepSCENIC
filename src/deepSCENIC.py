@@ -587,7 +587,7 @@ class deepSCENIC:
                 # Compute sparse loss
                 E2_sparse = vae.adj_E2.abs().mean()
 
-                loss = loss + E2_sparse
+                loss = loss_rec_rna + loss_gauss_rna + E2_sparse
                 loss.backward()
                 optimizer.step()
                 optimizer.zero_grad(True)
@@ -649,8 +649,11 @@ class deepSCENIC:
         # Initialize optimizers
         optimizer = optim.Adam(vae.parameters(), self.opt.lr)
         optim_func_enc = optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-        optimizer.load_state_dict(torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['optimizer_state_dict'])
-        optim_func_enc.load_state_dict(torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['optimizer_tf2r_state_dict'])
+        if self.opt.load_model is not None:
+            state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
+            if 'optimizer_tf2r_state_dict' in state_dict:
+                optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+                optim_func_enc.load_state_dict(state_dict['optimizer_tf2r_state_dict'])
 
         adj_E1 = None
         adj_E1_test = None
