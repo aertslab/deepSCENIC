@@ -657,6 +657,7 @@ class deepSCENIC:
 
         adj_E1 = None
         adj_E1_test = None
+        adj_E1_old = None
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         for epoch in range(self.opt.n_epochs):
@@ -668,7 +669,7 @@ class deepSCENIC:
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
                 # TF2rNet forward pass
-                if epoch>=self.opt.warmup_vae:
+                if (adj_E1_old is None):
                     tf2rNet.eval()
                     tf2rNet_func_encoder.eval()
                     with torch.no_grad():
@@ -679,23 +680,22 @@ class deepSCENIC:
                             tf_pred = tf2rNet(emb=tf_pred)
                             tf_pred_l.append(tf_pred)
                         adj_E1_old = torch.cat(tf_pred_l)
-                    adj_E1 = adj_E1_old.clone()
-                    tf2rNet.train()
-                    tf2rNet_func_encoder.train()
                     del tf_pred_l, tf_pred
+                adj_E1 = adj_E1_old.clone()
+                tf2rNet.train()
+                tf2rNet_func_encoder.train()
 
-                if epoch>=self.opt.warmup_vae:
-                    # train on n random regions for backpropagating gradients
-                    try:
-                        X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
-                    except StopIteration:
-                        train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle)
-                        X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
-                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                    tf_pred = tf2rNet(emb=tf_pred)
-                    
-                    adj_E1[seq_data_batch_idx, :] = tf_pred
-                    del tf_pred, adj_E1_old
+                # train on n random regions for backpropagating gradients
+                try:
+                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
+                except StopIteration:
+                    train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle)
+                    X, seq_data_batch_idx = next(train_seq_dataloader_shuffle_iterator)
+                tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                tf_pred = tf2rNet(emb=tf_pred)
+                
+                adj_E1[seq_data_batch_idx, :] = tf_pred
+                del tf_pred
 
                 # Apply motif prior
                 # adj_E1 = adj_E1_mtf * adj_E1
@@ -705,7 +705,7 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
+                loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
                     dropout_mask_rna=self.opt.dropout_loss,
@@ -718,7 +718,11 @@ class deepSCENIC:
                 E1_sparse = adj_E1.abs().mean(1).mean()
                 E2_sparse = vae.adj_E2.abs().mean()
 
-                loss = loss + E1_sparse + E2_sparse
+                if epoch>=self.opt.warmup_vae:
+                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse
+                else:
+                    loss = loss_rec_rna + loss_gauss_rna + E1_sparse + E2_sparse
+
                 loss.backward()
                 optimizer.step()
                 optim_func_enc.step()
@@ -729,9 +733,9 @@ class deepSCENIC:
                 # Tensorboard logs
                 n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
                 writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
-                writer.add_scalar('Loss/rec_rna', loss_rec_rna.item(), n_iter)
-                writer.add_scalar('Loss/rec_atac', loss_rec_atac.item(), n_iter)
-                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.item(), n_iter)
+                writer.add_scalar('Loss/rec_rna', loss_rec_rna.detach().item(), n_iter)
+                writer.add_scalar('Loss/rec_atac', loss_rec_atac.detach().item(), n_iter)
+                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.detach().item(), n_iter)
                 writer.add_scalar('Loss/l1_E1', E1_sparse.detach().item(), n_iter)
                 writer.add_scalar('Loss/l1_E2', E2_sparse.detach().item(), n_iter)
                 writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)

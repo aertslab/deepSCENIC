@@ -260,6 +260,6 @@ class VAE(nn.Module):
         loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=loss_acc)
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
 
-        loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac
+        # loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac
 
-        return loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
+        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
