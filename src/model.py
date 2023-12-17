@@ -173,7 +173,7 @@ class GenerativeNetATAC(nn.Module):
 class VAE(nn.Module):
     def __init__(self, TFs_idx, r2g_dist_coo, x_dim, z_dim, dev):
         super(VAE, self).__init__()
-        self.eps = 1e-6
+        self.eps = 1e-4
         self.r2g_dist = torch.sparse_coo_tensor(torch.tensor([r2g_dist_coo.row.tolist(), r2g_dist_coo.col.tolist()]), torch.tensor(1/r2g_dist_coo.data).float(), r2g_dist_coo.shape, requires_grad=False).coalesce().float().to(dev)
         self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=dev, requires_grad=True) + self.eps)
         self.TFs_idx = torch.tensor(TFs_idx).to(dev)

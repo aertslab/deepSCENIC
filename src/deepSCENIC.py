@@ -577,7 +577,7 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                loss, loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
+                loss_rec_rna, loss_rec_atac, loss_gauss_rna, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
                     dropout_mask_rna=self.opt.dropout_loss,
@@ -662,28 +662,26 @@ class deepSCENIC:
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         for epoch in range(self.opt.n_epochs):
             vae.train()
+            tf2rNet.eval()
+            tf2rNet_func_encoder.eval()
+            with torch.no_grad():
+                tf_pred_l = []
+                # seq_l1_l = []
+                for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
+                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                    tf_pred = tf2rNet(emb=tf_pred)
+                    tf_pred_l.append(tf_pred)
+                adj_E1_old = torch.cat(tf_pred_l)
+            del tf_pred_l, tf_pred
+            adj_E1 = adj_E1_old.clone()
             tf2rNet.train()
-            tf2rNet_func_encoder.train()
+            tf2rNet_func_encoder.train()            
  
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
                 # TF2rNet forward pass
-                if (adj_E1_old is None):
-                    tf2rNet.eval()
-                    tf2rNet_func_encoder.eval()
-                    with torch.no_grad():
-                        tf_pred_l = []
-                        # seq_l1_l = []
-                        for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
-                            tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                            tf_pred = tf2rNet(emb=tf_pred)
-                            tf_pred_l.append(tf_pred)
-                        adj_E1_old = torch.cat(tf_pred_l)
-                    del tf_pred_l, tf_pred
                 adj_E1 = adj_E1_old.clone()
-                tf2rNet.train()
-                tf2rNet_func_encoder.train()
 
                 # train on n random regions for backpropagating gradients
                 try:
@@ -695,6 +693,8 @@ class deepSCENIC:
                 tf_pred = tf2rNet(emb=tf_pred)
                 
                 adj_E1[seq_data_batch_idx, :] = tf_pred
+                with torch.no_grad():
+                    adj_E1_old[seq_data_batch_idx, :] = tf_pred
                 del tf_pred
 
                 # Apply motif prior
