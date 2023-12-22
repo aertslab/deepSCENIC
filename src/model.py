@@ -28,7 +28,11 @@ class LossFunctions:
                 mask = real!=0
                 loss = torch.mean(torch.sum((real - predicted).abs() * mask, dim=1) / torch.sum(mask, dim=1))
         elif rec_type == 'bce':
-            loss = F.binary_cross_entropy_with_logits(predicted, real, reduction='none').mean()
+            mask = ~(real == -1).all(dim=1)
+            if real[mask].shape[0] !=0:
+                loss = F.binary_cross_entropy_with_logits(predicted[mask], real[mask], reduction='none').mean()
+            else:
+                loss = torch.Tensor([0]).to(self.dev)
         else:
             raise Exception
         return loss
@@ -246,18 +250,19 @@ class VAE(nn.Module):
         z_rna = torch.matmul(enh_act, E2)
         z_rna[z_rna<0] = 0
         out_gen_rna = self.generative_rna(z_rna)
-        out_gen_atac = self.generative_atac(enh_act)
+        out_gen_atac = self.generative_atac(enh_act)    
 
         if opt.bin_acc==True:
             loss_acc = 'bce'
             f1 = F1Score(task='binary',num_classes=1).to(opt.device)
-            f1_atac = f1(out_gen_atac['x_rec'].ravel(), x_atac.int().ravel())
-        else:
-            loss_acc = 'mae'
-            f1_atac = torch.Tensor([0])
+            mask = ~(x_atac == -1).all(dim=1)
+            if x_atac[mask].shape[0] !=0:
+                f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), x_atac[mask].int().ravel())
+            else:
+                f1_atac = torch.Tensor([0]).to(opt.device)            
 
         loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type='mae')
-        loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=loss_acc)
+        loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=loss_acc) * opt.beta
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
 
         # loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac

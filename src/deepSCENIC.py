@@ -782,14 +782,15 @@ class deepSCENIC:
 
                     _, out_gen_atac, out_inf_rna, _, _= vae.predict(
                        inputs_rna, adj_E1=adj_E1_test)
-                    
+               
                     if self.opt.bin_acc==True:
                         loss_acc = 'bce'
                         f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)
-                        f1_atac = f1(out_gen_atac['x_rec'].ravel(), inputs_atac.int().ravel())
-                    else:
-                        loss_acc = 'mae'
-                        f1_atac = torch.Tensor([0])
+                        mask = ~(inputs_atac == -1).all(dim=1)
+                        if inputs_atac[mask].shape[0] !=0:
+                            f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), inputs_atac[mask].int().ravel())
+                        else:
+                            f1_atac = torch.Tensor([0]).to(self.opt.device)
                     
                     loss_rec_atac = vae.losses.reconstruction_loss(inputs_atac, out_gen_atac['x_rec'], False, rec_type=loss_acc)
                     loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
