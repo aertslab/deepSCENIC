@@ -832,7 +832,6 @@ class deepSCENIC:
                 writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
                 writer.add_scalar('Test/l1_A', np.mean(loss_sparse), epoch)
                 writer.add_scalar('Test/f1_atac', np.mean(f1_score), epoch)
-                writer.add_scalar('Test/lr', scheduler.get_last_lr(), epoch)
 
                 del loss_all, rec_atac, loss_kl_rna, loss_sparse
                 scheduler.step()
