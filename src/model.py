@@ -237,7 +237,7 @@ class VAE(nn.Module):
 
             loss = loss_gauss_rna + loss_rec_atac
 
-            return loss,  loss_rec_atac, loss_gauss_rna.detach(), f1_atac.detach()
+            return loss,  loss_rec_atac.detach(), loss_gauss_rna.detach(), f1_atac.detach()
 
 
     def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, opt=None, adj_E1=None):

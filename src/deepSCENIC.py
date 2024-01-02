@@ -13,7 +13,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from scipy.sparse import load_npz
 from torch.autograd import Variable
-# from torch.optim import lr_scheduler
+from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset, TensorDataset
 from torch import nn
@@ -660,6 +660,8 @@ class deepSCENIC:
         adj_E1_old = None
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
+        scheduler = lr_scheduler.CosineAnnealingLR(T_max=self.opt.n_epochs, optimizer=optimizer, eta_min=1e-6, verbose=True)
+        scheduler_enc_func = lr_scheduler.CosineAnnealingLR(T_max=self.opt.n_epochs, optimizer=optim_func_enc, eta_min=1e-6, verbose=True)
         for epoch in range(self.opt.n_epochs):
             vae.train()
             tf2rNet.eval()
@@ -830,6 +832,8 @@ class deepSCENIC:
                 writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
                 writer.add_scalar('Test/l1_A', np.mean(loss_sparse), epoch)
                 writer.add_scalar('Test/f1_atac', np.mean(f1_score), epoch)
+                writer.add_scalar('Test/lr', scheduler.get_last_lr(), epoch)
 
                 del loss_all, rec_atac, loss_kl_rna, loss_sparse
-#                    scheduler.step()
+                scheduler.step()
+                scheduler_enc_func.step()
