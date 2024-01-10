@@ -682,6 +682,23 @@ class deepSCENIC:
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
+                n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
+
+                # tf2rNet.eval()
+                # tf2rNet_func_encoder.eval()
+                # with torch.no_grad():
+                #     tf_pred_l = []
+                #     # seq_l1_l = []
+                #     for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader_shuffle, 0)):
+                #         tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                #         tf_pred = tf2rNet(emb=tf_pred)
+                #         adj_E1_old[seq_data_batch_idx, :] = tf_pred
+                #         if j == r2g_dist_coo.shape[0] * 0.1 // self.opt.TF2rNet_batch_size:
+                #             break
+                # del tf_pred
+                # tf2rNet.train()
+                # tf2rNet_func_encoder.train()      
+                
                 # TF2rNet forward pass
                 adj_E1 = adj_E1_old.clone()
 
@@ -717,13 +734,13 @@ class deepSCENIC:
                 
                 # Compute sparse loss
                 # with torch.no_grad():
-                E1_sparse = adj_E1.abs().mean(1).mean()
-                E2_sparse = vae.adj_E2.abs().mean()
+                E1_sparse = adj_E1.abs().mean(1).mean() * self.opt.alpha
+                E2_sparse = vae.adj_E2.abs().mean() * self.opt.alpha
 
                 if epoch>=self.opt.warmup_vae:
                     loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse
                 else:
-                    loss = loss_rec_rna + loss_gauss_rna + E1_sparse + E2_sparse
+                    loss = loss_rec_atac + loss_rec_rna + loss_gauss_rna + E1_sparse
 
                 loss.backward()
                 optimizer.step()
@@ -733,7 +750,6 @@ class deepSCENIC:
                 optim_func_enc.zero_grad(True)                        
 
                 # Tensorboard logs
-                n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
                 writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
                 writer.add_scalar('Loss/rec_rna', loss_rec_rna.detach().item(), n_iter)
                 writer.add_scalar('Loss/rec_atac', loss_rec_atac.detach().item(), n_iter)
@@ -766,14 +782,13 @@ class deepSCENIC:
                 tf2rNet.eval()
                 tf2rNet_func_encoder.eval()
 
-                if adj_E1_test is None:
-                    tf_pred_l = []
-                    for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
-                        tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                        tf_pred = tf2rNet(emb=tf_pred)
-                        tf_pred_l.append(tf_pred)
-                    adj_E1_test = torch.cat(tf_pred_l)
-                    del tf_pred_l, tf_pred
+                tf_pred_l = []
+                for j, (X, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
+                    tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
+                    tf_pred = tf2rNet(emb=tf_pred)
+                    tf_pred_l.append(tf_pred)
+                adj_E1_test = torch.cat(tf_pred_l)
+                del tf_pred_l, tf_pred
 
                 
                 loss_all, f1_score, rec_atac, loss_kl_rna, loss_sparse = [], [], [], [], []
@@ -799,7 +814,7 @@ class deepSCENIC:
 
                     loss = loss_gauss_rna + loss_rec_atac
 
-                    sparse_loss = adj_E1_test.abs().mean(1).mean()
+                    sparse_loss = adj_E1_test.abs().mean(1).mean() * self.opt.alpha
                     loss = loss_rec_atac + loss_gauss_rna + sparse_loss
 
                     if loss.detach().item() < best_loss:
@@ -824,7 +839,7 @@ class deepSCENIC:
                     loss_sparse.append(sparse_loss.detach().item())
                     f1_score.append(f1_atac.detach().item())
 
-                del loss, loss_rec_atac, loss_gauss_rna, sparse_loss
+                del loss, loss_rec_atac, loss_gauss_rna, sparse_loss, adj_E1_test
 
                 # Tensorboard logs
                 writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
