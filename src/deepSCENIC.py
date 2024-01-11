@@ -246,7 +246,7 @@ class deepSCENIC:
                 loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
                 x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), opt=opt, adj_E1=X_E1, idxs=seq_data_batch_idx.to(opt.device))
                 
-                E1_sparse = X_E1.abs().mean(1).mean()
+                E1_sparse = X_E1.abs().mean(1).mean() * opt.alpha
                 loss = E1_sparse + loss
                 
                 loss.backward()
@@ -585,7 +585,7 @@ class deepSCENIC:
                     opt=self.opt, adj_E1=adj_E1)
                 
                 # Compute sparse loss
-                E2_sparse = vae.adj_E2.abs().mean()
+                E2_sparse = vae.adj_E2.abs().mean() * self.opt.alpha
 
                 loss = loss_rec_rna + loss_gauss_rna + E2_sparse
                 loss.backward()
