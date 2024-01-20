@@ -210,8 +210,12 @@ class VAE(nn.Module):
         enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
         out_gen_atac = self.generative_atac(enh_act)
         if adj_E2 is not None:
-            z_rna = torch.matmul(enh_act, adj_E2)
-            z_rna[z_rna<0] = 0
+            if len(adj_E2.shape)<2:
+                E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), adj_E2.abs(), self.r2g_dist.shape).to_dense()
+            else:
+                E2 = adj_E2
+            z_rna = torch.matmul(enh_act, E2)
+            # z_rna[z_rna<0] = 0
             out_gen_rna = self.generative_rna(z_rna)
         else:
             z_rna = None
@@ -248,7 +252,7 @@ class VAE(nn.Module):
         enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
         # enh_act[enh_act<0] = 0
         z_rna = torch.matmul(enh_act, E2)
-        z_rna[z_rna<0] = 0
+        # z_rna[z_rna<0] = 0
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)    
 
@@ -264,7 +268,8 @@ class VAE(nn.Module):
         loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type='mae')
         loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=loss_acc)
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
-
+        
+        rna_pos_loss = torch.nan_to_num(out_gen_rna['x_rec'][out_gen_rna['x_rec']<0].mean().abs(), 0)
         # loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac
 
-        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
+        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, rna_pos_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
