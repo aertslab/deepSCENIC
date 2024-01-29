@@ -21,6 +21,7 @@ parser.add_argument('--TF2rNet_loss', type=str, default='mse', help='TF2rNet los
 parser.add_argument('--TF2rNet_bottleneck_size', type=int, default=3072, help='TF2rNet input feature dimension.')
 parser.add_argument('--fasta', type=str, help='Fasta file of reference genome.')
 parser.add_argument('--seq_len', type=int, default=500, help='Sequence length for TF2rNet.')
+parser.add_argument('--early_stopping_patience', type=int, default=10, help='Early stopping before full training.')
 parser.add_argument('--emb_len', type=int, default=5, help='Embedding length for TF2rNet.')
 parser.add_argument('--beta', type=float, default=1e-2, help='The loss coefficient for KL term (beta-VAE).')
 parser.add_argument('--alpha', type=float, default=1, help='Sparse loss coefficient.')
