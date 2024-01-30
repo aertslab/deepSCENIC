@@ -32,6 +32,7 @@ parser.add_argument('--save_name', type=str, default='/tmp', help='Output direct
 parser.add_argument('--logs', type=str, default='/tmp', help='Tensorboard log dir.')
 parser.add_argument('--train', default=False, action='store_true', help='Specify if training.')
 parser.add_argument('--disable_dropout_loss', default=False, action='store_true', help='Weather to use dropout loss for recostructing scRNA-seq.')
+parser.add_argument('--use_best', default=False, action='store_true', help='Weather to use  best or last model epoch.')
 parser.add_argument('--ppms_file', type=str, help='Path to PPMs.')
 parser.add_argument('--device', type=str, default='cuda')
 opt = parser.parse_args()

@@ -514,21 +514,30 @@ class deepSCENIC:
         self.opt.train = False
         dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, _  = self.init_data(test=True)
 
+        if self.opt.use_best==True:
+            model_dict_tf2r_func_enc_path = self.opt.load_model + 'best_model_tf2r_encoder.pth'
+            model_dict_tf2r_path = self.opt.load_model + 'best_model_tf2r.pth'
+            vae_model_path = self.opt.load_model + 'best_model.pth'
+        else:
+            model_dict_tf2r_func_enc_path = self.opt.load_model + 'model_tf2r_encoder.pth'
+            model_dict_tf2r_path = self.opt.load_model + 'model_tf2r.pth'
+            vae_model_path = self.opt.load_model + 'model.pth'
+
         # Load tf2r fuctional encoder
         tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
-        model_dict_tf2r_func_enc = torch.load(self.opt.load_model + 'model_tf2r_encoder.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+        model_dict_tf2r_func_enc = torch.load(model_dict_tf2r_func_enc_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
         # Load tf2r contex head
         tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
-        model_dict_tf2r = torch.load(self.opt.load_model + 'model_tf2r.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
+        model_dict_tf2r = torch.load(model_dict_tf2r_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         tf2rNet.load_state_dict(model_dict_tf2r)   
         print("loaded weights for TF2rNet")
 
         # Initialize VAE
         vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device).float().to(self.opt.device)
         # Exclude 'adj_E2' from the state dict
-        state_dict = torch.load(self.opt.load_model + 'model.pth',  map_location=torch.device(self.opt.device))['model_state_dict']
-        print("Best training epoch: ", torch.load(self.opt.load_model + 'model.pth')['epoch'])
+        state_dict = torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
+        print("Best training epoch: ", torch.load(vae_model_path)['epoch'])
         if 'adj_E2' in state_dict:
             del state_dict['adj_E2']
         vae.load_state_dict(state_dict, strict=False)
@@ -827,7 +836,7 @@ class deepSCENIC:
                     loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
                     sparse_loss = adj_E1_test.abs().mean(1).mean() * self.opt.alpha
-                    loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna + sparse_loss
+                    loss = loss_rec_rna + loss_rec_atac #+ loss_gauss_rna + sparse_loss
                             
                     rec_rna.append(loss_rec_rna.item())
                     rec_atac.append(loss_rec_atac.item())
@@ -836,7 +845,7 @@ class deepSCENIC:
                     loss_sparse.append(sparse_loss.detach().item())
                     f1_score.append(f1_atac.detach().item())
 
-                    if np.mean(loss_all).detach().item() <= best_loss:
+                    if np.mean(loss_all) <= best_loss:
                         torch.save({
                             'epoch': epoch,
                             'model_state_dict': vae.state_dict(),
