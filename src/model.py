@@ -33,6 +33,12 @@ class LossFunctions:
                 loss = F.binary_cross_entropy_with_logits(predicted[mask], real[mask], reduction='none').mean()
             else:
                 loss = torch.Tensor([0]).to(self.dev)
+        elif rec_type == 'cos':
+            mask = ~(real == -1).all(dim=1)
+            if real[mask].shape[0] !=0:
+                loss = (1- torch.mean(F.cosine_similarity(real[mask], predicted[mask], dim=1)))
+            else:
+                loss = torch.Tensor([0]).to(self.dev)
         else:
             raise Exception
         return loss
@@ -246,7 +252,7 @@ class VAE(nn.Module):
             return loss,  loss_rec_atac.detach(), loss_gauss_rna.detach(), f1_atac.detach()
 
 
-    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, opt=None, adj_E1=None):
+    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, opt=None, adj_E1=None, idxs=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
@@ -258,22 +264,33 @@ class VAE(nn.Module):
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)    
 
-        if opt.bin_acc==True:
-            loss_acc = 'bce'
-            f1 = F1Score(task='binary',num_classes=1).to(opt.device)
-            mask = ~(x_atac == -1).all(dim=1)
-            if x_atac[mask].shape[0] !=0:
-                f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), x_atac[mask].int().ravel())
+        
+        with torch.no_grad():
+            if opt.bin_acc==True:
+                loss_acc = 'bce'
+                f1 = F1Score(task='binary',num_classes=1).to(opt.device)
+                mask = ~(x_atac == -1).all(dim=1)
+                if x_atac[mask].shape[0] !=0:
+                    f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), x_atac[mask].int().ravel())
+                del mask    
             else:
-                f1_atac = torch.Tensor([0]).to(opt.device)            
+                loss_acc = 'cos'
+                f1_atac = torch.Tensor([0]).to(opt.device)  
 
-        loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type='mae')
+        loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type=opt.loss_rna)
         loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=loss_acc)
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
         
         with torch.no_grad():
             rna_pos_loss = torch.nan_to_num(out_gen_rna['x_rec'][out_gen_rna['x_rec']<0].mean().abs(), 0)
-        E2_sparse_loss = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs() * self.r2g_dist.values(), self.r2g_dist.shape).to_dense().sum(0).mean() * opt.alpha
+
+        E2_sparse_loss = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs() * self.r2g_dist.values(), self.r2g_dist.shape).coalesce().to(opt.device)
+        if idxs is not None:
+            E2_sparse_idxs = E2_sparse_loss.indices()[0] # take row indices for non zero elements
+            E2_sparse_idxs = torch.where(torch.isin(E2_sparse_idxs, idxs.to(opt.device)))[0]
+            E2_sparse_loss = E2_sparse_loss.values()[E2_sparse_idxs].mean() * opt.gamma
+        else:
+            E2_sparse_loss = E2_sparse_loss.values().mean() * opt.gamma
         # loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac
 
         return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, rna_pos_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()

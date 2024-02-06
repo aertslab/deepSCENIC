@@ -672,6 +672,15 @@ def activity_plot(SCENICPLUS_obj: SCENICPLUS,
         return fig
 
 def generate_bigWig(regs, scores, chrs_size_file, save_dir):
+    """
+    Generate bigWig file from input data
+
+    Args:
+        regs (list): List of genomic regions in the format 'chr:start-end'
+        scores (list): List of scores corresponding to each region
+        chrs_size_file (str): Path to a file containing chromosome sizes
+        save_dir (str): Directory where the bigWig file will be saved
+    """    
     chrs_ = []
     starts = []
     ends = []

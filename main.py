@@ -24,7 +24,8 @@ parser.add_argument('--seq_len', type=int, default=500, help='Sequence length fo
 parser.add_argument('--early_stopping_patience', type=int, default=10, help='Early stopping before full training.')
 parser.add_argument('--emb_len', type=int, default=5, help='Embedding length for TF2rNet.')
 parser.add_argument('--beta', type=float, default=1e-2, help='The loss coefficient for KL term (beta-VAE).')
-parser.add_argument('--alpha', type=float, default=1, help='Sparse loss coefficient.')
+parser.add_argument('--alpha', type=float, default=1e-2, help='Sparse loss coefficient.')
+parser.add_argument('--gamma', type=float, default=1, help='Sparse loss coefficient.')
 parser.add_argument('--lr', type=float, default=1e-4, help='The learning rate.')
 parser.add_argument('--n_hidden', type=int, default=128, help='The Number of hidden neural used in MLP')
 parser.add_argument('--load_model', type=str, default=None, help='Load pretrained model from dir path.')
@@ -35,6 +36,8 @@ parser.add_argument('--disable_dropout_loss', default=False, action='store_true'
 parser.add_argument('--use_best', default=False, action='store_true', help='Weather to use  best or last model epoch.')
 parser.add_argument('--ppms_file', type=str, help='Path to PPMs.')
 parser.add_argument('--device', type=str, default='cuda')
+parser.add_argument('--loss_rna', type=str, default='mae')
+parser.add_argument('--E1_update_iter', type=int, default=100, help='Number of iterations to update E1')
 opt = parser.parse_args()
 
 
