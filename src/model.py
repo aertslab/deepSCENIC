@@ -236,7 +236,6 @@ class VAE(nn.Module):
             out_gen_atac = self.generative_atac(enh_act)
 
             if opt.bin_acc==True:
-                loss_acc = 'bce'
                 f1 = F1Score(task='binary',num_classes=1).to(opt.device)
                 mask = ~(x_atac == -1).all(dim=1)
                 if x_atac[mask].shape[0] !=0:
@@ -244,7 +243,7 @@ class VAE(nn.Module):
                 else:
                     f1_atac = torch.Tensor([0]).to(opt.device)                        
 
-            loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], False, rec_type=loss_acc)
+            loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], False, rec_type=opt.loss_atac)
             loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
 
             loss = loss_gauss_rna + loss_rec_atac
@@ -267,18 +266,16 @@ class VAE(nn.Module):
         
         with torch.no_grad():
             if opt.bin_acc==True:
-                loss_acc = 'bce'
                 f1 = F1Score(task='binary',num_classes=1).to(opt.device)
                 mask = ~(x_atac == -1).all(dim=1)
                 if x_atac[mask].shape[0] !=0:
                     f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), x_atac[mask].int().ravel())
                 del mask    
             else:
-                loss_acc = 'cos'
                 f1_atac = torch.Tensor([0]).to(opt.device)  
 
         loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type=opt.loss_rna)
-        loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=loss_acc)
+        loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=opt.loss_atac)
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
         
         with torch.no_grad():

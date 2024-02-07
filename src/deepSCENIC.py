@@ -82,8 +82,8 @@ def build_seq_dataloader(opt, ad=None):
     )
      
     data = TensorDatasetWithIndex(ds)
-    dataloader =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=False, num_workers=0)
-    dataloader_shuffle =  DataLoader(data, batch_size=opt.TF2rNet_batch_size, shuffle=True, num_workers=0)
+    dataloader =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=False, num_workers=0)
+    dataloader_shuffle =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=True, num_workers=0)
 
     return dataloader, dataloader_shuffle
  
@@ -732,22 +732,6 @@ class deepSCENIC:
                 torch.backends.cudnn.benchmark = True
                 n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
 
-                # if epoch >= self.opt.warmup_vae:
-                #     if ((not i%self.opt.E1_update_iter) & (i!=0)) | early_stopping.early_stop==True:
-                #         tf2rNet.eval()
-                #         tf2rNet_func_encoder.eval()
-                #         with torch.no_grad():
-                #             tf_pred_l = []
-                #             # seq_l1_l = []
-                #             for j, (X, seq_data_batch_idx) in tqdm(enumerate(train_seq_dataloader, 0)):
-                #                 tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device), return_only_embeddings=True)
-                #                 tf_pred = tf2rNet(emb=tf_pred)
-                #                 tf_pred_l.append(tf_pred)
-                #             adj_E1_old = torch.cat(tf_pred_l)
-                #         del tf_pred_l, tf_pred
-                #         tf2rNet.train()
-                #         tf2rNet_func_encoder.train()      
-                    
                 # TF2rNet forward pass
                 adj_E1 = adj_E1_old.clone()
                 
@@ -853,18 +837,16 @@ class deepSCENIC:
                        inputs_rna, adj_E1=adj_E1, adj_E2=vae.adj_E2)
                
                     if self.opt.bin_acc==True:
-                        loss_acc = 'bce'
                         f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)
                         mask = ~(inputs_atac == -1).all(dim=1)
                         if inputs_atac[mask].shape[0] !=0:
                             f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), inputs_atac[mask].int().ravel())
                         del mask    
                     else:
-                        loss_acc = 'cos'
                         f1_atac = torch.Tensor([0]).to(self.opt.device)  
                     
                     loss_rec_rna = vae.losses.reconstruction_loss(inputs_rna, out_gen_rna['x_rec'], self.opt.dropout_loss, rec_type=self.opt.loss_rna)
-                    loss_rec_atac = vae.losses.reconstruction_loss(inputs_atac, out_gen_atac['x_rec'], False, rec_type=loss_acc)
+                    loss_rec_atac = vae.losses.reconstruction_loss(inputs_atac, out_gen_atac['x_rec'], False, rec_type=self.opt.loss_atac)
                     loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
                     sparse_loss = (adj_E1_test.abs().mean()) * self.opt.alpha
