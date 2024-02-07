@@ -70,3 +70,4 @@ python -u /lustre1/project/stg_00002/lcb/gpartel/software/deepSCENIC/main.py \
         --seq_len 640 \
         --load_model /lustre1/project/stg_00002/lcb/gpartel/projects/deepSCENIC/results/MM_lines_Enformer3/ \
         --use_best \
+        --disable_dropout_loss \
