@@ -38,7 +38,6 @@ python -u /lustre1/project/stg_00002/lcb/gpartel/software/deepSCENIC/main.py \
         --logs /lustre1/project/stg_00002/lcb/gpartel/projects/deepSCENIC/results/MM_lines_Enformer/ \
         --lr 1e-4 \
         --n_epochs 1000 \
-        --ppms_file /staging/leuven/stg_00002/lcb/gpartel/projects/deepSCENIC/data/PPMs_public.pkl \
         --r2g_mask /lustre1/project/stg_00002/lcb/gpartel/projects/deepSCENIC/data/MM_lines/r2gpenalty_train.npz \
         --save_name /lustre1/project/stg_00002/lcb/gpartel/projects/deepSCENIC/results/MM_lines_Enformer3/ \
         --seq_len 640 \
@@ -64,7 +63,6 @@ python -u /lustre1/project/stg_00002/lcb/gpartel/software/deepSCENIC/main.py \
         --logs /lustre1/project/stg_00002/lcb/gpartel/projects/deepSCENIC/results/MM_lines_Enformer/ \
         --lr 1e-6 \
         --n_epochs 10000 \
-        --ppms_file /staging/leuven/stg_00002/lcb/gpartel/projects/deepSCENIC/data/PPMs_public.pkl \
         --r2g_mask /lustre1/project/stg_00002/lcb/gpartel/projects/deepSCENIC/data/MM_lines/r2gpenalty_test.npz \
         --save_name /lustre1/project/stg_00002/lcb/gpartel/projects/deepSCENIC/results/MM_lines_Enformer3/ \
         --seq_len 640 \
