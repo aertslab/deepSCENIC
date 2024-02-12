@@ -539,13 +539,13 @@ class deepSCENIC:
         dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, _  = self.init_data(test=True)
 
         if self.opt.use_best==True:
-            model_dict_tf2r_func_enc_path = self.opt.load_model + 'best_model_tf2r_encoder.pth'
-            model_dict_tf2r_path = self.opt.load_model + 'best_model_tf2r.pth'
-            vae_model_path = self.opt.load_model + 'best_model.pth'
+            model_dict_tf2r_func_enc_path = self.opt.save_name + 'best_model_tf2r_encoder.pth'
+            model_dict_tf2r_path = self.opt.save_name + 'best_model_tf2r.pth'
+            vae_model_path = self.opt.save_name + 'best_model.pth'
         else:
-            model_dict_tf2r_func_enc_path = self.opt.load_model + 'model_tf2r_encoder.pth'
-            model_dict_tf2r_path = self.opt.load_model + 'model_tf2r.pth'
-            vae_model_path = self.opt.load_model + 'model.pth'
+            model_dict_tf2r_func_enc_path = self.opt.save_name + 'model_tf2r_encoder.pth'
+            model_dict_tf2r_path = self.opt.save_name + 'model_tf2r.pth'
+            vae_model_path = self.opt.save_name + 'model.pth'
 
         # Load tf2r fuctional encoder
         tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
