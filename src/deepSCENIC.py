@@ -320,7 +320,7 @@ class deepSCENIC:
                     writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
                     writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
     
-    def simulate_perturbation(self, vae_model_path, tf2r_model_path, perturbation, n_iter=5, ad=None, n_neighs=15, tf2r_func_enc_model_path=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None, fc_upper_bound=99.9, fc_lower_bound=0):
+    def simulate_perturbation(self, vae_model_path, tf2r_model_path, perturbation, n_iter=5, ad=None, n_neighs=15, tf2r_func_enc_model_path=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None):
         """ Function for simulating TF perturbations.
             
             Params
@@ -355,7 +355,7 @@ class deepSCENIC:
                 vae.eval();
                 for batch in dataloader:
                     perturbed_batch = batch[0]
-                    y_pert, _, _, _, _ = vae.predict(perturbed_batch[:, TFs_idx].to(opt.device), adj_E1, adj_E2)
+                    y_pert, _, _, _, _ = vae.predict(perturbed_batch[:, TFs_idx].to(opt.device), adj_E1, adj_E2, opt=opt)
                     y_pert_l += [y_pert['x_rec'].cpu().numpy()]
 
             y_pert_l = np.vstack(y_pert_l)
@@ -409,7 +409,7 @@ class deepSCENIC:
             #do several iterations of perturbation
             perturbed_pred_matrix_t_1 = _do_one_round_of_simulation(vae, original_matrix, TFs_idx, adj_E1, adj_E2, self.opt)
             perturbed_pred_matrix_t_1[perturbed_pred_matrix_t_1<0] = 0
-            perturbed_pred_matrix_t_1 = generate_metacells(perturbed_pred_matrix_t_1, conn_matrix)
+            # perturbed_pred_matrix_t_1 = generate_metacells(perturbed_pred_matrix_t_1, conn_matrix)
 
             # knock down TFs
             if len(perturbation.keys())>0:
@@ -430,7 +430,7 @@ class deepSCENIC:
                 # Save predictions of perturbed matrix
                 perturbed_pred_matrix_t_2 = _do_one_round_of_simulation(vae, perturbed_matrix, TFs_idx, adj_E1, adj_E2, self.opt)
                 perturbed_pred_matrix_t_2[perturbed_pred_matrix_t_2<0] = 0 # Remove negative values
-                perturbed_pred_matrix_t_2 = generate_metacells(perturbed_pred_matrix_t_2, conn_matrix)
+                # perturbed_pred_matrix_t_2 = generate_metacells(perturbed_pred_matrix_t_2, conn_matrix)
                 
                 fc = (perturbed_pred_matrix_t_2 + 1e-8)/(perturbed_pred_matrix_t_1 + 1e-8) # compute fold change
                 perturbed_pred_matrix_t_1 = perturbed_pred_matrix_t_2.copy()
@@ -503,7 +503,7 @@ class deepSCENIC:
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
                 out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna = vae.predict(
-                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2)
+                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2, opt=self.opt)
 
                 z_rna_l += [z_rna.cpu().numpy()]
                 z_tf_mu_l += [out_inf_rna['mean'].cpu().numpy()]
@@ -682,11 +682,11 @@ class deepSCENIC:
 
         # Initialize optimizers
         optimizer = optim.Adam([{'params':vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-        # if self.opt.load_model is not None:
-        #     state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
-        #     if 'optimizer_state_dict' in state_dict:
-        #         optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-        #         print("loaded optimizer state")
+        if self.opt.load_model is not None:
+            state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
+            if 'optimizer_state_dict' in state_dict:
+                optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+                print("loaded optimizer state")
 
         # Initialize early stopping
         early_stopping = EarlyStopping(patience=self.opt.early_stopping_patience)
@@ -832,9 +832,9 @@ class deepSCENIC:
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
                     _, out_gen_atac, out_inf_rna, _, _= vae.predict(
-                       inputs_rna, adj_E1=adj_E1_test)
+                       inputs_rna, adj_E1=adj_E1_test, opt=self.opt)
                     out_gen_rna, _, _, _, _= vae.predict(
-                       inputs_rna, adj_E1=adj_E1, adj_E2=vae.adj_E2)
+                       inputs_rna, adj_E1=adj_E1, adj_E2=vae.adj_E2, opt=self.opt)
                
                     if self.opt.bin_acc==True:
                         f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)

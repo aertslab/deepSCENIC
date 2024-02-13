@@ -210,11 +210,14 @@ class VAE(nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)
 
-    def predict(self, x_rna, adj_E1=None, adj_E2=None):
+    def predict(self, x_rna, adj_E1=None, adj_E2=None, opt=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+        if opt.train==True:
+            enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+        else:
+            enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
         out_gen_atac = self.generative_atac(enh_act)
         if adj_E2 is not None:
             if len(adj_E2.shape)<2:
@@ -232,7 +235,10 @@ class VAE(nn.Module):
     def pretrain(self, x_rna_tfs, x_atac, opt=None, adj_E1=None, idxs=None):
 
             out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-            enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+            if opt.train==True:
+                enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+            else:
+                enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
             out_gen_atac = self.generative_atac(enh_act)
 
             if opt.bin_acc==True:
@@ -256,7 +262,10 @@ class VAE(nn.Module):
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-        enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+        if opt.train==True:
+            enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
+        else:
+            enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
         # enh_act[enh_act<0] = 0
         z_rna = torch.matmul(enh_act, E2)
         # z_rna[z_rna<0] = 0
