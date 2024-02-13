@@ -763,7 +763,7 @@ class deepSCENIC:
                     dropout_mask_atac=self.opt.dropout_loss, 
                     opt=self.opt,
                     adj_E1=adj_E1,
-                    idxs=seq_data_batch_idx,
+                    # idxs=seq_data_batch_idx,
                     )
                 
                 # Compute sparse loss
