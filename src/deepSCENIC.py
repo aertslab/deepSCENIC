@@ -229,7 +229,7 @@ class deepSCENIC:
         # Initialize models
         tf2rNet = MotifNet(self.TFs, opt.TF2rNet_bottleneck_size, emb_len=opt.emb_len, dev=opt.device).float().to(opt.device)
         tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=opt.emb_len, dropout_rate = 0.1).to(opt.device)
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, opt.n_hidden, dev=opt.device, opt=opt).float().to(opt.device)
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, opt.n_hidden, opt=opt).float().to(opt.device)
         # Load pretrained models
         if opt.load_model is not None:
             tf2rNet.load_state_dict(torch.load(opt.save_name + 'model_tf2r.pth',  map_location=torch.device(opt.device))['model_state_dict'])
@@ -375,7 +375,7 @@ class deepSCENIC:
         tf2rNet_func_encoder.eval()
 
         # Load pretrained VAE model
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
 
         with torch.no_grad():
@@ -486,7 +486,7 @@ class deepSCENIC:
         print("loaded weights for TF2rNet")
 
         # Initialize VAE
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
         vae.adj_E2 = nn.Parameter(adj_E2)
         with torch.no_grad(): 
@@ -561,7 +561,7 @@ class deepSCENIC:
         print("loaded weights for TF2rNet")
 
         # Initialize VAE
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         # Exclude 'adj_E2' from the state dict
         state_dict = torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         print("Best training epoch: ", torch.load(vae_model_path)['epoch'])
@@ -712,7 +712,7 @@ class deepSCENIC:
             
 
         # Initialize VAE model        
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, dev=self.opt.device, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         if self.opt.load_model is not None:
             if os.path.exists(self.opt.load_model + 'model.pth'):
                 vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
