@@ -25,6 +25,8 @@ parser.add_argument('--emb_len', type=int, default=5, help='Embedding length for
 parser.add_argument('--beta', type=float, default=1e-2, help='The loss coefficient for KL term (beta-VAE).')
 parser.add_argument('--alpha', type=float, default=1e-2, help='Sparse loss coefficient.')
 parser.add_argument('--gamma', type=float, default=1, help='Sparse loss coefficient.')
+parser.add_argument('--atac_tau', type=float, default=1, help='ATAC loss coefficient.')
+parser.add_argument('--rna_tau', type=float, default=1, help='RNA loss coefficient.')
 parser.add_argument('--lr', type=float, default=1e-4, help='The learning rate.')
 parser.add_argument('--n_hidden', type=int, default=128, help='The Number of hidden neural used in MLP')
 parser.add_argument('--load_model', type=str, default=None, help='Load pretrained model from dir path.')

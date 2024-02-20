@@ -51,8 +51,6 @@ class EarlyStopping():
                 print('INFO: Early stopping')
                 self.early_stop = True
 
-
-
 ## Deepexplainer plotting utils ##
 
 def plot_a(ax, base, left_edge, height, color):
@@ -90,7 +88,6 @@ def plot_c(ax, base, left_edge, height, color):
     ax.add_patch(matplotlib.patches.Rectangle(xy=[left_edge + 1, base], width=1.0, height=height,
                                               facecolor='white', edgecolor='white', fill=True))
 
-
 def plot_g(ax, base, left_edge, height, color):
     ax.add_patch(matplotlib.patches.Ellipse(xy=[left_edge + 0.65, base + 0.5 * height], width=1.3, height=height,
                                             facecolor=color, edgecolor=color))
@@ -105,7 +102,6 @@ def plot_g(ax, base, left_edge, height, color):
     ax.add_patch(
         matplotlib.patches.Rectangle(xy=[left_edge + 0.625, base + 0.35 * height], width=0.374, height=0.15 * height,
                                      facecolor=color, edgecolor=color, fill=True))
-
 
 def plot_t(ax, base, left_edge, height, color):
     ax.add_patch(matplotlib.patches.Rectangle(xy=[left_edge + 0.4, base],
@@ -192,7 +188,6 @@ def plot_weights(array, fig, n, n1, n2, title='', ylab='',
                               plot_funcs=plot_funcs,
                               highlight=highlight)
     return fig, ax
-
 
 def plot_deepexplainer_givenax(explainer, fig, ntrack, track_no, seq_onehot, TF, TF_name, region_id):
     """
@@ -341,16 +336,10 @@ def predict_mutated(model, new_X):
 
     return prediction_mutated.numpy()
 
-"""Plot chromatin accessibility profiles and region to gene arcs.
-
-"""
-
-
 def _region_to_chrom_start_end(x): return [x.replace(':', '-').split('-')[0],
                                           int(x.replace(
                                               ':', '-').split('-')[1]),
                                           int(x.replace(':', '-').split('-')[2])]
-
 
 def activity_plot(SCENICPLUS_obj: SCENICPLUS,
                   bw_dict: Mapping[str, str],
@@ -731,7 +720,6 @@ ASM_SYNONYMS = {
     'mm39': 'GRCm39',
     'dm6': 'BDGP6',
     'galGal6': 'GRCg6a'}
-
 
 def get_interaction_pr(region_to_gene_df,
                        species,

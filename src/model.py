@@ -181,27 +181,28 @@ class GenerativeNetATAC(nn.Module):
         return output
 
 class VAE(nn.Module):
-    def __init__(self, TFs_idx, r2g_dist_coo, x_dim, z_dim, dev):
+    def __init__(self, TFs_idx, r2g_dist_coo, x_dim, z_dim, opt):
         super(VAE, self).__init__()
         self.eps = 1e-4
-        self.r2g_dist = torch.sparse_coo_tensor(torch.tensor([r2g_dist_coo.row.tolist(), r2g_dist_coo.col.tolist()]), torch.tensor(r2g_dist_coo.data).float(), r2g_dist_coo.shape, requires_grad=False).coalesce().float().to(dev)
-        self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=dev, requires_grad=True) + self.eps)
+        self.r2g_dist = torch.sparse_coo_tensor(torch.tensor([r2g_dist_coo.row.tolist(), r2g_dist_coo.col.tolist()]), torch.tensor(r2g_dist_coo.data).float(), r2g_dist_coo.shape, requires_grad=False).coalesce().float().to(opt.device)
+        self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=opt.device, requires_grad=True) + self.eps)
         # self.adj_E2 = nn.Parameter(torch.randn(r2g_dist_coo.size, device=dev, requires_grad=True))
-        self.TFs_idx = torch.tensor(TFs_idx).to(dev)
+        self.TFs_idx = torch.tensor(TFs_idx).to(opt.device)
 
         self.n_gene = r2g_dist_coo.shape[1]
         self.n_tfs = len(TFs_idx)
         self.n_region = r2g_dist_coo.shape[0]
         nonLinear = nn.Tanh()
-        if dev!='cpu':
+        if opt.device!='cpu':
             use_cuda=True
         else:
             use_cuda=False
         self.inference_rna = InferenceNet(x_dim, z_dim, nonLinear, use_cuda)
         self.generative_rna = GenerativeNet(x_dim, z_dim, nonLinear)
-        self.generative_atac = GenerativeNet(x_dim, z_dim, nonLinear, bias=True)
-        self.losses = LossFunctions(dev=dev)
-        self.device = dev
+        self.generative_atac = GenerativeNet(x_dim, z_dim, nonLinear, bias=opt.bin_acc)
+        self.losses = LossFunctions(dev=opt.device)
+        self.device = opt.device
+        self.opt = opt
 
         # Layers initilization
         for m in self.modules():
@@ -210,11 +211,11 @@ class VAE(nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)
 
-    def predict(self, x_rna, adj_E1=None, adj_E2=None, opt=None):
+    def predict(self, x_rna, adj_E1=None, adj_E2=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-        if opt.train==True:
+        if self.opt.train==True:
             enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
         else:
             enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
@@ -232,37 +233,37 @@ class VAE(nn.Module):
             out_gen_rna = None
         return out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna
     
-    def pretrain(self, x_rna_tfs, x_atac, opt=None, adj_E1=None, idxs=None):
+    def pretrain(self, x_rna_tfs, x_atac, adj_E1=None, idxs=None):
 
             out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-            if opt.train==True:
+            if self.opt.train==True:
                 enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
             else:
                 enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
             out_gen_atac = self.generative_atac(enh_act)
 
-            if opt.bin_acc==True:
-                f1 = F1Score(task='binary',num_classes=1).to(opt.device)
+            if self.opt.bin_acc==True:
+                f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)
                 mask = ~(x_atac == -1).all(dim=1)
                 if x_atac[mask].shape[0] !=0:
                     f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), x_atac[mask][:, idxs].int().ravel())
                 else:
-                    f1_atac = torch.Tensor([0]).to(opt.device)                        
+                    f1_atac = torch.Tensor([0]).to(self.opt.device)                        
 
-            loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], False, rec_type=opt.loss_atac)
-            loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
+            loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], False, rec_type=self.opt.loss_atac)
+            loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
             loss = loss_gauss_rna + loss_rec_atac
 
             return loss,  loss_rec_atac.detach(), loss_gauss_rna.detach(), f1_atac.detach()
 
 
-    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, opt=None, adj_E1=None, idxs=None):
+    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None, idxs=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
-        if opt.train==True:
+        if self.opt.train==True:
             enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
         else:
             enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
@@ -274,29 +275,29 @@ class VAE(nn.Module):
 
         
         with torch.no_grad():
-            if opt.bin_acc==True:
-                f1 = F1Score(task='binary',num_classes=1).to(opt.device)
+            if self.opt.bin_acc==True:
+                f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)
                 mask = ~(x_atac == -1).all(dim=1)
                 if x_atac[mask].shape[0] !=0:
                     f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), x_atac[mask].int().ravel())
                 del mask    
             else:
-                f1_atac = torch.Tensor([0]).to(opt.device)  
+                f1_atac = torch.Tensor([0]).to(self.opt.device)  
 
-        loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type=opt.loss_rna)
-        loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=opt.loss_atac)
-        loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * opt.beta
+        loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type=self.opt.loss_rna) * self.opt.rna_tau
+        loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=self.opt.loss_atac) * self.opt.atac_tau
+        loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
         
         with torch.no_grad():
             rna_pos_loss = torch.nan_to_num(out_gen_rna['x_rec'][out_gen_rna['x_rec']<0].mean().abs(), 0)
 
-        E2_sparse_loss = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs() * self.r2g_dist.values(), self.r2g_dist.shape).coalesce().to(opt.device)
+        E2_sparse_loss = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs() * self.r2g_dist.values(), self.r2g_dist.shape).coalesce().to(self.opt.device)
         if idxs is not None:
             E2_sparse_idxs = E2_sparse_loss.indices()[0] # take row indices for non zero elements
-            E2_sparse_idxs = torch.where(torch.isin(E2_sparse_idxs, idxs.to(opt.device)))[0]
-            E2_sparse_loss = E2_sparse_loss.values()[E2_sparse_idxs].mean() * opt.gamma
+            E2_sparse_idxs = torch.where(torch.isin(E2_sparse_idxs, idxs.to(self.opt.device)))[0]
+            E2_sparse_loss = E2_sparse_loss.values()[E2_sparse_idxs].mean() * self.opt.gamma
         else:
-            E2_sparse_loss = E2_sparse_loss.values().mean() * opt.gamma
+            E2_sparse_loss = E2_sparse_loss.values().mean() * self.opt.gamma
         # loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac
 
         return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, rna_pos_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
