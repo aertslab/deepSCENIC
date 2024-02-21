@@ -320,7 +320,7 @@ class deepSCENIC:
                     writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
                     writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
     
-    def simulate_perturbation(self, vae_model_path, tf2r_model_path, perturbation, n_iter=5, ad=None, n_neighs=15, tf2r_func_enc_model_path=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None):
+    def simulate_perturbation(self, vae_model_path, tf2r_model_path, perturbation, n_iter=5, ad=None, n_neighs=15, tf2r_func_enc_model_path=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None, eps=1e-8):
         """ Function for simulating TF perturbations.
             
             Params
@@ -408,7 +408,7 @@ class deepSCENIC:
             perturbed_matrix = original_matrix.copy()
             #do several iterations of perturbation
             perturbed_pred_matrix_t_1 = _do_one_round_of_simulation(vae, original_matrix, TFs_idx, adj_E1, adj_E2, self.opt)
-            # perturbed_pred_matrix_t_1[perturbed_pred_matrix_t_1<0] = 0
+            perturbed_pred_matrix_t_1[perturbed_pred_matrix_t_1<0] = 0
             # perturbed_pred_matrix_t_1 = generate_metacells(perturbed_pred_matrix_t_1, conn_matrix)
 
             # knock down TFs
@@ -429,12 +429,12 @@ class deepSCENIC:
 
                 # Save predictions of perturbed matrix
                 perturbed_pred_matrix_t_2 = _do_one_round_of_simulation(vae, perturbed_matrix, TFs_idx, adj_E1, adj_E2, self.opt)
-                # perturbed_pred_matrix_t_2[perturbed_pred_matrix_t_2<0] = 0 # Remove negative values
+                perturbed_pred_matrix_t_2[perturbed_pred_matrix_t_2<0] = 0 # Remove negative values
                 # perturbed_pred_matrix_t_2 = generate_metacells(perturbed_pred_matrix_t_2, conn_matrix)
                 
-                fc = (perturbed_pred_matrix_t_2)/(perturbed_pred_matrix_t_1) # compute fold change
-                fc = fc.fillna(1)
-                fc = np.clip(fc, 0, 2)
+                fc = (perturbed_pred_matrix_t_2 + eps)/(perturbed_pred_matrix_t_1 + eps) # compute fold change
+                # fc = fc.fillna(1)
+                # fc = np.clip(fc, 0, 2)
                 perturbed_pred_matrix_t_1 = perturbed_pred_matrix_t_2.copy()
 
                 perturbed_matrix = (perturbed_matrix * fc).copy() # Apply fold change compute new expression matrix
@@ -676,8 +676,6 @@ class deepSCENIC:
                     # Save tf2r matrix
                     torch.save({'vae_E2_test': vae.adj_E2}, self.opt.save_name + '/E2_test.pth')
 
-
-                    
     def train_model(self):
         """ Function for training deepSCENIC model.
         """
@@ -801,7 +799,6 @@ class deepSCENIC:
                     dropout_mask_rna=self.opt.dropout_loss,
                     dropout_mask_atac=self.opt.dropout_loss, 
                     adj_E1=adj_E1,
-                    # idxs=seq_data_batch_idx,
                     )
                 
                 # Compute sparse loss
@@ -831,21 +828,20 @@ class deepSCENIC:
                 writer.add_scalar('Loss/cos_loss', cos_loss.detach().item(), n_iter)
                 writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
 
-                # Save model
-                if not i%100:
-                    torch.save({
-                        'epoch': epoch,
-                        'model_state_dict': vae.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                    }, self.opt.save_name + '/model.pth')
-                    torch.save({
-                        'epoch': epoch,
-                        'model_state_dict': tf2rNet.state_dict(),
-                    }, self.opt.save_name + '/model_tf2r.pth')
-                    torch.save({
-                        'epoch': epoch,
-                        'model_state_dict': tf2rNet_func_encoder.state_dict(),
-                    }, self.opt.save_name + '/model_tf2r_encoder.pth')
+            # Save model
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': vae.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+            }, self.opt.save_name + '/model.pth')
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': tf2rNet.state_dict(),
+            }, self.opt.save_name + '/model_tf2r.pth')
+            torch.save({
+                'epoch': epoch,
+                'model_state_dict': tf2rNet_func_encoder.state_dict(),
+            }, self.opt.save_name + '/model_tf2r_encoder.pth')
 
             print('epoch:', epoch)
             # Evaluate test set

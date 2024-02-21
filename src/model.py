@@ -258,7 +258,7 @@ class VAE(nn.Module):
             return loss,  loss_rec_atac.detach(), loss_gauss_rna.detach(), f1_atac.detach()
 
 
-    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None, idxs=None):
+    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
@@ -291,13 +291,6 @@ class VAE(nn.Module):
         with torch.no_grad():
             rna_pos_loss = torch.nan_to_num(out_gen_rna['x_rec'][out_gen_rna['x_rec']<0].mean().abs(), 0)
 
-        E2_sparse_loss = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs() * self.r2g_dist.values(), self.r2g_dist.shape).coalesce().to(self.opt.device)
-        if idxs is not None:
-            E2_sparse_idxs = E2_sparse_loss.indices()[0] # take row indices for non zero elements
-            E2_sparse_idxs = torch.where(torch.isin(E2_sparse_idxs, idxs.to(self.opt.device)))[0]
-            E2_sparse_loss = E2_sparse_loss.values()[E2_sparse_idxs].mean() * self.opt.gamma
-        else:
-            E2_sparse_loss = E2_sparse_loss.values().mean() * self.opt.gamma
-        # loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac
+        E2_sparse_loss = (self.adj_E2.abs() * self.r2g_dist.values()).mean() * self.opt.gamma
 
         return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, rna_pos_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
