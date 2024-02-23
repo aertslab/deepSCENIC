@@ -71,15 +71,26 @@ def build_seq_dataloader(opt, ad=None):
     [format_region_to_bed(r, output_file, seq_len=opt.seq_len) for r in ad.var_names.to_list()]
     output_file.close()
 
-    ds = GenomeIntervalDataset(
-        bed_file = opt.save_name+ 'enhancer.bed',   # bed file - columns 0, 1, 2 must be <chromosome>, <start position>, <end position>
-        fasta_file = opt.fasta, # path to fasta file
-        return_seq_indices = False, # return nucleotide indices (ACGTN) or one hot encodings
-        shift_augs = (-3, +3),    # random shift augmentations from -2 to +2 basepairs
-        rc_aug = True, # use reverse complement augmentation with 50% probability
-        context_length = opt.seq_len, #sequence length to extract
-        return_augs = False  # return the augmentation meta data
-    )
+    if opt.train==True:
+        ds = GenomeIntervalDataset(
+            bed_file = opt.save_name+ 'enhancer.bed',   # bed file - columns 0, 1, 2 must be <chromosome>, <start position>, <end position>
+            fasta_file = opt.fasta, # path to fasta file
+            return_seq_indices = False, # return nucleotide indices (ACGTN) or one hot encodings
+            shift_augs = (-3, +3),    # random shift augmentations from -2 to +2 basepairs
+            rc_aug = True, # use reverse complement augmentation with 50% probability
+            context_length = opt.seq_len, #sequence length to extract
+            return_augs = False  # return the augmentation meta data
+        )
+    else:
+        ds = GenomeIntervalDataset(
+            bed_file = opt.save_name+ 'enhancer.bed',   # bed file - columns 0, 1, 2 must be <chromosome>, <start position>, <end position>
+            fasta_file = opt.fasta, # path to fasta file
+            return_seq_indices = False, # return nucleotide indices (ACGTN) or one hot encodings
+            shift_augs = (0, 0),    # random shift augmentations from -2 to +2 basepairs
+            rc_aug = False, # use reverse complement augmentation with 50% probability
+            context_length = opt.seq_len, #sequence length to extract
+            return_augs = False  # return the augmentation meta data
+        )
      
     data = TensorDatasetWithIndex(ds)
     dataloader =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=False, num_workers=0)
