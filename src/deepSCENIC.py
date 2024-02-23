@@ -721,11 +721,11 @@ class deepSCENIC:
 
         # Initialize optimizers
         optimizer = optim.Adam([{'params':vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-        if self.opt.load_model is not None:
-            state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
-            if 'optimizer_state_dict' in state_dict:
-                optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-                print("loaded optimizer state")
+        # if self.opt.load_model is not None:
+        #     state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
+        #     if 'optimizer_state_dict' in state_dict:
+        #         optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+        #         print("loaded optimizer state")
 
         # Initialize early stopping
         early_stopping = EarlyStopping(patience=self.opt.early_stopping_patience)
@@ -921,7 +921,7 @@ class deepSCENIC:
                 writer.add_scalar('Test/l1_A', np.mean(loss_sparse), epoch)
                 writer.add_scalar('Test/f1_atac', np.mean(f1_score), epoch)
 
-                scheduler.step()
+                # scheduler.step()
                 # if epoch >= self.opt.warmup_vae:
                 #     early_stopping(sparse_loss)
                 del loss, f1_score, loss_all, rec_atac, loss_kl_rna, loss_sparse, loss_rec_rna, loss_rec_atac, loss_gauss_rna, sparse_loss, adj_E1_test, rec_rna

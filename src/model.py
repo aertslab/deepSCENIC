@@ -247,8 +247,8 @@ class VAE(nn.Module):
                 mask = ~(x_atac == -1).all(dim=1)
                 if x_atac[mask].shape[0] !=0:
                     f1_atac = f1(out_gen_atac['x_rec'][mask].ravel(), x_atac[mask][:, idxs].int().ravel())
-                else:
-                    f1_atac = torch.Tensor([0]).to(self.opt.device)                        
+            else:
+                f1_atac = torch.Tensor([0]).to(self.opt.device)                        
 
             loss_rec_atac = self.losses.reconstruction_loss(x_atac[:, idxs], out_gen_atac['x_rec'], False, rec_type=self.opt.loss_atac)
             loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
