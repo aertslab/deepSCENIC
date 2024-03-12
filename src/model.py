@@ -226,7 +226,10 @@ class VAE(nn.Module):
             else:
                 E2 = adj_E2
             z_rna = torch.matmul(enh_act, E2)
-            # z_rna[z_rna<0] = 0
+            promoter_idxs = E2.argmax(0)
+            promoter_act = torch.matmul(enh_act[:, promoter_idxs], E2[promoter_idxs, :])
+            z_rna = (z_rna - promoter_act) * promoter_act            
+
             out_gen_rna = self.generative_rna(z_rna)
         else:
             z_rna = None
@@ -269,7 +272,10 @@ class VAE(nn.Module):
             enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
         # enh_act[enh_act<0] = 0
         z_rna = torch.matmul(enh_act, E2)
-        # z_rna[z_rna<0] = 0
+        # with torch.no_grad():
+        promoter_idxs = E2.argmax(0)
+        promoter_act = torch.matmul(enh_act[:, promoter_idxs], E2[promoter_idxs, :])
+        z_rna = (z_rna - promoter_act) * promoter_act
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)    
 

@@ -16,6 +16,8 @@ parser.add_argument('--data_rna_file_test', type=str, help='The input scRNA-seq 
 parser.add_argument('--data_atac_file_test', type=str, help='The input scATAC-seq file (.h5ad) containing test data.')
 parser.add_argument('--bin_acc', default=False, action='store_true', help='Binarize scATAC-seq data.')
 parser.add_argument('--TF_file', type=str, help='List of trascription factors file.')
+parser.add_argument('--tf2r_prior', default=None, type=str, help='TF to region prior matrix.')
+parser.add_argument('--tf2r_prior_test', default=None, type=str, help='TF to region prior test matrix.')
 parser.add_argument('--r2g_mask', type=str, help='Region to target gene mask.')
 parser.add_argument('--TF2rNet_bottleneck_size', type=int, default=3072, help='TF2rNet input feature dimension.')
 parser.add_argument('--fasta', type=str, help='Fasta file of reference genome.')

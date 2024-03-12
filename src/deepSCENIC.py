@@ -43,21 +43,6 @@ class TensorDatasetWithIndex(Dataset[Tuple[torch.Tensor, ...]]):
     def __len__(self):
         return len(self.tensors[0])
 
-def cosine_similarity(mtx):
-    # Transpose the matrix to have columns as vectors
-    matrix_transposed = mtx.t()
-
-    # Normalize the columns to unit vectors (optional but recommended)
-    matrix_transposed_normalized = F.normalize(matrix_transposed, p=2, dim=1)
-
-    # Compute cosine similarity
-    cosine_sim_matrix = torch.mm(matrix_transposed_normalized, matrix_transposed_normalized.t())
-    cosine_sim_matrix = cosine_sim_matrix.fill_diagonal_(0)
-    # cosine_sim_matrix[cosine_sim_matrix<0]=0
-
-    return torch.mean(cosine_sim_matrix.pow(2).mean(1))# * mtx.abs().mean(0))
-
-
 ## Build dataloaders ##
 def build_seq_dataloader(opt, ad=None):
     """ Build dataloader for TF2rNet
@@ -147,6 +132,103 @@ class deepSCENIC:
         except:
             print('dir exist')
 
+    def cosine_similarity(self, mtx):
+        # Transpose the matrix to have columns as vectors
+        matrix_transposed = mtx.t()
+
+        # Normalize the columns to unit vectors (optional but recommended)
+        matrix_transposed_normalized = F.normalize(matrix_transposed, p=2, dim=1)
+
+        # Compute cosine similarity
+        cosine_sim_matrix = torch.mm(matrix_transposed_normalized, matrix_transposed_normalized.t())
+
+        return torch.abs(cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)).mean()
+
+    def sign_penalty(self, mtx):
+        mtx = mtx.T
+        mtx_pos = F.relu(mtx).mean(0)
+        mtx_neg = F.relu(-1*mtx).mean(0)
+
+        return torch.mean(mtx_pos * mtx_neg)
+
+    def _cosine_similarity(self, mtx, prior_mtx=None, seq_idxs=None):
+        # Transpose the matrix to have columns as vectors
+        matrix_transposed = mtx.t()
+
+        # Normalize the columns to unit vectors (optional but recommended)
+        matrix_transposed_normalized = F.normalize(matrix_transposed, p=2, dim=1)
+
+        if prior_mtx is None:
+            prior_mtx_normalized = matrix_transposed_normalized.t()
+        else:
+            prior_mtx = prior_mtx.to(self.opt.device)
+            if seq_idxs is not None:
+                prior_mtx = prior_mtx[seq_idxs, :]    
+            idxs = torch.where(prior_mtx.sum(0)==0)[0]
+            prior_mtx[:, idxs] = mtx[:, idxs]
+            prior_mtx_normalized = F.normalize(prior_mtx, p=2, dim=1)
+
+        cos_sims = []
+        # for i in range(4):
+        i = torch.randint(0, 4, (1,)).item()
+        if i == 0:
+            # pos-pos
+            mtx = matrix_transposed_normalized.clone()
+            prior_mtx = prior_mtx_normalized.clone()
+            mtx_abs = matrix_transposed.clone()
+            mtx_abs[mtx_abs<0] = 0
+            mtx_abs = mtx_abs.T.abs().mean(0)[:,None]
+            mtx[mtx<0] = 0
+            prior_mtx[prior_mtx<0] = 0
+            # Compute cosine similarity
+            cosine_sim_matrix = torch.mm(mtx, prior_mtx)
+            cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
+            cosine_sim_matrix[cosine_sim_matrix<0] = 0
+            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
+        elif i == 1:
+            # neg-neg
+            mtx = matrix_transposed_normalized.clone()
+            prior_mtx = prior_mtx_normalized.clone()
+            mtx_abs = matrix_transposed.clone()
+            mtx_abs[mtx_abs>0] = 0
+            mtx_abs = mtx_abs.T.abs().mean(0)[:,None]
+            mtx[mtx>0] = 0
+            prior_mtx[prior_mtx>0] = 0
+            # Compute cosine similarity
+            cosine_sim_matrix = torch.mm(mtx.abs(), prior_mtx.abs())
+            cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
+            cosine_sim_matrix[cosine_sim_matrix<0] = 0
+            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
+        elif i == 2:    
+            # pos-neg
+            mtx = matrix_transposed_normalized.clone()
+            prior_mtx = prior_mtx_normalized.clone()
+            mtx_abs = matrix_transposed.clone()
+            mtx_abs[mtx_abs<0] = 0
+            mtx_abs = mtx_abs.T.abs().mean(0)[:,None]
+            mtx[mtx<0] = 0
+            prior_mtx[prior_mtx>0] = 0
+            # Compute cosine similarity
+            cosine_sim_matrix = torch.mm(mtx, prior_mtx.abs())
+            cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
+            cosine_sim_matrix[cosine_sim_matrix<0] = 0
+            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
+        elif i == 3:
+            # neg-pos
+            mtx = matrix_transposed_normalized.clone()
+            prior_mtx = prior_mtx_normalized.clone()
+            mtx_abs = matrix_transposed.clone()
+            mtx_abs[mtx_abs>0] = 0
+            mtx_abs = mtx_abs.T.abs().mean(0)[:,None]
+            mtx[mtx>0] = 0
+            prior_mtx[prior_mtx<0] = 0
+            # Compute cosine similarity
+            cosine_sim_matrix = torch.mm(mtx.abs(), prior_mtx)
+            cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
+            cosine_sim_matrix[cosine_sim_matrix<0] = 0
+            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
+        return torch.sum(torch.tensor(cos_sims))
+
     def init_data(self, train=False, test=False):
         # Read TFs list
         TFs_df = pd.read_csv(self.opt.TF_file, header=None, names=["name"], usecols=[0])
@@ -154,6 +236,17 @@ class deepSCENIC:
 
         # Read region to gene mask
         r2g_dist_coo = load_npz(self.opt.r2g_mask)
+
+        # Load prior if any
+        if self.opt.tf2r_prior is None:
+            self.prior_E1 = None
+        else:
+            self.prior_E1 = torch.tensor(pd.read_pickle(self.opt.tf2r_prior).values).float()
+
+        if self.opt.tf2r_prior_test is None:
+            self.prior_E1_test = None
+        else:
+            self.prior_E1_test = torch.tensor(pd.read_pickle(self.opt.tf2r_prior_test).values).float()       
 
         if train==True:
             # Read data
@@ -814,8 +907,11 @@ class deepSCENIC:
                 
                 # Compute sparse loss
                 # with torch.no_grad():
-                E1_sparse = (adj_E1[seq_data_batch_idx, :].abs().mean()) * self.opt.alpha
-                cos_loss = cosine_similarity(adj_E1[seq_data_batch_idx, :]) 
+                # E1_sparse = (adj_E1[seq_data_batch_idx, :].abs().mean()) * self.opt.alpha
+                E1_sparse = (self._cosine_similarity(adj_E1, self.prior_E1, seq_data_batch_idx)) * self.opt.alpha
+                # E1_sparse = E1_sparse + (self.sign_penalty(adj_E1[seq_data_batch_idx, :])) * self.opt.alpha
+                with torch.no_grad():
+                    cos_loss = self.cosine_similarity(adj_E1[seq_data_batch_idx, :]) 
                 # E2_sparse = (vae.adj_E2.abs() * vae.r2g_dist.values()).mean() * self.opt.alpha
 
                 if epoch >= self.opt.warmup_vae:
@@ -894,7 +990,9 @@ class deepSCENIC:
                     loss_rec_atac = vae.losses.reconstruction_loss(inputs_atac, out_gen_atac['x_rec'], False, rec_type=self.opt.loss_atac) * self.opt.atac_tau
                     loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
-                    sparse_loss = (adj_E1_test.abs().mean()) * self.opt.alpha
+                    # sparse_loss = (adj_E1_test.abs().mean()) * self.opt.alpha
+                    sparse_loss = (self._cosine_similarity(adj_E1_test, self.prior_E1_test)) * self.opt.alpha
+                    # sparse_loss = sparse_loss + (self.sign_penalty(adj_E1_test)) * self.opt.alpha
                     loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna + sparse_loss
                             
                     rec_rna.append(loss_rec_rna.item())
