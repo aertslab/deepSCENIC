@@ -151,7 +151,7 @@ class deepSCENIC:
 
         return torch.mean(mtx_pos * mtx_neg)
 
-    def _cosine_similarity(self, mtx, prior_mtx=None, seq_idxs=None):
+    def _cosine_similarity(self, mtx, prior_mtx=None, seq_idxs=None, cos_sims=None):
         # Transpose the matrix to have columns as vectors
         matrix_transposed = mtx.t()
 
@@ -168,7 +168,6 @@ class deepSCENIC:
             prior_mtx[:, idxs] = mtx[:, idxs]
             prior_mtx_normalized = F.normalize(prior_mtx, p=2, dim=1)
 
-        cos_sims = []
         # for i in range(4):
         i = torch.randint(0, 4, (1,)).item()
         if i == 0:
@@ -184,7 +183,7 @@ class deepSCENIC:
             cosine_sim_matrix = torch.mm(mtx, prior_mtx)
             cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
             cosine_sim_matrix[cosine_sim_matrix<0] = 0
-            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
+            cos_sims[i] = torch.mean((cosine_sim_matrix) * mtx_abs)
         elif i == 1:
             # neg-neg
             mtx = matrix_transposed_normalized.clone()
@@ -198,7 +197,7 @@ class deepSCENIC:
             cosine_sim_matrix = torch.mm(mtx.abs(), prior_mtx.abs())
             cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
             cosine_sim_matrix[cosine_sim_matrix<0] = 0
-            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
+            cos_sims[i] = torch.mean((cosine_sim_matrix) * mtx_abs)
         elif i == 2:    
             # pos-neg
             mtx = matrix_transposed_normalized.clone()
@@ -212,7 +211,7 @@ class deepSCENIC:
             cosine_sim_matrix = torch.mm(mtx, prior_mtx.abs())
             cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
             cosine_sim_matrix[cosine_sim_matrix<0] = 0
-            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
+            cos_sims[i] = torch.mean((cosine_sim_matrix) * mtx_abs)
         elif i == 3:
             # neg-pos
             mtx = matrix_transposed_normalized.clone()
@@ -226,8 +225,8 @@ class deepSCENIC:
             cosine_sim_matrix = torch.mm(mtx.abs(), prior_mtx)
             cosine_sim_matrix = cosine_sim_matrix - torch.eye(cosine_sim_matrix.shape[0]).to(self.opt.device)
             cosine_sim_matrix[cosine_sim_matrix<0] = 0
-            cos_sims.append(torch.mean((cosine_sim_matrix) * mtx_abs))
-        return torch.sum(torch.tensor(cos_sims))
+            cos_sims[i] = torch.mean((cosine_sim_matrix) * mtx_abs)
+        return torch.sum(cos_sims)
 
     def init_data(self, train=False, test=False):
         # Read TFs list
@@ -837,6 +836,8 @@ class deepSCENIC:
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         scheduler = lr_scheduler.CosineAnnealingLR(T_max=self.opt.n_epochs, optimizer=optimizer, eta_min=1e-6, verbose=True)
+        cos_sim_train = torch.zeros((4,)).to(self.opt.device)
+        cos_sim_test = torch.zeros((4,)).to(self.opt.device)
         for epoch in range(self.opt.n_epochs):
             vae.train()
             tf2rNet.eval()
@@ -908,7 +909,9 @@ class deepSCENIC:
                 # Compute sparse loss
                 # with torch.no_grad():
                 # E1_sparse = (adj_E1[seq_data_batch_idx, :].abs().mean()) * self.opt.alpha
-                E1_sparse = (self._cosine_similarity(adj_E1, self.prior_E1, seq_data_batch_idx)) * self.opt.alpha
+                with torch.no_grad():
+                    cos_sim_train = cos_sim_train.clone()
+                E1_sparse = (self._cosine_similarity(adj_E1, self.prior_E1, seq_data_batch_idx, cos_sims=cos_sim_train)) * self.opt.alpha
                 # E1_sparse = E1_sparse + (self.sign_penalty(adj_E1[seq_data_batch_idx, :])) * self.opt.alpha
                 with torch.no_grad():
                     cos_loss = self.cosine_similarity(adj_E1[seq_data_batch_idx, :]) 
@@ -991,7 +994,8 @@ class deepSCENIC:
                     loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
                     # sparse_loss = (adj_E1_test.abs().mean()) * self.opt.alpha
-                    sparse_loss = (self._cosine_similarity(adj_E1_test, self.prior_E1_test)) * self.opt.alpha
+                    cos_sim_test = cos_sim_test.clone()
+                    sparse_loss = (self._cosine_similarity(adj_E1_test, self.prior_E1_test, cos_sims=cos_sim_test)) * self.opt.alpha
                     # sparse_loss = sparse_loss + (self.sign_penalty(adj_E1_test)) * self.opt.alpha
                     loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna + sparse_loss
                             
@@ -1030,4 +1034,4 @@ class deepSCENIC:
                 # if epoch >= self.opt.warmup_vae:
                 #     early_stopping(sparse_loss)
                 del loss, f1_score, loss_all, rec_atac, loss_kl_rna, loss_sparse, loss_rec_rna, loss_rec_atac, loss_gauss_rna, sparse_loss, adj_E1_test, rec_rna
-                del inputs_rna, inputs_atac, out_gen_atac, out_gen_rna, out_inf_rna
+                del inputs_rna, inputs_atac, out_gen_atac, out_gen_rna, out_inf_rna, E1_sparse, f1_atac
