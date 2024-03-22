@@ -257,7 +257,8 @@ def plot_mutagenesis_givenax(model, fig, ntrack, track_no, seq_onehot, num_class
     _ = ax.set_xticks(np.arange(0, mutated_seq_len+1, 10))
     return ax
 
-def plot_TF_ism_givenax(model, fig, ntrack, track_no, seq_onehot, num_classes, TF, TF_name=None, region_id=None, seq_len=640, mutated_seq_len=640):
+
+def compute_ISM(model, seq_onehot, num_classes, seq_len=640, mutated_seq_len=640):
     NUM_CLASSES = num_classes
     arrr_A = np.zeros((NUM_CLASSES, mutated_seq_len))
     arrr_C = np.zeros((NUM_CLASSES, mutated_seq_len))
@@ -292,22 +293,9 @@ def plot_TF_ism_givenax(model, fig, ntrack, track_no, seq_onehot, num_classes, T
                 new_X[mutloc, :] = np.array([0, 0, 0, 1], dtype='int8')
                 prediction_mutated = predict_mutated(model, new_X)
                 arrr_T[:, i] = (prediction_mutated - real_score)
-
-    return arrr_A, arrr_C, arrr_G, arrr_T
-
-    # ax = fig.add_subplot(ntrack, 1, track_no)
-    # ax.set_ylabel('In silico\nMutagenesis\nTF_'+str(TF))
-    # if TF_name is not None:
-    #     ax.set_title("TF_" + str(TF) + ' : ' + TF_name + ' for sequence region : ' + region_id)
-    # ax.scatter(range(mutated_seq_len), arrr_A[TF], label='A', color='green')
-    # ax.scatter(range(mutated_seq_len), arrr_C[TF], label='C', color='blue')
-    # ax.scatter(range(mutated_seq_len), arrr_G[TF], label='G', color='orange')
-    # ax.scatter(range(mutated_seq_len), arrr_T[TF], label='T', color='red')
-    # ax.legend()
-    # ax.axhline(y=0, linestyle='--', color='gray')
-    # ax.set_xlim((0, mutated_seq_len))
-    # _ = ax.set_xticks(np.arange(0, mutated_seq_len+1, 10))
-    # return ax
+        arrr = np.dstack((arrr_A, arrr_C, arrr_G, arrr_T))
+    return arrr
+    # return -np.mean(arrr, axis=-1)[TF,:,None]
 
 def plot_prediction_givenax(model, fig, ntrack, track_no, seq_onehot, num_classes):
     NUM_CLASSES = num_classes
