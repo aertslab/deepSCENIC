@@ -257,43 +257,84 @@ def plot_mutagenesis_givenax(model, fig, ntrack, track_no, seq_onehot, num_class
     _ = ax.set_xticks(np.arange(0, mutated_seq_len+1, 10))
     return ax
 
+def saturation_mutagenesis(onehot: torch.tensor):
+    DEVICE = onehot.device
+    for position in range(onehot.shape[1]):
+        for nuc in range(4):
+            new_onehot = onehot.clone()
+            new_nuc = torch.zeros(
+                onehot.shape[2],
+                dtype = int,
+                device = DEVICE
+            )
+            new_nuc[nuc] = 1
+            # print((sum(onehot[0, position, :] == new_nuc) == 4)==(sum(onehot[1, position, :] == new_nuc) == 4))
+            # if sum(onehot[0, position, :] == new_nuc) == 4:
+            #     continue
+            new_onehot[:, position, :] = new_nuc
+            yield (position, new_nuc, new_onehot)
 
-def compute_ISM(model, seq_onehot, num_classes, seq_len=640, mutated_seq_len=640):
-    NUM_CLASSES = num_classes
-    arrr_A = np.zeros((NUM_CLASSES, mutated_seq_len))
-    arrr_C = np.zeros((NUM_CLASSES, mutated_seq_len))
-    arrr_G = np.zeros((NUM_CLASSES, mutated_seq_len))
-    arrr_T = np.zeros((NUM_CLASSES, mutated_seq_len))
-
-    model.eval()
-   
-    seq_start = seq_len//2-(mutated_seq_len//2)
-    seq_end = seq_len//2+(mutated_seq_len//2)
+def calc_ism_fast(model, seq_onehot, x_ct):
     with torch.no_grad():
-        real_score = predict_mutated(model, seq_onehot)
+        model.eval()
+        # First do all mutations
+        DEVICE = seq_onehot.device
+        SEQLEN = seq_onehot.shape[1]
+        BATCH_SIZE = seq_onehot.shape[0]
+        N_MUT = ((SEQLEN * seq_onehot.shape[2]) )#- SEQLEN)
+    
+        positions = torch.zeros(N_MUT, device = "cpu")
+        nucs = torch.zeros( (N_MUT, seq_onehot.shape[2]), device = "cpu")
+        mut_onehots = torch.zeros((N_MUT, seq_onehot.shape[0], seq_onehot.shape[1], seq_onehot.shape[2]), device = DEVICE)
+       
+        for i, (position, nuc, mut_onehot) in enumerate(saturation_mutagenesis(seq_onehot)):
+            positions[i] = position
+            nucs[i] = nuc.cpu()
+            mut_onehots[i] = mut_onehot
+        # calculate delta prediction for all mutiations
+        
+        original_prediction_score = model(seq_onehot, x_ct)[0]
 
-        for i, mutloc in tqdm(enumerate(range(seq_start, seq_end))):
-            new_X = np.copy(seq_onehot)
-            if new_X[mutloc, :][0] == 0:
-                new_X[mutloc, :] = np.array([1, 0, 0, 0], dtype='int8')
-                prediction_mutated = predict_mutated(model, new_X)
-                arrr_A[:, i] = (prediction_mutated - real_score)
-
-            if new_X[mutloc, :][1] == 0:
-                new_X[mutloc, :] = np.array([0, 1, 0, 0], dtype='int8')
-                prediction_mutated = predict_mutated(model, new_X)
-                arrr_C[:, i] = (prediction_mutated - real_score)
-
-            if new_X[mutloc, :][2] == 0:
-                new_X[mutloc, :] = np.array([0, 0, 1, 0], dtype='int8')
-                prediction_mutated = predict_mutated(model, new_X)
-                arrr_G[:, i] = (prediction_mutated - real_score)
-
-            if new_X[mutloc, :][3] == 0:
-                new_X[mutloc, :] = np.array([0, 0, 0, 1], dtype='int8')
-                prediction_mutated = predict_mutated(model, new_X)
-                arrr_T[:, i] = (prediction_mutated - real_score)
-        arrr = np.dstack((arrr_A, arrr_C, arrr_G, arrr_T))
+        mut_prediction_score = model(mut_onehots.flatten(0, 1), x_ct)[0]
+        mut_prediction_score = mut_prediction_score.reshape((-1,) + original_prediction_score.shape)
+        
+        # print(original_prediction_score.shape)
+        # print(mut_prediction_score.shape)
+        delta_prediction_score = mut_prediction_score - original_prediction_score[None,:,:]
+        delta_prediction_score = delta_prediction_score.cpu().detach().numpy()
+        # pull apart long array into array for each nucleotide
+        NUM_CLASSES = delta_prediction_score.shape[-1]
+        A = np.array([1, 0, 0, 0], dtype = float)
+        C = np.array([0, 1, 0, 0], dtype = float)
+        G = np.array([0, 0, 1, 0], dtype = float)
+        T = np.array([0, 0, 0, 1], dtype = float)
+        arrr_a = np.zeros((BATCH_SIZE, NUM_CLASSES, SEQLEN))
+        arrr_c = np.zeros((BATCH_SIZE, NUM_CLASSES, SEQLEN))
+        arrr_g = np.zeros((BATCH_SIZE, NUM_CLASSES, SEQLEN))
+        arrr_t = np.zeros((BATCH_SIZE, NUM_CLASSES, SEQLEN))
+        # seq_onehot_cp = seq_onehot.clone().cpu().detach().numpy()
+        nucs = nucs.cpu().detach().numpy()
+        for i in range(SEQLEN):
+            # get delta for modified nucleotides (3 others)
+            for j in range(4):
+                modified_nuc = nucs[i * 4 + j]
+                # if np.all(modified_nuc == seq_onehot_cp[:, i, :]):
+                #     raise ValueError("Something went wrong ... ")
+                delta_prediction = delta_prediction_score[i * 4 + j]
+                # print(delta_prediction.shape)
+                # print(modified_nuc)
+                if all(modified_nuc == A):
+                    arrr_a[:, :, i] = delta_prediction
+                elif all(modified_nuc == C):
+                    arrr_c[:, :, i] = delta_prediction
+                elif all(modified_nuc == G):
+                    arrr_g[:, :, i] = delta_prediction
+                elif all(modified_nuc == T):
+                    arrr_t[:, :, i] = delta_prediction
+        # print(arrr_t.shape)
+    arrr = np.stack((arrr_a, arrr_c, arrr_g, arrr_t), axis=3)
+    idxs = np.where(seq_onehot.to('cpu')==1)
+    arrr[idxs[0], :, idxs[1], idxs[2]]=0
     return arrr
     # return -np.mean(arrr, axis=-1)[TF,:,None]
 
