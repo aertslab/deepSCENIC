@@ -471,11 +471,6 @@ class deepSCENIC:
         # Initialize TF2rNet model
         model_dict_tf2rNet = torch.load(tf2r_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         model_dict_tf2r_func_enc = torch.load(tf2r_func_enc_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
-        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
-        tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
-        tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-        tf2rNet.load_state_dict(model_dict_tf2rNet)
-        tf2rNet_func_encoder.eval()
 
         # Load pretrained VAE model
         vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
@@ -483,8 +478,13 @@ class deepSCENIC:
 
         with torch.no_grad():
             vae.eval()
-            tf2rNet.eval()
             if adj_E1 is None:
+                tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
+                tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
+                tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+                tf2rNet.load_state_dict(model_dict_tf2rNet)
+                tf2rNet_func_encoder.eval()
+                tf2rNet.eval()
                 # TF2rNet forward pass
                 tf_pred_l = []
                 for j, (X, _) in tqdm(enumerate(seq_dataloader, 0), total=len(seq_dataloader)):
