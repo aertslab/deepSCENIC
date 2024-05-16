@@ -285,10 +285,7 @@ class VAE(nn.Module):
         loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type=self.opt.loss_rna) * self.opt.rna_tau
         loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=self.opt.loss_atac) * self.opt.atac_tau
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
-        
-        with torch.no_grad():
-            rna_pos_loss = torch.nan_to_num(out_gen_rna['x_rec'][out_gen_rna['x_rec']<0].mean().abs(), 0)
 
         E2_sparse_loss = (self.adj_E2.abs() * self.r2g_dist.values()).mean() * self.opt.gamma
 
-        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, rna_pos_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
+        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()

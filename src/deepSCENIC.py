@@ -719,7 +719,7 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _, _,  _, _, _, _, _, f1_atac = vae(
+                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
                     dropout_mask_rna=self.opt.dropout_loss,
@@ -756,7 +756,7 @@ class deepSCENIC:
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                    loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _, _,  _, _, _, _, _, f1_atac = vae(
+                    loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                         inputs_rna,
                         inputs_atac,
                         dropout_mask_rna=self.opt.dropout_loss,
@@ -869,10 +869,10 @@ class deepSCENIC:
                 for param in tf2rNet_func_encoder.parameters():
                     param.requires_grad = True
             
+            loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l,E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l = [], [], [], [], [], [], [], []
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
-                n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
 
                 # TF2rNet forward pass
                 adj_E1 = adj_E1_old.clone()
@@ -898,7 +898,7 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, rna_pos_loss, _,  _, _, _, _, _, f1_atac = vae(
+                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
                     dropout_mask_rna=self.opt.dropout_loss,
@@ -925,18 +925,28 @@ class deepSCENIC:
                 loss.backward()
                 optimizer.step()
                 # Reset optimizers
-                optimizer.zero_grad(True)                     
+                optimizer.zero_grad(True)         
 
-                # Tensorboard logs
-                writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
-                writer.add_scalar('Loss/rec_rna', loss_rec_rna.detach().item(), n_iter)
-                writer.add_scalar('Loss/rec_atac', loss_rec_atac.detach().item(), n_iter)
-                writer.add_scalar('Loss/rna_pos', rna_pos_loss.detach().item(), n_iter)
-                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.detach().item(), n_iter)
-                writer.add_scalar('Loss/l1_E1', E1_sparse.detach().item(), n_iter)
-                writer.add_scalar('Loss/l1_E2', E2_sparse.detach().item(), n_iter)
-                writer.add_scalar('Loss/cos_loss', cos_loss.detach().item(), n_iter)
-                writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
+                loss_l.append(loss.detach().item())
+                loss_rec_rna_l.append(loss_rec_rna.detach().item())
+                loss_rec_atac_l.append(loss_rec_atac.detach().item())
+                loss_gauss_rna_l.append(loss_gauss_rna.detach().item())
+                E1_sparse_l.append(E1_sparse.detach().item())
+                E2_sparse_l.append(E2_sparse.detach().item())
+                cos_loss_l.append(cos_loss.detach().item())
+                f1_score_l.append(f1_atac.detach().item())            
+
+            # Tensorboard logs
+            writer.add_scalar('Loss/total', np.mean(loss_l), epoch)
+            writer.add_scalar('Loss/rec_rna', np.mean(loss_rec_rna_l), epoch)
+            writer.add_scalar('Loss/rec_atac', np.mean(loss_rec_atac_l), epoch)
+            writer.add_scalar('Loss/kl_rna', np.mean(loss_gauss_rna_l), epoch)
+            writer.add_scalar('Loss/l1_E1', np.mean(E1_sparse_l), epoch)
+            writer.add_scalar('Loss/l1_E2', np.mean(E2_sparse_l), epoch)
+            writer.add_scalar('Loss/cos_loss', np.mean(cos_loss_l), epoch)
+            writer.add_scalar('Loss/f1_atac', np.mean(f1_score_l), epoch)
+
+            del loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l, E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l
 
             # Save model
             torch.save({

@@ -293,13 +293,10 @@ def calc_ism_fast(model, seq_onehot, x_ct):
             mut_onehots[i] = mut_onehot
         # calculate delta prediction for all mutiations
         
-        original_prediction_score = model(seq_onehot, x_ct)[0]
+        original_prediction_score = model(seq_onehot, x_ct)
 
-        mut_prediction_score = model(mut_onehots.flatten(0, 1), x_ct)[0]
+        mut_prediction_score = model(mut_onehots.flatten(0, 1), x_ct)
         mut_prediction_score = mut_prediction_score.reshape((-1,) + original_prediction_score.shape)
-        
-        # print(original_prediction_score.shape)
-        # print(mut_prediction_score.shape)
         delta_prediction_score = mut_prediction_score - original_prediction_score[None,:,:]
         delta_prediction_score = delta_prediction_score.cpu().detach().numpy()
         # pull apart long array into array for each nucleotide
@@ -321,8 +318,6 @@ def calc_ism_fast(model, seq_onehot, x_ct):
                 # if np.all(modified_nuc == seq_onehot_cp[:, i, :]):
                 #     raise ValueError("Something went wrong ... ")
                 delta_prediction = delta_prediction_score[i * 4 + j]
-                # print(delta_prediction.shape)
-                # print(modified_nuc)
                 if all(modified_nuc == A):
                     arrr_a[:, :, i] = delta_prediction
                 elif all(modified_nuc == C):
