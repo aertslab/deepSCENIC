@@ -689,7 +689,7 @@ class deepSCENIC:
         
         # Initialize optimizers
         optimizer = optim.Adam([{'params': vae.adj_E2, 'lr':self.opt.lr}])
-        scheduler = lr_scheduler.CosineAnnealingLR(T_max=self.opt.n_epochs, optimizer=optimizer, eta_min=1e-6, verbose=True)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=self.opt.lr_patience, verbose=True)
 
         # Training
         adj_E1 = None
@@ -699,6 +699,7 @@ class deepSCENIC:
             tf2rNet.eval()
             tf2rNet_func_encoder.eval()
 
+            loss_l, loss_rna_l, loss_atac_l, loss_gauss_rna_l, E2_sparse_l, f1_l = [], [], [], [], [], []
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
@@ -735,15 +736,21 @@ class deepSCENIC:
                 optimizer.zero_grad(True)
                 
                 # Tensorboard logs
-                n_iter = (epoch*len(train_dataloader['dataloader'])) + i 
-                writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
-                writer.add_scalar('Loss/rec_rna', loss_rec_rna.item(), n_iter)
-                writer.add_scalar('Loss/rec_atac', loss_rec_atac.item(), n_iter)
-                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.item(), n_iter)
-                writer.add_scalar('Loss/l1_E2', E2_sparse.detach().item(), n_iter)
-                writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
+                loss_l.append(loss.detach().item())
+                loss_rna_l.append(loss_rec_rna.detach().item())
+                loss_atac_l.append(loss_rec_atac.detach().item())
+                loss_gauss_rna_l.append(loss_gauss_rna.detach().item())
+                E2_sparse_l.append(E2_sparse.detach().item())
+                f1_l.append(f1_atac.detach().item())
+
+            writer.add_scalar('Loss/total', np.mean(loss_l), epoch)
+            writer.add_scalar('Loss/rec_rna', np.mean(loss_rna_l), epoch)
+            writer.add_scalar('Loss/rec_atac', np.mean(loss_atac_l), epoch)
+            writer.add_scalar('Loss/kl_rna', np.mean(loss_gauss_rna_l), epoch)
+            writer.add_scalar('Loss/l1_E2', np.mean(E2_sparse_l), epoch)
+            writer.add_scalar('Loss/f1_atac', np.mean(f1_l), epoch)
             print('epoch:', epoch)
-            scheduler.step()
+            scheduler.step(np.mean(loss_l))
 
             with torch.no_grad():
                 vae.eval()
@@ -770,10 +777,10 @@ class deepSCENIC:
                     loss_rna_l.append(loss_rec_rna.detach().item())
                     E2_sparse_l.append(E2_sparse.detach().item())
                     
-                    # Tensorboard logs
-                    writer.add_scalar('Test/loss_total', np.mean(loss_l), epoch)
-                    writer.add_scalar('Test/rec_rna', np.mean(loss_rna_l), epoch)
-                    writer.add_scalar('Test/l1_E2', np.mean(E2_sparse_l), epoch)
+                # Tensorboard logs
+                writer.add_scalar('Test/loss_total', np.mean(loss_l), epoch)
+                writer.add_scalar('Test/rec_rna', np.mean(loss_rna_l), epoch)
+                writer.add_scalar('Test/l1_E2', np.mean(E2_sparse_l), epoch)
                 if np.mean(loss_l) <= best_loss:
                     best_loss = np.mean(loss_l)
                     # Save tf2r matrix
@@ -829,13 +836,12 @@ class deepSCENIC:
         #         print("loaded optimizer state")
 
         # Initialize early stopping
-        early_stopping = EarlyStopping(patience=self.opt.early_stopping_patience)
         adj_E1 = None
         adj_E1_test = None
         adj_E1_old = None
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
-        scheduler = lr_scheduler.CosineAnnealingLR(T_max=self.opt.n_epochs, optimizer=optimizer, eta_min=1e-6, verbose=True)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=self.opt.lr_patience, verbose=True)
         cos_sim_train = torch.zeros((4,)).to(self.opt.device)
         cos_sim_test = torch.zeros((4,)).to(self.opt.device)
         for epoch in range(self.opt.n_epochs):
@@ -1040,7 +1046,7 @@ class deepSCENIC:
                 writer.add_scalar('Test/l1_A', np.mean(loss_sparse), epoch)
                 writer.add_scalar('Test/f1_atac', np.mean(f1_score), epoch)
 
-                # scheduler.step()
+                scheduler.step(np.mean(rec_atac))
                 # if epoch >= self.opt.warmup_vae:
                 #     early_stopping(sparse_loss)
                 del loss, f1_score, loss_all, rec_atac, loss_kl_rna, loss_sparse, loss_rec_rna, loss_rec_atac, loss_gauss_rna, sparse_loss, adj_E1_test, rec_rna
