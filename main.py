@@ -40,6 +40,9 @@ parser.add_argument('--use_best', default=False, action='store_true', help='Weat
 parser.add_argument('--device', type=str, default='cuda')
 parser.add_argument('--loss_rna', type=str, default='mae')
 parser.add_argument('--loss_atac', type=str, default='cos', help='TF2rNet loss function (mse: mean squared error; mae: mean absolute error; cos: cosine similarity).')
+parser.add_argument('--batch_key', type=str, default=None, help='The key of batch in h5ad file.')
+parser.add_argument('--ann_key', type=str, default=None, help='The key of cell type annotations in h5ad file used for balanced training.')
+parser.add_argument('--balance_class', default=False, action='store_true', help='Weather to balance classes during training.')
 opt = parser.parse_args()
 
 

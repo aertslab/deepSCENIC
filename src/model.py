@@ -204,6 +204,14 @@ class VAE(nn.Module):
         self.device = opt.device
         self.opt = opt
 
+        if opt.batch_key is not None:
+            self.batch_layer_atac = nn.Sequential(nn.Linear(opt.batch_id_dim + self.n_region, 128),
+                                                  nonLinear,
+                                                  nn.Linear(128, self.n_region))
+            self.batch_layer_rna = nn.Sequential(nn.Linear(opt.batch_id_dim + self.n_gene, 128),
+                                                  nonLinear,
+                                                  nn.Linear(128, self.n_gene))
+
         # Layers initilization
         for m in self.modules():
             if type(m) == nn.Linear or type(m) == nn.Conv2d or type(m) == nn.ConvTranspose2d:
@@ -211,7 +219,7 @@ class VAE(nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)
 
-    def predict(self, x_rna, adj_E1=None, adj_E2=None):
+    def predict(self, x_rna, inputs_batch=None, adj_E1=None, adj_E2=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
@@ -219,17 +227,25 @@ class VAE(nn.Module):
             enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
         else:
             enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
-        out_gen_atac = self.generative_atac(enh_act)
+
         if adj_E2 is not None:
             if len(adj_E2.shape)<2:
                 E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), adj_E2.abs(), self.r2g_dist.shape).to_dense()
             else:
                 E2 = adj_E2
             z_rna = torch.matmul(enh_act, E2)
+            # if self.opt.batch_key is not None:
+            #     z_rna_batch = self.batch_layer_rna(torch.cat((inputs_batch, z_rna), dim=1))
+            #     z_rna = z_rna + z_rna_batch
             out_gen_rna = self.generative_rna(z_rna)
         else:
             z_rna = None
             out_gen_rna = None
+
+        # if self.opt.batch_key is not None:
+        #     enh_act_batch = self.batch_layer_atac(torch.cat((inputs_batch, enh_act), dim=1))
+        #     enh_act = enh_act + enh_act_batch
+        out_gen_atac = self.generative_atac(enh_act)
         return out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna
     
     def pretrain(self, x_rna_tfs, x_atac, adj_E1=None, idxs=None):
@@ -257,17 +273,26 @@ class VAE(nn.Module):
             return loss,  loss_rec_atac.detach(), loss_gauss_rna.detach(), f1_atac.detach()
 
 
-    def forward(self, x_rna, x_atac, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None):
+    def forward(self, x_rna, x_atac, inputs_batch=None, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None):
         x_rna_tfs = x_rna[:, self.TFs_idx]
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
+        
         if self.opt.train==True:
             enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
         else:
             enh_act = torch.matmul(out_inf_rna['mean'], adj_E1.T)
         # enh_act[enh_act<0] = 0
         z_rna = torch.matmul(enh_act, E2)
+
+        if self.opt.batch_key is not None:
+            enh_act_batch = self.batch_layer_atac(torch.cat((inputs_batch, enh_act), dim=1))
+            enh_act = enh_act + enh_act_batch
+            z_rna_batch = self.batch_layer_rna(torch.cat((inputs_batch, z_rna), dim=1))
+            z_rna = z_rna + z_rna_batch
+
+        # Decode RNA and ATAC
         out_gen_rna = self.generative_rna(z_rna)
         out_gen_atac = self.generative_atac(enh_act)    
 

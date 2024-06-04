@@ -7,6 +7,7 @@ import h5py
 import numpy as np
 import pandas as pd
 import scanpy as sc
+from sklearn.utils import compute_class_weight
 
 import torch
 import torch.nn.functional as F
@@ -14,7 +15,7 @@ import torch.optim as optim
 from scipy.sparse import load_npz
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.data.dataset import Dataset, TensorDataset
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
@@ -92,6 +93,11 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
         data_atac: scATAC-seq data
         opt: model hyperparams
     """
+    # Get batch info
+    if opt.batch_key is not None:
+        batch_ids = sc.read(opt.data_rna_file).obs.loc[:, opt.batch_key].unique()
+        batch_id_d = dict(zip(batch_ids, torch.tensor(pd.get_dummies(batch_ids).values).float()))
+
     rna_gene_name = list(data_rna.var_names)
     atac_region_name = list(data_atac.var_names)
 
@@ -110,9 +116,28 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
 
     feat_rna = torch.FloatTensor(data_rna.X)
     feat_atac = torch.FloatTensor(data_atac.X) 
-    data = TensorDataset(feat_rna, feat_atac, torch.LongTensor(list(range(len(feat_rna)))))
+    if opt.batch_key is not None:
+        batch_id = torch.FloatTensor(np.vstack(data_rna.obs.loc[:, opt.batch_key].map(batch_id_d).values))
+        data = TensorDataset(feat_rna, feat_atac, batch_id, torch.LongTensor(list(range(len(feat_rna)))))
+        opt.batch_id_dim = batch_id.shape[1]
+    else:
+        data = TensorDataset(feat_rna, feat_atac, torch.LongTensor(list(range(len(feat_rna)))))
 
-    dataloader = DataLoader(data, batch_size=batch_size, shuffle=opt.train, num_workers=0)
+    if opt.train==True:
+        if opt.balance_class==True:
+            class_weight = compute_class_weight('balanced', classes=np.unique(data_rna.obs[opt.ann_key]), y=data_rna.obs[opt.ann_key].values)
+            class_weight_d = dict(zip(np.unique(data_rna.obs[opt.ann_key]), class_weight))
+            samples_weight = data_rna.obs[opt.ann_key].map(class_weight_d).values   
+            sampler = WeightedRandomSampler(samples_weight, len(samples_weight))
+            shuffle = False
+        else:
+            sampler = None
+            shuffle = True
+    else:
+        sampler = None
+        shuffle = False
+
+    dataloader = DataLoader(data, batch_size=batch_size, shuffle=shuffle, num_workers=0, sampler=sampler)
 
     return {'dataloader': dataloader, 'num_genes_rna': num_genes_rna, 'num_regions_atac': num_regions_atac, 'data_rna': data_rna, 'data_atac': data_atac, 'rna_gene_name': rna_gene_name, 'atac_region_name':atac_region_name}
 
@@ -603,7 +628,12 @@ class deepSCENIC:
             dec_atac_l = []
             for _, data_batch in tqdm(enumerate(dataloader['dataloader'], 0), unit="batch", total=len(dataloader['dataloader'])):
                 # VAE forward pass
-                inputs_rna, inputs_atac, _ = data_batch
+                if self.opt.batch_key is not None:
+                    inputs_rna, inputs_atac, inputs_batch, _ = data_batch
+                    inputs_batch = Variable(inputs_batch.type(Tensor))
+                else:
+                    inputs_rna, inputs_atac, _ = data_batch
+                    inputs_batch = None
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
@@ -716,13 +746,19 @@ class deepSCENIC:
                     del tf_pred_l, tf_pred
 
                 # VAE forward pass
-                inputs_rna, inputs_atac, _ = data_batch
+                if self.opt.batch_key is not None:
+                    inputs_rna, inputs_atac, inputs_batch, _ = data_batch
+                    inputs_batch = Variable(inputs_batch.type(Tensor))
+                else:
+                    inputs_rna, inputs_atac, _ = data_batch
+                    inputs_batch = None
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
                 loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
+                    inputs_batch=inputs_batch,
                     dropout_mask_rna=self.opt.dropout_loss,
                     dropout_mask_atac=self.opt.dropout_loss,
                     adj_E1=adj_E1)
@@ -759,13 +795,20 @@ class deepSCENIC:
                     torch.backends.cudnn.enabled = True
                     torch.backends.cudnn.benchmark = True
                     # VAE forward pass
-                    inputs_rna, inputs_atac, _ = data_batch
+                    if self.opt.batch_key is not None:
+                        inputs_rna, inputs_atac, inputs_batch, _ = data_batch
+                        inputs_batch = Variable(inputs_batch.type(Tensor))
+                    else:
+                        inputs_rna, inputs_atac, _ = data_batch
+                        inputs_batch = None
+
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
                     loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                         inputs_rna,
                         inputs_atac,
+                        inputs_batch=inputs_batch,
                         dropout_mask_rna=self.opt.dropout_loss,
                         dropout_mask_atac=self.opt.dropout_loss,
                         adj_E1=adj_E1)
@@ -900,13 +943,19 @@ class deepSCENIC:
                     del tf_pred #, seq_data_batch_idx #, adj_E1_old
 
                 # VAE forward pass
-                inputs_rna, inputs_atac, _ = data_batch
+                if self.opt.batch_key is not None:
+                    inputs_rna, inputs_atac, inputs_batch, _ = data_batch
+                    inputs_batch = Variable(inputs_batch.type(Tensor))
+                else:
+                    inputs_rna, inputs_atac, _ = data_batch
+                    inputs_batch = None
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
                 loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
+                    inputs_batch=inputs_batch,
                     dropout_mask_rna=self.opt.dropout_loss,
                     dropout_mask_atac=self.opt.dropout_loss, 
                     adj_E1=adj_E1,
@@ -987,14 +1036,19 @@ class deepSCENIC:
                 
                 loss_all, f1_score, rec_rna, rec_atac, loss_kl_rna, loss_sparse = [], [], [], [], [], []
                 for i, data_batch in tqdm(enumerate(test_dataloader['dataloader'], 0), unit="batch", total=len(test_dataloader['dataloader'])):
-                    inputs_rna, inputs_atac, _  = data_batch
+                    if self.opt.batch_key is not None:
+                        inputs_rna, inputs_atac, inputs_batch, _ = data_batch
+                        inputs_batch = Variable(inputs_batch.type(Tensor))
+                    else:
+                        inputs_rna, inputs_atac, _ = data_batch
+                        inputs_batch = None
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
                     _, out_gen_atac, out_inf_rna, _, _= vae.predict(
-                       inputs_rna, adj_E1=adj_E1_test)
+                       inputs_rna, inputs_batch=inputs_batch, adj_E1=adj_E1_test)
                     out_gen_rna, _, _, _, _= vae.predict(
-                       inputs_rna, adj_E1=adj_E1, adj_E2=vae.adj_E2)
+                       inputs_rna, inputs_batch=inputs_batch, adj_E1=adj_E1, adj_E2=vae.adj_E2)
                
                     if self.opt.bin_acc==True:
                         f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)
