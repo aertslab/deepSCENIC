@@ -80,7 +80,14 @@ def build_seq_dataloader(opt, ad=None):
      
     data = TensorDatasetWithIndex(ds)
     dataloader =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=False, num_workers=0)
-    dataloader_shuffle =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=True, num_workers=0)
+    if opt.balance_dars==True:
+        region_weights = sc.read(opt.data_atac_file).var.dar + 1
+        region_weights = region_weights.loc[ad.var_names].values
+        sampler = WeightedRandomSampler(region_weights, len(region_weights))
+
+        dataloader_shuffle = DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=False, num_workers=0, sampler=sampler)
+    else:
+        dataloader_shuffle =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=True, num_workers=0)
 
     return dataloader, dataloader_shuffle
  
@@ -700,8 +707,14 @@ class deepSCENIC:
         print("Best training epoch: ", torch.load(vae_model_path)['epoch'])
         if 'adj_E2' in state_dict:
             del state_dict['adj_E2']
+        if 'batch_layer_rna' in state_dict:
+            del state_dict['batch_layer_rna']            
         vae.load_state_dict(state_dict, strict=False)
         vae.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=self.opt.device, requires_grad=True) + vae.eps)
+        if self.opt.batch_key is not None:
+            vae.batch_layer_rna = nn.Sequential(nn.Linear(self.opt.batch_id_dim + self.n_genes, 128),
+                                                    nn.Tanh(),
+                                                    nn.Linear(128, self.n_genes))
         print("loaded weights for vae")
         
         # Freeze layers of vae
@@ -872,11 +885,11 @@ class deepSCENIC:
 
         # Initialize optimizers
         optimizer = optim.Adam([{'params':vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-        # if self.opt.load_model is not None:
-        #     state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
-        #     if 'optimizer_state_dict' in state_dict:
-        #         optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-        #         print("loaded optimizer state")
+        if self.opt.load_model is not None:
+            state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
+            if 'optimizer_state_dict' in state_dict:
+                optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+                print("loaded optimizer state")
 
         # Initialize early stopping
         adj_E1 = None
