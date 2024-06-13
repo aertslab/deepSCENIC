@@ -800,6 +800,7 @@ class deepSCENIC:
             writer.add_scalar('Loss/f1_atac', np.mean(f1_l), epoch)
             print('epoch:', epoch)
             scheduler.step(np.mean(loss_l))
+            print('Updating lr to: ', scheduler.get_last_lr())
 
             with torch.no_grad():
                 vae.eval()
@@ -1114,6 +1115,7 @@ class deepSCENIC:
                 writer.add_scalar('Test/f1_atac', np.mean(f1_score), epoch)
 
                 scheduler.step(np.mean(rec_atac))
+                print('Updating lr to: ', scheduler.get_last_lr())
                 # if epoch >= self.opt.warmup_vae:
                 #     early_stopping(sparse_loss)
                 del loss, f1_score, loss_all, rec_atac, loss_kl_rna, loss_sparse, loss_rec_rna, loss_rec_atac, loss_gauss_rna, sparse_loss, adj_E1_test, rec_rna
