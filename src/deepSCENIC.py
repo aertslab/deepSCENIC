@@ -455,7 +455,7 @@ class deepSCENIC:
                     writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
                     writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
     
-    def simulate_perturbation(self, vae, perturbation={}, n_iter=5, original_matrix=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None, eps=1e-8):
+    def simulate_perturbation(self, vae, perturbation={}, clip_val=99.9, n_iter=5, original_matrix=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None, eps=1e-8):
         """ Function for simulating TF perturbations.
             
             Params
@@ -473,105 +473,57 @@ class deepSCENIC:
             fc_lower_bound: Lower bound for fold change values. Default is 0.01 percentile.
         """
 
-        def _do_one_round_of_simulation(vae, perturbed_mtx, adj_E1, adj_E2, opt):
-            data = TensorDataset(torch.FloatTensor(perturbed_mtx.values))
-            dataloader = DataLoader(data, batch_size=opt.batch_size, shuffle=False, num_workers=0)
-
-            z_rna_l = []
-            with torch.no_grad():
-                vae.eval();
-                for batch in dataloader:
-                    perturbed_batch = batch[0]
-                    _, _, _, _, z_rna = vae.predict(perturbed_batch.to(opt.device), adj_E1=adj_E1, adj_E2=adj_E2)
-                    z_rna_l += [z_rna.cpu().numpy()]
-
-
-            z_rna_l = np.vstack(z_rna_l)
-            return pd.DataFrame(z_rna_l, index=perturbed_mtx.index, columns=perturbed_mtx.columns)
-
         ### Initialize dataloaders
         self.opt.train = False
-        # _, TFs_idx, r2g_dist_coo, seq_dataloader, _ = self.init_data()
-
-        # Initialize TF2rNet model
-        # model_dict_tf2rNet = torch.load(tf2r_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
-        # model_dict_tf2r_func_enc = torch.load(tf2r_func_enc_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
-
-        # Load pretrained VAE model
-        # vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
-        # vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
-
         with torch.no_grad():
             vae.eval()
-            # if adj_E1 is None:
-            #     tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
-            #     tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
-            #     tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
-            #     tf2rNet.load_state_dict(model_dict_tf2rNet)
-            #     tf2rNet_func_encoder.eval()
-            #     tf2rNet.eval()
-            #     # TF2rNet forward pass
-            #     tf_pred_l = []
-            #     for j, (X, _) in tqdm(enumerate(seq_dataloader, 0), total=len(seq_dataloader)):
-            #         tf_pred = tf2rNet_func_encoder(X[0].to(self.opt.device))
-            #         tf_pred = tf2rNet(emb=tf_pred)
-            #         tf_pred_l.append(tf_pred)
-            #     adj_E1 = torch.cat(tf_pred_l)
-            # else:
-            # adj_E1=adj_E1.to(self.opt.device)
             
             if keep_intermediate:
                 perturbation_over_iter = {}
                 fcs = {}
-            #Reads original gene expression matrix
-            # if ad is None:
-            #     ad = sc.read(self.opt.data_rna_file)
-            # ad.X = ad.layers['log_norm']
-            # # sc.pp.neighbors(ad, n_neighbors=n_neighs)
-            # # conn_matrix = ad.obsp['connectivities']
-            # original_matrix = ad.to_df().copy()
-            # # original_matrix.loc[:,:] = ad.X
-            # # Normalize data
-            # original_matrix = original_matrix / original_matrix.std(0)
-            # original_matrix['ct'] = ad.obs.subclass_Bakken_2022
-            # original_matrix = original_matrix.groupby('ct').mean()
+            # Initialize perturbed matrix                
             perturbed_matrix = original_matrix.copy()
-            #do several iterations of perturbation
-            # perturbed_pred_matrix_t_1 = generate_metacells(perturbed_pred_matrix_t_1, conn_matrix)
 
-            # knock down TFs
-            if len(perturbation.keys())>0:
-                for gene in perturbation.keys():
-                    perturbed_matrix.loc[:, gene] = perturbation[gene]
-            # if adj_E1_pert is not None:
-            #     adj_E1 = adj_E1_pert
-            if keep_intermediate:
-                 # Save original matrix
-                 perturbation_over_iter['0'] = original_matrix.copy()
-                 # Save predictions of unperturbed matrix
-            for i in tqdm(range(n_iter)):
+            # Perform rounds of perturbation
+            original_matrix_t = torch.tensor(original_matrix.values).to(torch.float).to(self.opt.device)
+            original_matrix_t = original_matrix_t[:, vae.TFs_idx]
+
+            z_tf_orig = vae.inference_rna(original_matrix_t.view(original_matrix_t.size(0), -1, 1))['mean'].to(torch.float)                
+            Wrna = adj_E1 @ adj_E2
+            Wrna_ct = z_tf_orig @ Wrna
+
+            if adj_E1_pert is not None:
+                Wrna_pert = adj_E1_pert @ adj_E2
+            else:
+                Wrna_pert = adj_E1 @ adj_E2
+
+            orig_mtx_p99 = np.percentile(original_matrix, clip_val)
+            for i in tqdm(range(n_iter)):          
                 if len(perturbation.keys())>0:
                     for gene in perturbation.keys():
                         perturbed_matrix.loc[:, gene] = perturbation[gene]
 
-                # Save predictions of perturbed matrix
-                Wrna = adj_E1 @ adj_E2
-                Wrna_pert = adj_E1_pert @ adj_E2
-                fc = (Wrna_pert - Wrna).sum(0)
-                # fc = torch.pow(2, fc)
-                # fc = torch.clamp(fc, 4, 4)
-                fc = torch.tensor(perturbed_matrix.values).to(self.opt.device) * fc[None, :]
-                fc = vae.generative_rna(fc.to(float))
-                perturbed_matrix = perturbed_matrix +  fc['x_rec'].cpu().numpy()# Apply fold change compute new expression matrix
-                # perturbed_matrix = np.clip(perturbed_matrix, 0, 4)
+                perturbed_matrix_t = torch.tensor(perturbed_matrix.values).to(torch.float).to(self.opt.device)
+                perturbed_matrix_t = perturbed_matrix_t[:, vae.TFs_idx]                      
+                z_tf_perturbed = vae.inference_rna(perturbed_matrix_t.view(perturbed_matrix_t.size(0), -1, 1))['mean'].to(torch.float)
+                Wrna_pert_ct = z_tf_perturbed @ Wrna_pert
+
+                logFC = (Wrna_pert_ct - Wrna_ct)
+                logFC = vae.generative_rna(logFC.to(torch.float))
+                logFC = logFC['x_rec']
+                # logFC = torch.clamp(logFC, -clip_val, clip_val)
+                perturbed_matrix = original_matrix * torch.exp(logFC).cpu().numpy() # Apply fold change compute new expression matrix
+                mask = perturbed_matrix!=original_matrix
+                perturbed_matrix[mask] = np.clip(perturbed_matrix[mask], 0, orig_mtx_p99)
 
                 if keep_intermediate:
                     perturbation_over_iter[str(i + 2)] = perturbed_matrix
-                    fcs[str(i+2)] = fc
+                    fcs[str(i+2)] = logFC.cpu().numpy()
             if keep_intermediate:
                 return  perturbation_over_iter, fcs
             else:
-                return perturbed_matrix, fc
+                # return z_tf_perturbed, Wrna_pert
+                return perturbed_matrix, logFC.cpu().numpy()
 
     def to_latent(self, adj_E1, adj_E2):
         """ Function for saving model embeddings.
