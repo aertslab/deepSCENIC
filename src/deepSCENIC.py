@@ -512,7 +512,7 @@ class deepSCENIC:
                 logFC = vae.generative_rna(logFC.to(torch.float))
                 logFC = logFC['x_rec']
                 # logFC = torch.clamp(logFC, -clip_val, clip_val)
-                perturbed_matrix = original_matrix * torch.exp(logFC).cpu().numpy() # Apply fold change compute new expression matrix
+                perturbed_matrix = original_matrix + logFC.cpu().numpy() # Apply fold change compute new expression matrix
                 mask = perturbed_matrix!=original_matrix
                 perturbed_matrix[mask] = np.clip(perturbed_matrix[mask], 0, orig_mtx_p99)
 
