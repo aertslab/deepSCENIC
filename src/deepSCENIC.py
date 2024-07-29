@@ -610,6 +610,90 @@ class deepSCENIC:
             np.save(self.opt.save_name + 'y_rna.npy', dec_rna_l)
             np.save(self.opt.save_name + 'y_atac.npy', dec_atac_l)
 
+    def to_latent_h5(self, adj_E1, adj_E2):
+        """ Function for saving model embeddings.
+            
+            Params
+            ------
+            vae_model_path: VAE saved model path
+            tf2r_model_path: TF2rNet saved model path
+            tf2r_func_enc_model_path: TF2rNet functional encoder saved model path. If None, TF2rNet will be used without functional encoder.
+        """
+        if self.opt.device == 'cuda':
+            Tensor = torch.cuda.FloatTensor
+        elif self.opt.device == 'cpu':
+            Tensor = torch.FloatTensor
+
+        ### Initialize dataloaders
+        self.opt.train = False
+        dataloader, TFs_idx, r2g_dist_coo, _, _ = self.init_data()
+
+        if self.opt.use_best:
+            model_dict_tf2r_func_enc_path = self.opt.save_name + 'best_model_tf2r_encoder.pth'
+            model_dict_tf2r_path = self.opt.save_name + 'best_model_tf2r.pth'
+            vae_model_path = self.opt.save_name + 'best_model.pth'
+        else:
+            model_dict_tf2r_func_enc_path = self.opt.save_name + 'model_tf2r_encoder.pth'
+            model_dict_tf2r_path = self.opt.save_name + 'model_tf2r.pth'
+            vae_model_path = self.opt.save_name + 'model.pth'        
+
+        # Initialize TF2rNet model
+        # Load tf2r functional encoder
+        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate=0.1).to(self.opt.device)
+        model_dict_tf2r_func_enc = torch.load(model_dict_tf2r_func_enc_path, map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
+        # Load tf2r context head
+        tf2rNet = MotifNet(self.TFs, self.opt.TF2rNet_bottleneck_size, emb_len=self.opt.emb_len, dev=self.opt.device).float().to(self.opt.device)
+        model_dict_tf2r = torch.load(model_dict_tf2r_path, map_location=torch.device(self.opt.device))['model_state_dict']
+        tf2rNet.load_state_dict(model_dict_tf2r)   
+        print("Loaded weights for TF2rNet")
+
+        # Initialize VAE
+        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae.load_state_dict(torch.load(vae_model_path, map_location=torch.device(self.opt.device))['model_state_dict'])
+        vae.adj_E2 = nn.Parameter(adj_E2)
+
+        # Create HDF5 file and datasets
+        with h5py.File(self.opt.save_name + 'latent_data.h5', 'w') as h5f:
+            # Assume the total number of samples can be determined (e.g., len(dataloader['dataloader'].dataset))
+            total_samples = len(dataloader['dataloader'].dataset)
+            h5f.create_dataset('z_rna', (total_samples, self.n_genes), dtype='float32')
+            h5f.create_dataset('z_tf_mu', (total_samples, len(TFs_idx)), dtype='float32')
+            h5f.create_dataset('z_tf_var', (total_samples, len(TFs_idx)), dtype='float32')
+            h5f.create_dataset('z_rna_atac', (total_samples, self.n_regions), dtype='float32')
+            h5f.create_dataset('dec_rna', (total_samples, self.n_genes), dtype='float32')
+            h5f.create_dataset('dec_atac', (total_samples, self.n_regions), dtype='float32')
+
+            start_idx = 0
+
+            with torch.no_grad(): 
+                vae.eval()
+                print("VAE forward...")
+                for _, data_batch in tqdm(enumerate(dataloader['dataloader'], 0), unit="batch", total=len(dataloader['dataloader'])):
+                    # VAE forward pass
+                    if self.opt.batch_key is not None:
+                        inputs_rna, inputs_atac, inputs_batch, _ = data_batch
+                        inputs_batch = Variable(inputs_batch.type(Tensor))
+                    else:
+                        inputs_rna, inputs_atac, _ = data_batch
+                        inputs_batch = None
+                    inputs_rna = Variable(inputs_rna.type(Tensor))
+                    inputs_atac = Variable(inputs_atac.type(Tensor))
+
+                    out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna = vae.predict(
+                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2)
+
+                    end_idx = start_idx + inputs_rna.size(0)
+                    
+                    h5f['z_rna'][start_idx:end_idx] = z_rna.cpu().numpy()
+                    h5f['z_tf_mu'][start_idx:end_idx] = out_inf_rna['mean'].cpu().numpy()
+                    h5f['z_tf_var'][start_idx:end_idx] = out_inf_rna['logvar'].cpu().numpy()
+                    h5f['z_rna_atac'][start_idx:end_idx] = enh_act.cpu().numpy()
+                    h5f['dec_rna'][start_idx:end_idx] = out_gen_rna['x_rec'].cpu().numpy()
+                    h5f['dec_atac'][start_idx:end_idx] = out_gen_atac['x_rec'].cpu().numpy()
+                    
+                    start_idx = end_idx
+
     def finetune_r2g_test(self):
         if self.opt.device=='cuda':
             Tensor = torch.cuda.FloatTensor
