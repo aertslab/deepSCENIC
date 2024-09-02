@@ -369,7 +369,7 @@ class MotifNet(nn.Module):
         self.bottleneck_size = bottleneck_size
         self.device = dev
 
-    def forward(self, seq=None, emb=None):
+    def forward(self, emb=None):
         emb = emb.reshape(-1, 1, self.bottleneck_size)
         ctx_head = self.ctx_head_layer(emb).reshape(-1, self.emb_len, self.n_TFs).swapaxes(1,2)
         ctx_head = torch.squeeze(self.ctx_lin(ctx_head))
