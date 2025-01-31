@@ -181,13 +181,17 @@ class GenerativeNetATAC(nn.Module):
         return output
 
 class VAE(nn.Module):
-    def __init__(self, TFs_idx, r2g_dist_coo, x_dim, z_dim, opt):
+    def __init__(self, TFs_idx, R2tf_t, r2g_dist_coo, x_dim, z_dim, opt):
         super(VAE, self).__init__()
         self.eps = 1e-4
         self.r2g_dist = torch.sparse_coo_tensor(torch.tensor([r2g_dist_coo.row.tolist(), r2g_dist_coo.col.tolist()]), torch.tensor(r2g_dist_coo.data).float(), r2g_dist_coo.shape, requires_grad=False).coalesce().float().to(opt.device)
         self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=opt.device, requires_grad=True) + self.eps)
+        self.R2tf_t = R2tf_t.to(opt.device)
+        self.R2tf_param = nn.Parameter(torch.ones(len(R2tf_t.values()), device=opt.device, requires_grad=True) * self.eps)# self.R2tf_t.values())
+
         # self.adj_E2 = nn.Parameter(torch.randn(r2g_dist_coo.size, device=dev, requires_grad=True))
         self.TFs_idx = torch.tensor(TFs_idx).to(opt.device)
+        self.rec_idx = R2tf_t.indices()[0].to(opt.device)
 
         self.n_gene = r2g_dist_coo.shape[1]
         self.n_tfs = len(TFs_idx)
@@ -199,6 +203,7 @@ class VAE(nn.Module):
             use_cuda=False
         self.inference_rna = InferenceNet(x_dim, z_dim, nonLinear, use_cuda)
         self.generative_rna = GenerativeNet(x_dim, z_dim, nonLinear)
+        self.generative_rec = GenerativeNet(x_dim, z_dim, nonLinear)
         self.generative_atac = GenerativeNet(x_dim, z_dim, nonLinear, bias=opt.bin_acc)
         self.losses = LossFunctions(dev=opt.device)
         self.device = opt.device
@@ -274,8 +279,10 @@ class VAE(nn.Module):
 
 
     def forward(self, x_rna, x_atac, inputs_batch=None, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None):
+        print(self.R2tf_param)
         x_rna_tfs = x_rna[:, self.TFs_idx]
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
+        R2tf = torch.sparse_coo_tensor(self.R2tf_t.indices(), self.R2tf_param.abs(), self.R2tf_t.shape).to_dense()
 
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
         
@@ -286,6 +293,11 @@ class VAE(nn.Module):
         # enh_act[enh_act<0] = 0
         z_rna = torch.matmul(enh_act, E2)
 
+        Wrna = (adj_E1.T @ E2).abs().sum(1)
+        tf_tot_act = out_inf_rna['z_reg'] * Wrna[None,:]
+        rec_exp = torch.matmul(tf_tot_act, R2tf.T) # cell x receptors
+
+
         if self.opt.batch_key is not None:
             enh_act_batch = self.batch_layer_atac(torch.cat((inputs_batch, enh_act), dim=1))
             enh_act = enh_act + enh_act_batch
@@ -294,7 +306,8 @@ class VAE(nn.Module):
 
         # Decode RNA and ATAC
         out_gen_rna = self.generative_rna(z_rna)
-        out_gen_atac = self.generative_atac(enh_act)    
+        out_gen_atac = self.generative_atac(enh_act)
+        out_gen_rec = self.generative_rec(rec_exp)
 
         
         with torch.no_grad():
@@ -308,9 +321,10 @@ class VAE(nn.Module):
                 f1_atac = torch.Tensor([0]).to(self.opt.device)  
 
         loss_rec_rna = self.losses.reconstruction_loss(x_rna, out_gen_rna['x_rec'], dropout_mask_rna, rec_type=self.opt.loss_rna) * self.opt.rna_tau
+        loss_rec_rec = self.losses.reconstruction_loss(x_rna[:, self.rec_idx], out_gen_rec['x_rec'][:, self.rec_idx], dropout_mask_rna, rec_type=self.opt.loss_rna) * self.opt.rec_tau
         loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=self.opt.loss_atac) * self.opt.atac_tau
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
         E2_sparse_loss = (self.adj_E2.abs() * self.r2g_dist.values()).mean() * self.opt.gamma
 
-        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
+        return loss_rec_rna, loss_rec_rec, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()

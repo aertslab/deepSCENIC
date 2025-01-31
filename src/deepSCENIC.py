@@ -264,6 +264,8 @@ class deepSCENIC:
         # Read TFs list
         TFs_df = pd.read_csv(self.opt.TF_file, header=None, names=["name"], usecols=[0])
         TFs = set(TFs_df['name'])
+        
+
 
         # Read region to gene mask
         r2g_dist_coo = load_npz(self.opt.r2g_mask)
@@ -284,6 +286,15 @@ class deepSCENIC:
             print("reading data...")
             data_rna_full = sc.read(self.opt.data_rna_file)
             data_rna = sc.read(self.opt.data_rna_file_train)
+            R2tf_df = pd.read_pickle(self.opt.Receptor2TF_df)
+            R2tf_df = R2tf_df[(R2tf_df.Receptor.isin(data_rna.var_names)) & (R2tf_df.TF.isin(data_rna.var_names))]
+            TFs_idx = np.where(data_rna.var_names.isin(TFs))[0]
+
+            R2tf_t = pd.DataFrame(np.zeros((data_rna.shape[1], len(TFs_idx))), columns=data_rna.var_names[TFs_idx], index=data_rna.var_names)
+            for i, row in R2tf_df.iterrows():
+                R2tf_t.loc[row.Receptor, row.TF] = row.weight
+            R2tf_t = torch.tensor(R2tf_t.values).float().to_sparse()
+            
             try:
                 data_stds = data_rna_full[:, data_rna.var_names].X.std(0)
             except AttributeError:
@@ -302,9 +313,10 @@ class deepSCENIC:
             except AttributeError:
                 data_stds = data_rna_full[:, data_rna.var_names].X.toarray().std(0)
             data_atac = sc.read(self.opt.data_atac_file_test)
+            R2tf_t = None
             print("data read!")
             print(data_rna)
-            print(data_atac)
+            print(data_atac)            
         else:
             # Read data
             print("reading data...")
@@ -314,6 +326,8 @@ class deepSCENIC:
             except AttributeError:
                 data_stds = data_rna.X.toarray().std(0)
             data_atac = sc.read(self.opt.data_atac_file)
+            R2tf_t = None
+
             print("data read!")
             print(data_rna)
             print(data_atac)
@@ -350,7 +364,7 @@ class deepSCENIC:
         # Build sequence dataloader
         train_seq_dataloader, train_seq_data_shuffle = build_seq_dataloader(self.opt, ad=data_atac)
 
-        return dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
+        return dataloader, TFs_idx,  R2tf_t, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
 
     def pretrain(self):        
         opt = self.opt
@@ -359,8 +373,8 @@ class deepSCENIC:
         writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
         # Initialize data
-        _, _, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
-        dataloader, TFs_idx, r2g_dist_coo, seq_dataloader, _  = self.init_data(train=True)
+        _, _, Rtf_t, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
+        dataloader, TFs_idx, R2tf_t, r2g_dist_coo, seq_dataloader, _  = self.init_data(train=True)
         # Initialize models
         tf2rNet = MotifNet(self.TFs, opt.TF2rNet_bottleneck_size, emb_len=opt.emb_len, dev=opt.device).float().to(opt.device)
         tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=opt.emb_len, dropout_rate = 0.1).to(opt.device)
@@ -882,8 +896,8 @@ class deepSCENIC:
 
         # Initialize dataloaders
         print("Initializing data...")
-        test_dataloader, _, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
-        train_dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
+        test_dataloader, _, R2tf_t, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
+        train_dataloader, TFs_idx, R2tf_t, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
 
         if self.opt.device=='cuda':
             Tensor = torch.cuda.FloatTensor
@@ -904,7 +918,7 @@ class deepSCENIC:
             
 
         # Initialize VAE model        
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, R2tf_t, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         if self.opt.load_model is not None:
             if os.path.exists(self.opt.load_model + 'model.pth'):
                 vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
@@ -959,7 +973,7 @@ class deepSCENIC:
                 for param in tf2rNet_func_encoder.parameters():
                     param.requires_grad = True
             
-            loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l,E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l = [], [], [], [], [], [], [], []
+            loss_l, loss_rec_rna_l, loss_rec_rec_l, loss_rec_atac_l, loss_gauss_rna_l,E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l = [], [], [], [], [], [], [], [], []
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
@@ -993,7 +1007,7 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
+                loss_rec_rna, loss_rec_rec, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
                     inputs_batch=inputs_batch,
@@ -1014,9 +1028,9 @@ class deepSCENIC:
                 # E2_sparse = (vae.adj_E2.abs() * vae.r2g_dist.values()).mean() * self.opt.alpha
 
                 if epoch >= self.opt.warmup_vae:
-                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse # + cos_loss
+                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse + loss_rec_rec # + cos_loss
                 else:
-                    loss = loss_rec_atac + loss_rec_rna + loss_gauss_rna + E2_sparse
+                    loss = loss_rec_atac + loss_rec_rna + loss_gauss_rna + E2_sparse + loss_rec_rec
 
                 loss.backward()
                 optimizer.step()
@@ -1025,6 +1039,7 @@ class deepSCENIC:
 
                 loss_l.append(loss.detach().item())
                 loss_rec_rna_l.append(loss_rec_rna.detach().item())
+                loss_rec_rec_l.append(loss_rec_rec.detach().item())
                 loss_rec_atac_l.append(loss_rec_atac.detach().item())
                 loss_gauss_rna_l.append(loss_gauss_rna.detach().item())
                 E1_sparse_l.append(E1_sparse.detach().item())
@@ -1035,6 +1050,7 @@ class deepSCENIC:
             # Tensorboard logs
             writer.add_scalar('Loss/total', np.mean(loss_l), epoch)
             writer.add_scalar('Loss/rec_rna', np.mean(loss_rec_rna_l), epoch)
+            writer.add_scalar('Loss/rec_LR', np.mean(loss_rec_rec_l), epoch)
             writer.add_scalar('Loss/rec_atac', np.mean(loss_rec_atac_l), epoch)
             writer.add_scalar('Loss/kl_rna', np.mean(loss_gauss_rna_l), epoch)
             writer.add_scalar('Loss/l1_E1', np.mean(E1_sparse_l), epoch)
@@ -1042,7 +1058,7 @@ class deepSCENIC:
             writer.add_scalar('Loss/cos_loss', np.mean(cos_loss_l), epoch)
             writer.add_scalar('Loss/f1_atac', np.mean(f1_score_l), epoch)
 
-            del loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l, E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l
+            del loss_l, loss_rec_rna_l, loss_rec_rec_l, loss_rec_atac_l, loss_gauss_rna_l, E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l
 
             # Save model
             torch.save({
@@ -1108,7 +1124,7 @@ class deepSCENIC:
                     cos_sim_test = cos_sim_test.clone()
                     sparse_loss = (self._cosine_similarity(adj_E1_test, self.prior_E1_test, cos_sims=cos_sim_test)) * self.opt.alpha
                     # sparse_loss = sparse_loss + (self.sign_penalty(adj_E1_test)) * self.opt.alpha
-                    loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna + sparse_loss
+                    loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna 
                             
                     rec_rna.append(loss_rec_rna.item())
                     rec_atac.append(loss_rec_atac.item())
