@@ -187,7 +187,7 @@ class VAE(nn.Module):
         self.r2g_dist = torch.sparse_coo_tensor(torch.tensor([r2g_dist_coo.row.tolist(), r2g_dist_coo.col.tolist()]), torch.tensor(r2g_dist_coo.data).float(), r2g_dist_coo.shape, requires_grad=False).coalesce().float().to(opt.device)
         self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=opt.device, requires_grad=True) + self.eps)
         self.R2tf_t = R2tf_t.to(opt.device)
-        self.R2tf_param = nn.Parameter(torch.ones(len(R2tf_t.values()), device=opt.device, requires_grad=True) * self.eps)# self.R2tf_t.values())
+        self.R2tf_param = nn.Parameter(torch.ones(len(R2tf_t.values()), device=opt.device, requires_grad=True) * self.R2tf_t.values())
 
         # self.adj_E2 = nn.Parameter(torch.randn(r2g_dist_coo.size, device=dev, requires_grad=True))
         self.TFs_idx = torch.tensor(TFs_idx).to(opt.device)
