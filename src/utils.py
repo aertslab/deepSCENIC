@@ -15,6 +15,8 @@ from tqdm import tqdm
 from pycisTopic.utils import region_names_to_coordinates
 from matplotlib.colors import Normalize, rgb2hex
 from scenicplus.utils import Groupby
+import scanpy as sc
+import networkx as nx
 
 Tensor = torch.cuda.FloatTensor
 
@@ -911,3 +913,49 @@ def format_region_to_bed(region_string, output_file, seq_len=500):
         end = center + seq_len//2
     bed_string = f"{chrom}\t{start}\t{end}\n"
     output_file.write(bed_string)
+
+def build_ppi_network(obj, net, biogrid_flag = False, human_flag = False):
+    """
+    Build a gene-gene network from the provided interaction information.
+    Args:
+      obj (anndata.AnnData): Single-cell data object (AnnData) containing gene expression data.
+      net (pandas.DataFrame): DataFrame containing gene interactions (Source, Target, and Conn columns).
+      biogrid_flag (bool, optional): If True, columns for net are set to ["Source", "Target"] only.
+      human_flag (bool, optional): If True, keeps gene names unchanged; otherwise adjusts gene name casing.
+    Returns:
+      tuple:
+        pandas.DataFrame: Filtered interaction DataFrame for valid genes.
+        networkx.Graph: Graph representation of the gene network.
+        pandas.DataFrame: Node-level gene expression features.
+    """
+    NETWORK_CUTOFF = 0.5
+    EXPRESSION_CUTOFF = 0.0
+    if not biogrid_flag:
+        net.columns = ["Source","Target","Conn"]
+        net = net.loc[net.Conn >= NETWORK_CUTOFF]
+    
+    else:
+         net.columns = ["Source","Target"]
+    
+    if not human_flag:
+        net["Source"] = net["Source"].apply(lambda x: x[0] + x[1:].lower()).astype(str)
+        net["Target"] = net["Target"].apply(lambda x: x[0] + x[1:].lower()).astype(str)
+
+         
+    genes = list(pd.concat([net.Source, net.Target]).drop_duplicates())
+    genes =  obj.var[obj.var.index.isin(genes)].index
+    node_feature = sc.get.obs_df(obj,list(genes)).T
+    node_feature["non_zero"] = node_feature.apply(lambda x: x.astype(bool).sum(), axis=1)
+    node_feature = node_feature.loc[node_feature.non_zero > node_feature.shape[1] * EXPRESSION_CUTOFF]
+    node_feature.drop("non_zero",axis=1,inplace=True)
+
+    net = net.loc[net.Source != net.Target]
+    net = net.loc[net.Source.isin(node_feature.index)]
+    net = net.loc[net.Target.isin(node_feature.index)]
+
+    gp = nx.from_pandas_edgelist(net, "Source", "Target")
+
+    node_feature = node_feature.loc[list(gp.nodes)]
+
+
+    return net, gp, node_feature
