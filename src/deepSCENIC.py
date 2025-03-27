@@ -332,7 +332,10 @@ class deepSCENIC:
             except AttributeError:
                 data_stds = data_rna.X.toarray().std(0)
             data_atac = sc.read(self.opt.data_atac_file)
-            ppi_edge_index = None
+            ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
+            _, ppi, _ = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
+            pyg_data = from_networkx(ppi)
+            ppi_edge_index = pyg_data.edge_index
 
             print("data read!")
             print(data_rna)
@@ -372,109 +375,7 @@ class deepSCENIC:
 
         return dataloader, TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
 
-    def pretrain(self):        
-        opt = self.opt
 
-        # Initialize Tensorboard writer
-        writer = SummaryWriter(opt.logs + '/logs/TF2rNet/' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
-
-        # Initialize data
-        _, _, Rtf_t, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
-        dataloader, TFs_idx, R2tf_t, r2g_dist_coo, seq_dataloader, _  = self.init_data(train=True)
-        # Initialize models
-        tf2rNet = MotifNet(self.TFs, opt.TF2rNet_bottleneck_size, emb_len=opt.emb_len, dev=opt.device).float().to(opt.device)
-        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=opt.emb_len, dropout_rate = 0.1).to(opt.device)
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, opt.n_hidden, opt=opt).float().to(opt.device)
-        # Load pretrained models
-        if opt.load_model is not None:
-            tf2rNet.load_state_dict(torch.load(opt.save_name + 'model_tf2r.pth',  map_location=torch.device(opt.device))['model_state_dict'])
-            tf2rNet_func_encoder.load_state_dict(torch.load(opt.save_name + 'model_tf2r_encoder.pth',  map_location=torch.device(opt.device))['model_state_dict'])
-            vae.load_state_dict(torch.load(opt.save_name + 'model.pth',  map_location=torch.device(opt.device))['model_state_dict'])       
-
-        optimizer =  optim.Adam([{'params':tf2rNet_func_encoder.parameters(), 'lr':opt.lr}, {'params':tf2rNet.parameters(), 'lr':opt.lr}, {'params':vae.parameters(), 'lr':opt.lr}]) 
-
-        train_dataloader_iter = iter(dataloader['dataloader']) # Initialize iterator for vae dataloader
-        for epoch in range(opt.n_epochs):
-            tf2rNet.train()
-            tf2rNet_func_encoder.train()
-            vae.train()
-            for j, (seq, seq_data_batch_idx) in tqdm(enumerate(seq_dataloader, 0)):
-                optimizer.zero_grad(True)
-
-                x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
-                X_E1 = tf2rNet(emb=x) 
-                # vae forward pass
-                try:
-                    data_batch = next(train_dataloader_iter)
-                except StopIteration:
-                    train_dataloader_iter = iter(dataloader['dataloader'])
-                    data_batch = next(train_dataloader_iter)
-                inputs_rna, inputs_atac, _ = data_batch
-                x_rna_tfs = inputs_rna[:, TFs_idx]
-                
-                loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
-                x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), adj_E1=X_E1, idxs=seq_data_batch_idx.to(opt.device))
-                
-                E1_sparse = (X_E1.abs().mean())* self.opt.alpha
-                loss = E1_sparse + loss
-                
-                loss.backward()
-                optimizer.step()
-
-                # Tensorboard logs
-                n_iter = (epoch*len(seq_dataloader)) + j
-                writer.add_scalar('Loss/total', loss.detach().item(), n_iter)
-                writer.add_scalar('Loss/rec_atac', loss_rec_atac.item(), n_iter)
-                writer.add_scalar('Loss/l1_E1', E1_sparse.item(), n_iter)
-                writer.add_scalar('Loss/kl_rna', loss_gauss_rna.item(), n_iter)
-                writer.add_scalar('Loss/f1_atac', f1_atac.detach().item(), n_iter)
-
-
-            # Save model
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': vae.state_dict(),
-                'optimizer_state_dict': optimizer.state_dict(),
-            }, opt.save_name + '/model.pth')
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': tf2rNet.state_dict(),
-            }, opt.save_name + '/model_tf2r.pth')
-            torch.save({
-                'epoch': epoch,
-                'model_state_dict': tf2rNet_func_encoder.state_dict(),
-            }, opt.save_name + '/model_tf2r_encoder.pth')    
-
-            tf2rNet.eval()
-            tf2rNet_func_encoder.eval()
-            vae.eval()
-            loss_all, rec_atac, loss_kl_rna = [], [], []
-            with torch.no_grad():
-                for j, (seq, seq_data_batch_idx) in tqdm(enumerate(test_seq_dataloader, 0)):
-                    x = tf2rNet_func_encoder(seq[0].to(opt.device), return_only_embeddings=True)
-                    X_E1 = tf2rNet(emb=x)     
-                    
-                    # vae forward pass
-                    try:
-                        data_batch = next(train_dataloader_iter)
-                    except StopIteration:
-                        train_dataloader_iter = iter(dataloader['dataloader'])
-                        data_batch = next(train_dataloader_iter)
-                    inputs_rna, inputs_atac, _ = data_batch
-                    x_rna_tfs = inputs_rna[:, TFs_idx]
-                
-                    loss, loss_rec_atac, loss_gauss_rna, f1_atac = vae.pretrain(
-                        x_rna_tfs.to(opt.device), inputs_atac.to(opt.device), adj_E1=X_E1, idxs=seq_data_batch_idx.to(opt.device))
-
-                    loss = loss_rec_atac + loss_gauss_rna + X_E1.abs().mean(1).mean()
-                    rec_atac.append(loss_rec_atac.item())
-                    loss_all.append(loss.detach().item())
-                    loss_kl_rna.append(loss_gauss_rna.item())
-                    # Tensorboard logs
-                    writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
-                    writer.add_scalar('Test/rec_atac', np.mean(rec_atac), epoch)
-                    writer.add_scalar('Test/kl_rna', np.mean(loss_kl_rna), epoch)
-    
     def simulate_perturbation(self, vae, perturbation={}, clip_val=99.9, n_iter=5, original_matrix=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None, eps=1e-8):
         """ Function for simulating TF perturbations.
             
@@ -561,7 +462,7 @@ class deepSCENIC:
 
         ### Initialize dataloaders
         self.opt.train = False
-        dataloader, TFs_idx, r2g_dist_coo, _, _ = self.init_data()
+        dataloader, TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, _, _ = self.init_data()
 
         if self.opt.use_best==True:
             model_dict_tf2r_func_enc_path = self.opt.save_name + 'best_model_tf2r_encoder.pth'
@@ -584,7 +485,7 @@ class deepSCENIC:
         print("loaded weights for TF2rNet")
 
         # Initialize VAE
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
         vae.adj_E2 = nn.Parameter(adj_E2)
         with torch.no_grad(): 
@@ -596,6 +497,7 @@ class deepSCENIC:
             z_rna_atac_l = []
             dec_rna_l = []
             dec_atac_l = []
+            rna_ppi_l = []
             for _, data_batch in tqdm(enumerate(dataloader['dataloader'], 0), unit="batch", total=len(dataloader['dataloader'])):
                 # VAE forward pass
                 if self.opt.batch_key is not None:
@@ -607,10 +509,11 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna = vae.predict(
+                out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna, x_rna_ppi = vae.predict(
                         inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2)
 
                 z_rna_l += [z_rna.cpu().numpy()]
+                rna_ppi_l += [x_rna_ppi.cpu().numpy()]
                 z_tf_mu_l += [out_inf_rna['mean'].cpu().numpy()]
                 z_tf_var_l += [out_inf_rna['logvar'].cpu().numpy()]
                 z_rna_atac_l += [enh_act.cpu().numpy()]
@@ -618,12 +521,14 @@ class deepSCENIC:
                 dec_atac_l += [out_gen_atac['x_rec'].cpu().numpy()]
 
             z_rna_l = np.vstack(z_rna_l)
+            rna_ppi_l = np.vstack(rna_ppi_l)
             z_rna_atac_l = np.vstack(z_rna_atac_l)
             z_tf_mu_l = np.vstack(z_tf_mu_l)
             z_tf_var_l = np.vstack(z_tf_var_l)
             dec_rna_l = np.vstack(dec_rna_l)
             dec_atac_l = np.vstack(dec_atac_l)
             np.save(self.opt.save_name + 'z_rna.npy', z_rna_l)
+            np.save(self.opt.save_name + 'rna_ppi.npy', rna_ppi_l)
             np.save(self.opt.save_name + 'z_tf_reg.npy', z_tf_mu_l)
             np.save(self.opt.save_name + 'z_tf_var.npy', z_tf_var_l)
             np.save(self.opt.save_name + 'z_rna_atac.npy', z_rna_atac_l)
@@ -725,8 +630,9 @@ class deepSCENIC:
 
         ### Initialize dataloaderss
         self.opt.train = False
-        test_dataloader, _, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
-        train_dataloader, TFs_idx, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)       
+        test_dataloader, _, _, genes_idx, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
+        train_dataloader, TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
+
 
         if self.opt.use_best==True:
             model_dict_tf2r_func_enc_path = self.opt.save_name + 'best_model_tf2r_encoder.pth'
@@ -748,7 +654,7 @@ class deepSCENIC:
         print("loaded weights for TF2rNet")
 
         # Initialize VAE
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, genes_idx, ppi_edge_index,  r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         # Exclude 'adj_E2' from the state dict
         state_dict = torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         print("Best training epoch: ", torch.load(vae_model_path)['epoch'])
@@ -815,7 +721,7 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
+                loss_rec_rna, loss_rec_atac, loss_rec_ppi, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
                     inputs_batch=inputs_batch,
@@ -866,7 +772,7 @@ class deepSCENIC:
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                    loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
+                    loss_rec_rna, loss_rec_atac, loss_rec_ppi, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
                         inputs_rna,
                         inputs_atac,
                         inputs_batch=inputs_batch,

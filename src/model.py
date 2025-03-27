@@ -244,7 +244,7 @@ class VAE(nn.Module):
         num_cells, num_genes = x_rna.shape 
 
         # PPI network pass
-        x_rna_ppi = Data(x=x_rna.view(-1, 1), edge_index=self.ppi_edge_idx)
+        x_rna_ppi = Data(x=x_rna.reshape(-1, 1), edge_index=self.ppi_edge_idx)
         x_rna_ppi = Batch.from_data_list([x_rna_ppi])
         x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
         x_rna_ppi = x_rna_ppi.view(-1, num_genes)
@@ -252,7 +252,7 @@ class VAE(nn.Module):
 
 
 
-        out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
+        out_inf_rna = self.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))
         if self.opt.train==True:
             enh_act = torch.matmul(out_inf_rna['z_reg'], adj_E1.T)
         else:
