@@ -184,18 +184,18 @@ class GenerativeNetATAC(nn.Module):
 class PPIgnn(torch.nn.Module):
     def __init__(self, in_channels, hidden_channels, out_channels, heads=2):
         super(PPIgnn, self).__init__()
-        self.conv1 = GATConv(in_channels, hidden_channels, heads=heads, concat=True)
-        self.conv2 = GATConv(hidden_channels * heads, hidden_channels, heads=heads, concat=True)
-        self.conv3 = GATConv(hidden_channels * heads, out_channels, heads=1, concat=False)
+        self.conv1 = GATConv(in_channels, hidden_channels, heads=heads, concat=True, add_self_loops=True)
+        self.conv2 = GATConv(hidden_channels * heads, hidden_channels, heads=heads, concat=True, add_self_loops=True)
+        self.conv3 = GATConv(hidden_channels * heads, out_channels, heads=1, concat=False,  add_self_loops=True)
 
     def forward(self, x, edge_index, edge_weight=None):
         x = F.elu(self.conv1(x, edge_index, edge_weight))
         x = F.elu(self.conv2(x, edge_index, edge_weight))
-        x = F.relu(self.conv3(x, edge_index, edge_weight))
+        x = self.conv3(x, edge_index, edge_weight)
         return x
 
 class VAE(nn.Module):
-    def __init__(self, TFs_idx, genes_idx, ppi_edge_idx, r2g_dist_coo, x_dim, z_dim, opt):
+    def __init__(self, TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_idx, r2g_dist_coo, x_dim, z_dim, opt):
         super(VAE, self).__init__()
         self.eps = 1e-4
 
@@ -207,11 +207,15 @@ class VAE(nn.Module):
         self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=opt.device, requires_grad=True) + self.eps)
 
         self.ppi_edge_idx = ppi_edge_idx.to(opt.device)
-        self.PPInet = PPIgnn(1, z_dim, out_channels=1, heads=8)
+        self.PPInet = PPIgnn(in_channels=1, hidden_channels=z_dim, out_channels=1, heads=2)
 
         # self.adj_E2 = nn.Parameter(torch.randn(r2g_dist_coo.size, device=dev, requires_grad=True))
         self.TFs_idx = torch.tensor(TFs_idx).to(opt.device)
         self.genes_idx = torch.tensor(genes_idx).to(opt.device)
+        self.ppi_tfs_idx_keys = torch.tensor(list(ppi_tfs_idx.keys())).to(opt.device)
+        self.ppi_tfs_idx_values = torch.tensor(list(ppi_tfs_idx.values())).to(opt.device)
+        self.ppi_genes_idx = torch.tensor(ppi_genes_idx).to(opt.device)
+
         nonLinear = nn.Tanh()
         if opt.device!='cpu':
             use_cuda=True
@@ -220,7 +224,8 @@ class VAE(nn.Module):
         self.inference_rna = InferenceNet(x_dim, z_dim, nonLinear, use_cuda)
         self.generative_rna = GenerativeNet(x_dim, z_dim, nonLinear)
         self.generative_rec = GenerativeNet(x_dim, z_dim, nonLinear)
-        self.generative_atac = GenerativeNet(x_dim, z_dim, nonLinear, bias=opt.bin_acc)
+        self.generative_atac = GenerativeNet(x_dim, z_dim, nonLinear, bias=opt.bin_acc)        
+        # self.gene_embedding = torch.nn.Embedding(opt.n_tot_genes, 32)
         self.losses = LossFunctions(dev=opt.device)
         self.device = opt.device
         self.opt = opt
@@ -242,15 +247,19 @@ class VAE(nn.Module):
 
     def predict(self, x_rna, inputs_batch=None, adj_E1=None, adj_E2=None):
         num_cells, num_genes = x_rna.shape 
+        x_rna_tfs = x_rna[:, self.TFs_idx]
 
         # PPI network pass
-        x_rna_ppi = Data(x=x_rna.reshape(-1, 1), edge_index=self.ppi_edge_idx)
-        x_rna_ppi = Batch.from_data_list([x_rna_ppi])
+        data_list = []
+        for i in range(num_cells): 
+            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx))
+        x_rna_ppi = Batch.from_data_list(data_list)
         x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
-        x_rna_ppi = x_rna_ppi.view(-1, num_genes)
-        x_rna_tfs = x_rna_ppi[:, self.TFs_idx]
+        x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
+        x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values]   
 
-
+        x_rna_tfs = x_rna_tfs * x_rna_ppi
 
         out_inf_rna = self.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))
         if self.opt.train==True:
@@ -304,16 +313,22 @@ class VAE(nn.Module):
 
 
     def forward(self, x_rna, x_atac, inputs_batch=None, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None):
+
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
+        x_rna_tfs = x_rna[:, self.TFs_idx]
 
         # PPI network pass
         num_cells, num_genes = x_rna.shape 
-        x_rna_ppi = Data(x=x_rna.view(-1, 1), edge_index=self.ppi_edge_idx)
-        x_rna_ppi = Batch.from_data_list([x_rna_ppi])
+        data_list = []
+        for i in range(num_cells): 
+            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx))
+        x_rna_ppi = Batch.from_data_list(data_list)
         x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
-        x_rna_ppi = x_rna_ppi.view(-1, num_genes)
-        x_rna_tfs = x_rna_ppi[:, self.TFs_idx]
+        x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
+        x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values]   
 
+        x_rna_tfs = x_rna_tfs * x_rna_ppi
         
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
         
@@ -346,7 +361,7 @@ class VAE(nn.Module):
 
         loss_rec_rna = self.losses.reconstruction_loss(x_rna[:, self.genes_idx], out_gen_rna['x_rec'], dropout_mask_rna, rec_type=self.opt.loss_rna) * self.opt.rna_tau
         loss_rec_atac = self.losses.reconstruction_loss(x_atac, out_gen_atac['x_rec'], dropout_mask_atac, rec_type=self.opt.loss_atac) * self.opt.atac_tau
-        loss_rec_ppi = self.losses.reconstruction_loss(x_rna, x_rna_ppi, False, rec_type='mse')
+        loss_rec_ppi = self.losses.reconstruction_loss(x_rna[:, self.TFs_idx], x_rna_ppi, False, rec_type='mse')
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
         E2_sparse_loss = (self.adj_E2.abs() * self.r2g_dist.values()).mean() * self.opt.gamma

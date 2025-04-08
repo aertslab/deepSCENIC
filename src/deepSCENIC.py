@@ -23,12 +23,11 @@ from torchmetrics import F1Score
 from tqdm import tqdm
 from enformer_pytorch import Enformer
 from enformer_pytorch import GenomeIntervalDataset
-from torch_geometric.utils import from_networkx
 
 from src.tf2rNet.models import MotifNet
 from src.tf2rNet.utils import *
 from src.model import VAE
-from src.utils import EarlyStopping, format_region_to_bed, build_ppi_network
+from src.utils import EarlyStopping, format_region_to_bed, build_ppi_network, nx_to_pyg_edge_index
 
 class TensorDatasetWithIndex(Dataset[Tuple[torch.Tensor, ...]]):
     """ Dataset wrapping tensors.
@@ -286,12 +285,13 @@ class deepSCENIC:
             # Read data
             print("reading data...")
             data_rna = sc.read(self.opt.data_rna_file)
+            self.opt.n_tot_genes = data_rna.shape[1]
+
             data_rna_train = sc.read(self.opt.data_rna_file_train)
-            genes_idx = np.where(data_rna_train.var_names.isin(data_rna.var_names))[0]
+            genes_idx = np.array([data_rna.var_names.get_loc(i) for i in data_rna_train.var_names])
             ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
-            _, ppi, _ = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
-            pyg_data = from_networkx(ppi)
-            ppi_edge_index = pyg_data.edge_index
+            _, ppi, node_features = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
+            ppi_edge_index, _ = nx_to_pyg_edge_index(ppi)
 
             TFs_idx = np.where(data_rna.var_names.isin(TFs))[0]
 
@@ -309,8 +309,10 @@ class deepSCENIC:
             # Read data
             print("reading data...")
             data_rna = sc.read(self.opt.data_rna_file)
+            self.opt.n_tot_genes = data_rna.shape[1]
+
             data_rna_test = sc.read(self.opt.data_rna_file_test)
-            genes_idx = np.where(data_rna.var_names.isin(data_rna.var_names))[0]
+            genes_idx = np.arange(data_rna.shape[1])
             try:
                 data_stds = data_rna.X.std(0)
             except AttributeError:
@@ -318,7 +320,9 @@ class deepSCENIC:
 
             data_rna = data_rna[data_rna_test.obs.index]
             data_atac = sc.read(self.opt.data_atac_file_test)
-            ppi_edge_index = None
+            ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
+            _, ppi, node_features = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
+            ppi_edge_index, _ = nx_to_pyg_edge_index(ppi)
             print("data read!")
             print(data_rna)
             print(data_atac)            
@@ -326,6 +330,8 @@ class deepSCENIC:
             # Read data
             print("reading data...")
             data_rna = sc.read(self.opt.data_rna_file)
+            self.opt.n_tot_genes = data_rna.shape[1]
+
             genes_idx = np.arange(data_rna.shape[1])
             try:
                 data_stds = data_rna.X.std(0)
@@ -333,9 +339,8 @@ class deepSCENIC:
                 data_stds = data_rna.X.toarray().std(0)
             data_atac = sc.read(self.opt.data_atac_file)
             ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
-            _, ppi, _ = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
-            pyg_data = from_networkx(ppi)
-            ppi_edge_index = pyg_data.edge_index
+            _, ppi, node_features = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
+            ppi_edge_index, _ = nx_to_pyg_edge_index(ppi)
 
             print("data read!")
             print(data_rna)
@@ -345,6 +350,9 @@ class deepSCENIC:
         TFs_idx = np.where(data_rna.var_names.isin(TFs))[0]
         TFs = data_rna.var_names[data_rna.var_names.isin(TFs)].to_list()
         self.TFs = TFs
+        ppi_tfs_idx = dict([[node_features.index.get_loc(g), data_rna.var_names[TFs_idx].get_loc(g)] for g in data_rna.var_names[TFs_idx] if g in node_features.index])
+        ppi_genes_idx = np.array([data_rna.var_names.get_loc(i) for i in node_features.index])
+
 
         # Check if sparse data
         if type(data_rna.X)!=np.ndarray:
@@ -373,7 +381,7 @@ class deepSCENIC:
         # Build sequence dataloader
         train_seq_dataloader, train_seq_data_shuffle = build_seq_dataloader(self.opt, ad=data_atac)
 
-        return dataloader, TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
+        return dataloader, TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
 
 
     def simulate_perturbation(self, vae, perturbation={}, clip_val=99.9, n_iter=5, original_matrix=None, keep_intermediate=False, adj_E1=None, adj_E2=None, adj_E1_pert=None, eps=1e-8):
@@ -462,7 +470,7 @@ class deepSCENIC:
 
         ### Initialize dataloaders
         self.opt.train = False
-        dataloader, TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, _, _ = self.init_data()
+        dataloader, TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, _, _ = self.init_data()
 
         if self.opt.use_best==True:
             model_dict_tf2r_func_enc_path = self.opt.save_name + 'best_model_tf2r_encoder.pth'
@@ -475,7 +483,7 @@ class deepSCENIC:
 
         # Initialize TF2rNet model
         # Load tf2r fuctional encoder
-        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.1).to(self.opt.device)
+        tf2rNet_func_encoder = Enformer.from_pretrained('EleutherAI/enformer-official-rough', target_length=5, dropout_rate = 0.).to(self.opt.device)
         model_dict_tf2r_func_enc = torch.load(model_dict_tf2r_func_enc_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         tf2rNet_func_encoder.load_state_dict(model_dict_tf2r_func_enc)
         # Load tf2r contex head
@@ -485,7 +493,7 @@ class deepSCENIC:
         print("loaded weights for TF2rNet")
 
         # Initialize VAE
-        vae = VAE(TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
         vae.adj_E2 = nn.Parameter(adj_E2)
         with torch.no_grad(): 
@@ -630,8 +638,8 @@ class deepSCENIC:
 
         ### Initialize dataloaderss
         self.opt.train = False
-        test_dataloader, _, _, genes_idx, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
-        train_dataloader, TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
+        test_dataloader, _, genes_idx, ppi_tfs_idx, ppi_genes_idx,  ppi_edge_index, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
+        train_dataloader, TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
 
 
         if self.opt.use_best==True:
@@ -654,7 +662,7 @@ class deepSCENIC:
         print("loaded weights for TF2rNet")
 
         # Initialize VAE
-        vae = VAE(TFs_idx, genes_idx, ppi_edge_index,  r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index,  r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         # Exclude 'adj_E2' from the state dict
         state_dict = torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         print("Best training epoch: ", torch.load(vae_model_path)['epoch'])
@@ -808,8 +816,8 @@ class deepSCENIC:
 
         # Initialize dataloaders
         print("Initializing data...")
-        test_dataloader, _, _, genes_idx, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
-        train_dataloader, TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
+        test_dataloader, _, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
+        train_dataloader, TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
 
         if self.opt.device=='cuda':
             Tensor = torch.cuda.FloatTensor
@@ -830,7 +838,7 @@ class deepSCENIC:
             
 
         # Initialize VAE model        
-        vae = VAE(TFs_idx, genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         if self.opt.load_model is not None:
             if os.path.exists(self.opt.load_model + 'model.pth'):
                 vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
@@ -940,9 +948,9 @@ class deepSCENIC:
                 # E2_sparse = (vae.adj_E2.abs() * vae.r2g_dist.values()).mean() * self.opt.alpha
 
                 if epoch >= self.opt.warmup_vae:
-                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse + loss_rec_ppi # + cos_loss
+                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse # + cos_loss
                 else:
-                    loss = loss_rec_ppi
+                    loss = loss_rec_rna + loss_gauss_rna + E2_sparse
 
                 loss.backward()
                 optimizer.step()
@@ -1030,14 +1038,14 @@ class deepSCENIC:
                     
                     loss_rec_rna = vae.losses.reconstruction_loss(inputs_rna[:, genes_idx], out_gen_rna['x_rec'], self.opt.dropout_loss, rec_type=self.opt.loss_rna) * self.opt.rna_tau
                     loss_rec_atac = vae.losses.reconstruction_loss(inputs_atac, out_gen_atac['x_rec'], False, rec_type=self.opt.loss_atac) * self.opt.atac_tau
-                    loss_rec_ppi = vae.losses.reconstruction_loss(inputs_rna, x_rna_ppi, False, rec_type='mse')
+                    loss_rec_ppi = vae.losses.reconstruction_loss(inputs_rna[:, TFs_idx], x_rna_ppi, False, rec_type='mse')
                     loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
                     # sparse_loss = (adj_E1_test.abs().mean()) * self.opt.alpha
                     cos_sim_test = cos_sim_test.clone()
                     sparse_loss = (self._cosine_similarity(adj_E1_test, self.prior_E1_test, cos_sims=cos_sim_test)) * self.opt.alpha
                     # sparse_loss = sparse_loss + (self.sign_penalty(adj_E1_test)) * self.opt.alpha
-                    loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna + loss_rec_ppi
+                    loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna #+ loss_rec_ppi
                             
                     rec_rna.append(loss_rec_rna.item())
                     rec_ppi.append(loss_rec_ppi.item())

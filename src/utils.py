@@ -914,48 +914,56 @@ def format_region_to_bed(region_string, output_file, seq_len=500):
     bed_string = f"{chrom}\t{start}\t{end}\n"
     output_file.write(bed_string)
 
-def build_ppi_network(obj, net, biogrid_flag = False, human_flag = False):
+def build_ppi_network(obj, net, biogrid_flag=False, human_flag=False):
     """
-    Build a gene-gene network from the provided interaction information.
-    Args:
-      obj (anndata.AnnData): Single-cell data object (AnnData) containing gene expression data.
-      net (pandas.DataFrame): DataFrame containing gene interactions (Source, Target, and Conn columns).
-      biogrid_flag (bool, optional): If True, columns for net are set to ["Source", "Target"] only.
-      human_flag (bool, optional): If True, keeps gene names unchanged; otherwise adjusts gene name casing.
-    Returns:
-      tuple:
-        pandas.DataFrame: Filtered interaction DataFrame for valid genes.
-        networkx.Graph: Graph representation of the gene network.
-        pandas.DataFrame: Node-level gene expression features.
+    Build a gene-gene network from interaction data and include all dataset genes as nodes.
     """
+    import pandas as pd
+    import networkx as nx
+    import scanpy as sc
+
     NETWORK_CUTOFF = 0.5
     EXPRESSION_CUTOFF = 0.0
+
     if not biogrid_flag:
-        net.columns = ["Source","Target","Conn"]
+        net.columns = ["Source", "Target", "Conn"]
         net = net.loc[net.Conn >= NETWORK_CUTOFF]
-    
     else:
-         net.columns = ["Source","Target"]
-    
+        net.columns = ["Source", "Target"]
+
     if not human_flag:
         net["Source"] = net["Source"].apply(lambda x: x[0] + x[1:].lower()).astype(str)
         net["Target"] = net["Target"].apply(lambda x: x[0] + x[1:].lower()).astype(str)
 
-         
-    genes = list(pd.concat([net.Source, net.Target]).drop_duplicates())
-    genes =  obj.var[obj.var.index.isin(genes)].index
-    node_feature = sc.get.obs_df(obj,list(genes)).T
+    # Use all genes in the dataset
+    all_genes = obj.var.index.tolist()
+
+    # Get expression features for all genes
+    node_feature = sc.get.obs_df(obj, all_genes).T
     node_feature["non_zero"] = node_feature.apply(lambda x: x.astype(bool).sum(), axis=1)
     node_feature = node_feature.loc[node_feature.non_zero > node_feature.shape[1] * EXPRESSION_CUTOFF]
-    node_feature.drop("non_zero",axis=1,inplace=True)
+    node_feature.drop("non_zero", axis=1, inplace=True)
 
+    # Filter network edges: no self loops, only include nodes in node_feature
     net = net.loc[net.Source != net.Target]
     net = net.loc[net.Source.isin(node_feature.index)]
     net = net.loc[net.Target.isin(node_feature.index)]
 
+    # Build graph and add isolated nodes if needed
     gp = nx.from_pandas_edgelist(net, "Source", "Target")
+    gp.add_nodes_from(node_feature.index)  # adds isolated genes too
 
+    # Reorder node features to match graph
     node_feature = node_feature.loc[list(gp.nodes)]
 
-
     return net, gp, node_feature
+
+def nx_to_pyg_edge_index(G, mapping=None):
+    G = G.to_directed() if not nx.is_directed(G) else G
+    if mapping is None:  
+       mapping = dict(zip(G.nodes(), range(G.number_of_nodes())))
+    edge_index = torch.empty((2, G.number_of_edges()), dtype=torch.long)
+    for i, (src, dst) in enumerate(G.edges()):
+        edge_index[0, i] = mapping[src]
+        edge_index[1, i] = mapping[dst]
+    return edge_index, mapping
