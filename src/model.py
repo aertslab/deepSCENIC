@@ -210,11 +210,11 @@ class VAE(nn.Module):
         self.PPInet = PPIgnn(in_channels=1, hidden_channels=z_dim, out_channels=1, heads=2)
 
         # self.adj_E2 = nn.Parameter(torch.randn(r2g_dist_coo.size, device=dev, requires_grad=True))
-        self.TFs_idx = torch.tensor(TFs_idx).to(opt.device)
-        self.genes_idx = torch.tensor(genes_idx).to(opt.device)
-        self.ppi_tfs_idx_keys = torch.tensor(list(ppi_tfs_idx.keys())).to(opt.device)
-        self.ppi_tfs_idx_values = torch.tensor(list(ppi_tfs_idx.values())).to(opt.device)
-        self.ppi_genes_idx = torch.tensor(ppi_genes_idx).to(opt.device)
+        self.TFs_idx = torch.tensor(TFs_idx)
+        self.genes_idx = torch.tensor(genes_idx)
+        self.ppi_tfs_idx_keys = torch.tensor(list(ppi_tfs_idx.keys()))
+        self.ppi_tfs_idx_values = torch.tensor(list(ppi_tfs_idx.values()))
+        self.ppi_genes_idx = torch.tensor(ppi_genes_idx)
 
         nonLinear = nn.Tanh()
         if opt.device!='cpu':
@@ -252,12 +252,12 @@ class VAE(nn.Module):
         # PPI network pass
         data_list = []
         for i in range(num_cells): 
-            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx))
+            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
         x_rna_ppi = Batch.from_data_list(data_list)
         x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
         x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
         x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
-        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values]   
+        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
 
         x_rna_tfs = x_rna_tfs * x_rna_ppi
 
@@ -321,12 +321,12 @@ class VAE(nn.Module):
         num_cells, num_genes = x_rna.shape 
         data_list = []
         for i in range(num_cells): 
-            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx))
+            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
         x_rna_ppi = Batch.from_data_list(data_list)
         x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
         x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
         x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
-        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values]   
+        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
 
         x_rna_tfs = x_rna_tfs * x_rna_ppi
         

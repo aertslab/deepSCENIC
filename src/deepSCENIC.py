@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 from sklearn.utils import compute_class_weight
+from scipy.sparse import issparse
 
 import torch
 import torch.nn.functional as F
@@ -108,11 +109,13 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
     rna_gene_name = list(data_rna.var_names)
     atac_region_name = list(data_atac.var_names)
 
-    # Check if sparse data
-    if type(data_rna.X)!=np.ndarray:
-        data_rna.X = data_rna.X.toarray()
-    if type(data_atac.X)!=np.ndarray:
-        data_atac.X = data_atac.X.toarray()
+    # # Check if sparse data
+    # if issparse(data_rna.X)==True:
+    #     data_rna.X = data_rna.X.A.copy()
+    #     print(data_rna.X)
+
+    # if issparse(data_atac.X)==True:
+    #     data_atac.X = data_atac.X.A
 
     # Get scaled values
     # data_rna = pd.DataFrame(data_rna.X, index=list(data_rna.obs_names), columns=rna_gene_name)
@@ -121,8 +124,16 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
     num_genes_rna = data_rna.shape[1]
     num_regions_atac = data_atac.shape[1]
 
-    feat_rna = torch.FloatTensor(data_rna.X)
-    feat_atac = torch.FloatTensor(data_atac.X) 
+    if issparse(data_rna.X)==True:
+        feat_rna = torch.FloatTensor(data_rna.X.A)
+    else:
+        feat_rna = torch.FloatTensor(data_rna.X)
+
+    if issparse(data_atac.X)==True:
+        feat_atac = torch.FloatTensor(data_atac.X.A)
+    else:
+        feat_atac = torch.FloatTensor(data_atac.X) 
+
     if opt.batch_key is not None:
         batch_id = torch.FloatTensor(np.vstack(data_rna.obs.loc[:, opt.batch_key].map(batch_id_d).values))
         data = TensorDataset(feat_rna, feat_atac, batch_id, torch.LongTensor(list(range(len(feat_rna)))))
@@ -663,6 +674,7 @@ class deepSCENIC:
 
         # Initialize VAE
         vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index,  r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae.PPInet = vae.PPInet.to(self.opt.device1)
         # Exclude 'adj_E2' from the state dict
         state_dict = torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
         print("Best training epoch: ", torch.load(vae_model_path)['epoch'])
@@ -839,6 +851,8 @@ class deepSCENIC:
 
         # Initialize VAE model        
         vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae.PPInet = vae.PPInet.to(self.opt.device1)
+
         if self.opt.load_model is not None:
             if os.path.exists(self.opt.load_model + 'model.pth'):
                 vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
