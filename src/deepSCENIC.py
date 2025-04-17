@@ -639,7 +639,7 @@ class deepSCENIC:
                     start_idx = end_idx
 
     def finetune_r2g_test(self):
-        if self.opt.device=='cuda':
+        if self.opt.device=='cuda:0':
             Tensor = torch.cuda.FloatTensor
         elif self.opt.device=='cpu':
             Tensor = torch.FloatTensor
@@ -857,6 +857,8 @@ class deepSCENIC:
             if os.path.exists(self.opt.load_model + 'model.pth'):
                 vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
                 vae.load_state_dict(vae_d)
+                vae.PPInet = vae.PPInet.to(self.opt.device1)
+
                 print("loaded weights for vae")
 
         # Initialize optimizers
