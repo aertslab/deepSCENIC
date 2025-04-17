@@ -831,7 +831,7 @@ class deepSCENIC:
         test_dataloader, _, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, test_seq_dataloader, _ = self.init_data(test=True)
         train_dataloader, TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_dataloader_shuffle = self.init_data(train=True)        
 
-        if self.opt.device=='cuda':
+        if self.opt.device=='cuda:0':
             Tensor = torch.cuda.FloatTensor
         elif self.opt.device=='cpu':
             Tensor = torch.FloatTensor
