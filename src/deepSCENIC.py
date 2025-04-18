@@ -850,24 +850,25 @@ class deepSCENIC:
             
 
         # Initialize VAE model        
-        vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
-        vae.PPInet = vae.PPInet.to(self.opt.device1)
-
         if self.opt.load_model is not None:
+            vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float()
             if os.path.exists(self.opt.load_model + 'model.pth'):
-                vae_d = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))['model_state_dict']
+                vae_d = torch.load(self.opt.load_model + 'model.pth')['model_state_dict']
                 vae.load_state_dict(vae_d)
+                vae = vae.to(self.opt.device)
                 vae.PPInet = vae.PPInet.to(self.opt.device1)
-
                 print("loaded weights for vae")
+        else:
+            vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+            vae.PPInet = vae.PPInet.to(self.opt.device1)
 
         # Initialize optimizers
         optimizer = optim.Adam([{'params':vae.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet_func_encoder.parameters(), 'lr':self.opt.lr}, {'params':tf2rNet.parameters(), 'lr':self.opt.lr}])
-        if self.opt.load_model is not None:
-            state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
-            if 'optimizer_state_dict' in state_dict:
-                optimizer.load_state_dict(state_dict['optimizer_state_dict'])
-                print("loaded optimizer state")
+        # if self.opt.load_model is not None:
+        #     state_dict = torch.load(self.opt.load_model + 'model.pth',   map_location=torch.device(self.opt.device))
+        #     if 'optimizer_state_dict' in state_dict:
+        #         optimizer.load_state_dict(state_dict['optimizer_state_dict'])
+        #         print("loaded optimizer state")
 
         # Initialize early stopping
         adj_E1 = None
