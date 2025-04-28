@@ -24,6 +24,8 @@ from torchmetrics import F1Score
 from tqdm import tqdm
 from enformer_pytorch import Enformer
 from enformer_pytorch import GenomeIntervalDataset
+from torch_geometric.data import Data, Batch
+
 
 from src.tf2rNet.models import MotifNet
 from src.tf2rNet.utils import *
@@ -416,8 +418,7 @@ class deepSCENIC:
         ### Initialize dataloaders
         self.opt.train = False
         with torch.no_grad():
-            vae.eval()
-            
+            vae.eval()            
             if keep_intermediate:
                 perturbation_over_iter = {}
                 fcs = {}
@@ -426,9 +427,20 @@ class deepSCENIC:
 
             # Perform rounds of perturbation
             original_matrix_t = torch.tensor(original_matrix.values).to(torch.float).to(self.opt.device)
-            original_matrix_t = original_matrix_t[:, vae.TFs_idx]
+            original_matrix_tfs_t = original_matrix_t[:, vae.TFs_idx]
+            # PPI network pass
+            x_rna_ppi_l = []
+            for i in range(original_matrix_t.shape[0]): 
+                x_rna_ppi = Data(x=original_matrix_t[i, vae.ppi_genes_idx].unsqueeze(-1), edge_index=vae.ppi_edge_idx).to(self.opt.device1)
+                x_rna_ppi = vae.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+                x_rna_ppi = x_rna_ppi.view(-1, len(vae.ppi_genes_idx))
+                x_rna_ppi = torch.sigmoid(x_rna_ppi[:, vae.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+                x_rna_ppi = x_rna_ppi[:, vae.ppi_tfs_idx_values]
+                x_rna_ppi_l.append(x_rna_ppi)
+            x_rna_ppi = torch.stack(x_rna_ppi_l, dim=0).squeeze(1)
+            x_rna_tfs = original_matrix_tfs_t * x_rna_ppi
 
-            z_tf_orig = vae.inference_rna(original_matrix_t.view(original_matrix_t.size(0), -1, 1))['mean'].to(torch.float)                
+            z_tf_orig = vae.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))['mean'].to(torch.float)                
             Wrna = adj_E1 @ adj_E2
             Wrna_ct = z_tf_orig @ Wrna
 
@@ -438,14 +450,26 @@ class deepSCENIC:
                 Wrna_pert = adj_E1 @ adj_E2
 
             orig_mtx_p99 = np.percentile(original_matrix, clip_val)
-            for i in tqdm(range(n_iter)):          
-                if len(perturbation.keys())>0:
-                    for gene in perturbation.keys():
-                        perturbed_matrix.loc[:, gene] = perturbation[gene]
 
+            if len(perturbation.keys())>0:
+                for gene in perturbation.keys():
+                    perturbed_matrix.loc[:, gene] = perturbation[gene]    
+            for i in tqdm(range(n_iter)):                      
                 perturbed_matrix_t = torch.tensor(perturbed_matrix.values).to(torch.float).to(self.opt.device)
-                perturbed_matrix_t = perturbed_matrix_t[:, vae.TFs_idx]                      
-                z_tf_perturbed = vae.inference_rna(perturbed_matrix_t.view(perturbed_matrix_t.size(0), -1, 1))['mean'].to(torch.float)
+                perturbed_matrix_tfs_t = perturbed_matrix_t[:, vae.TFs_idx]                      
+                # PPI network pass
+                x_rna_ppi_l = []
+                for i in range(perturbed_matrix_t.shape[0]): 
+                    x_rna_ppi = Data(x=perturbed_matrix_t[i, vae.ppi_genes_idx].unsqueeze(-1), edge_index=vae.ppi_edge_idx).to(self.opt.device1)
+                    x_rna_ppi = vae.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+                    x_rna_ppi = x_rna_ppi.view(-1, len(vae.ppi_genes_idx))
+                    x_rna_ppi = torch.sigmoid(x_rna_ppi[:, vae.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+                    x_rna_ppi = x_rna_ppi[:, vae.ppi_tfs_idx_values]
+                    x_rna_ppi_l.append(x_rna_ppi)
+                x_rna_ppi = torch.stack(x_rna_ppi_l, dim=0).squeeze(1)
+                x_rna_tfs = perturbed_matrix_tfs_t * x_rna_ppi
+
+                z_tf_perturbed = vae.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))['mean'].to(torch.float)
                 Wrna_pert_ct = z_tf_perturbed @ Wrna_pert
 
                 logFC = (Wrna_pert_ct - Wrna_ct)
@@ -951,6 +975,7 @@ class deepSCENIC:
                     dropout_mask_rna=self.opt.dropout_loss,
                     dropout_mask_atac=self.opt.dropout_loss, 
                     adj_E1=adj_E1,
+                    epoch=epoch,
                     )
                 
                 # Compute sparse loss
@@ -1040,9 +1065,9 @@ class deepSCENIC:
                     inputs_atac = Variable(inputs_atac.type(Tensor))
 
                     _, out_gen_atac, out_inf_rna, _, _, _ = vae.predict(
-                       inputs_rna, inputs_batch=inputs_batch, adj_E1=adj_E1_test)
+                       inputs_rna, inputs_batch=inputs_batch, adj_E1=adj_E1_test, epoch=epoch)
                     out_gen_rna, _, _, _, _, x_rna_ppi= vae.predict(
-                       inputs_rna, inputs_batch=inputs_batch, adj_E1=adj_E1, adj_E2=vae.adj_E2)
+                       inputs_rna, inputs_batch=inputs_batch, adj_E1=adj_E1, adj_E2=vae.adj_E2, epoch=epoch)
                
                     if self.opt.bin_acc==True:
                         f1 = F1Score(task='binary',num_classes=1).to(self.opt.device)

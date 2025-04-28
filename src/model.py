@@ -245,21 +245,22 @@ class VAE(nn.Module):
                 if m.bias is not None:
                     init.constant_(m.bias, 0)
 
-    def predict(self, x_rna, inputs_batch=None, adj_E1=None, adj_E2=None):
+    def predict(self, x_rna, inputs_batch=None, adj_E1=None, adj_E2=None, epoch=0):
         num_cells, num_genes = x_rna.shape 
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
-        # PPI network pass
-        data_list = []
-        for i in range(num_cells): 
-            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
-        x_rna_ppi = Batch.from_data_list(data_list)
-        x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
-        x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
-        x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
-        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
+        if self.opt.warmup_grn >= epoch:
+            # PPI network pass
+            data_list = []
+            for i in range(num_cells): 
+                data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
+            x_rna_ppi = Batch.from_data_list(data_list)
+            x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+            x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
+            x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+            x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
 
-        x_rna_tfs = x_rna_tfs * x_rna_ppi
+            x_rna_tfs = x_rna_tfs * x_rna_ppi
 
         out_inf_rna = self.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))
         if self.opt.train==True:
@@ -312,23 +313,23 @@ class VAE(nn.Module):
             return loss,  loss_rec_atac.detach(), loss_gauss_rna.detach(), f1_atac.detach()
 
 
-    def forward(self, x_rna, x_atac, inputs_batch=None, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None):
+    def forward(self, x_rna, x_atac, inputs_batch=None, dropout_mask_rna=None, dropout_mask_atac=None, adj_E1=None, epoch=0):
 
         E2 = torch.sparse_coo_tensor(self.r2g_dist.indices(), self.adj_E2.abs(), self.r2g_dist.shape).to_dense()
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
         # PPI network pass
-        num_cells, num_genes = x_rna.shape 
-        data_list = []
-        for i in range(num_cells): 
-            data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
-        x_rna_ppi = Batch.from_data_list(data_list)
-        x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
-        x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
-        x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
-        x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
-
-        x_rna_tfs = x_rna_tfs * x_rna_ppi
+        if self.opt.warmup_grn >= epoch:
+            num_cells, num_genes = x_rna.shape 
+            data_list = []
+            for i in range(num_cells): 
+                data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
+            x_rna_ppi = Batch.from_data_list(data_list)
+            x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+            x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
+            x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+            x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
+            x_rna_tfs = x_rna_tfs * x_rna_ppi
         
         out_inf_rna = self.inference_rna(x_rna_tfs.view(x_rna_tfs.size(0), -1, 1))
         
