@@ -729,7 +729,7 @@ class deepSCENIC:
         
         # Initialize optimizers
         optimizer = optim.Adam([{'params': vae.adj_E2, 'lr':self.opt.lr}])
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=self.opt.lr_patience, verbose=True)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=self.opt.lr_patience)
 
         # Training
         adj_E1 = None
@@ -900,7 +900,7 @@ class deepSCENIC:
         adj_E1_old = None
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=self.opt.lr_patience, verbose=True)
+        # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=self.opt.lr_patience, verbose=True)
         cos_sim_train = torch.zeros((4,)).to(self.opt.device)
         cos_sim_test = torch.zeros((4,)).to(self.opt.device)
         for epoch in range(self.opt.n_epochs):
