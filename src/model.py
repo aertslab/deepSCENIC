@@ -249,7 +249,7 @@ class VAE(nn.Module):
         num_cells, num_genes = x_rna.shape 
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
-        if self.opt.warmup_grn >= epoch:
+        if epoch >= self.opt.warmup_grn:
             # PPI network pass
             data_list = []
             for i in range(num_cells): 
