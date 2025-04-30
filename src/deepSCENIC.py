@@ -84,7 +84,7 @@ def build_seq_dataloader(opt, ad=None):
     data = TensorDatasetWithIndex(ds)
     dataloader =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=False, num_workers=0)
     if opt.balance_dars==True:
-        region_weights = sc.read(opt.data_atac_file).var.dar + 1
+        region_weights = sc.read_h5ad(opt.data_atac_file).var.dar + 1
         region_weights = region_weights.loc[ad.var_names].values
         sampler = WeightedRandomSampler(region_weights, len(region_weights))
 
@@ -105,7 +105,7 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
     """
     # Get batch info
     if opt.batch_key is not None:
-        batch_ids = sc.read(opt.data_rna_file).obs.loc[:, opt.batch_key].unique()
+        batch_ids = sc.read_h5ad(opt.data_rna_file).obs.loc[:, opt.batch_key].unique()
         batch_id_d = dict(zip(batch_ids, torch.tensor(pd.get_dummies(batch_ids).values).float()))
 
     rna_gene_name = list(data_rna.var_names)
@@ -297,10 +297,10 @@ class deepSCENIC:
         if train==True:
             # Read data
             print("reading data...")
-            data_rna = sc.read(self.opt.data_rna_file)
+            data_rna = sc.read_h5ad(self.opt.data_rna_file)
             self.opt.n_tot_genes = data_rna.shape[1]
 
-            data_rna_train = sc.read(self.opt.data_rna_file_train)
+            data_rna_train = sc.read_h5ad(self.opt.data_rna_file_train)
             genes_idx = np.array([data_rna.var_names.get_loc(i) for i in data_rna_train.var_names])
             ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
             _, ppi, node_features = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
@@ -314,17 +314,17 @@ class deepSCENIC:
                 data_stds = data_rna.X.toarray().std(0)
 
             data_rna = data_rna[data_rna_train.obs.index]
-            data_atac = sc.read(self.opt.data_atac_file_train)
+            data_atac = sc.read_h5ad(self.opt.data_atac_file_train)
             print("data read!")
             print(data_rna)
             print(data_atac)
         elif test==True:
             # Read data
             print("reading data...")
-            data_rna = sc.read(self.opt.data_rna_file)
+            data_rna = sc.read_h5ad(self.opt.data_rna_file)
             self.opt.n_tot_genes = data_rna.shape[1]
 
-            data_rna_test = sc.read(self.opt.data_rna_file_test)
+            data_rna_test = sc.read_h5ad(self.opt.data_rna_file_test)
             genes_idx = np.arange(data_rna.shape[1])
             try:
                 data_stds = data_rna.X.std(0)
@@ -332,7 +332,7 @@ class deepSCENIC:
                 data_stds = data_rna.X.toarray().std(0)
 
             data_rna = data_rna[data_rna_test.obs.index]
-            data_atac = sc.read(self.opt.data_atac_file_test)
+            data_atac = sc.read_h5ad(self.opt.data_atac_file_test)
             ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
             _, ppi, node_features = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
             ppi_edge_index, _ = nx_to_pyg_edge_index(ppi)
@@ -342,7 +342,7 @@ class deepSCENIC:
         else:
             # Read data
             print("reading data...")
-            data_rna = sc.read(self.opt.data_rna_file)
+            data_rna = sc.read_h5ad(self.opt.data_rna_file)
             self.opt.n_tot_genes = data_rna.shape[1]
 
             genes_idx = np.arange(data_rna.shape[1])
@@ -350,7 +350,7 @@ class deepSCENIC:
                 data_stds = data_rna.X.std(0)
             except AttributeError:
                 data_stds = data_rna.X.toarray().std(0)
-            data_atac = sc.read(self.opt.data_atac_file)
+            data_atac = sc.read_h5ad(self.opt.data_atac_file)
             ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
             _, ppi, node_features = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
             ppi_edge_index, _ = nx_to_pyg_edge_index(ppi)
@@ -385,8 +385,8 @@ class deepSCENIC:
         if self.opt.bin_acc==True:
             data_atac.X[data_atac.X > 0] = 1
 
-        # positive scaling of rna data    
-        data_rna.X = data_rna.X / data_stds
+        # # positive scaling of rna data    
+        # data_rna.X = data_rna.X / data_stds
 
         # Build RNA/ATAC dataloader
         dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)        
