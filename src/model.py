@@ -261,6 +261,8 @@ class VAE(nn.Module):
             x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
 
             x_rna_tfs = x_rna_tfs * x_rna_ppi
+        else:
+            x_rna_ppi = None
 
         out_inf_rna = self.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))
         if self.opt.train==True:
