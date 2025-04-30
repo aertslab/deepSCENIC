@@ -1093,7 +1093,7 @@ class deepSCENIC:
                     loss_sparse.append(sparse_loss.detach().item())
                     f1_score.append(f1_atac.detach().item())
 
-                if np.mean(rec_atac) <= best_loss:
+                if np.mean(loss_all) <= best_loss:
                     torch.save({
                         'epoch': epoch,
                         'model_state_dict': vae.state_dict(),
@@ -1107,7 +1107,7 @@ class deepSCENIC:
                         'epoch': epoch,
                         'model_state_dict': tf2rNet_func_encoder.state_dict(),
                     }, self.opt.save_name + '/best_model_tf2r_encoder.pth')                        
-                    best_loss = np.mean(rec_atac)
+                    best_loss = np.mean(loss_all)
 
                 # Tensorboard logs
                 writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)
