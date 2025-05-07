@@ -308,11 +308,6 @@ class deepSCENIC:
 
             TFs_idx = np.where(data_rna.var_names.isin(TFs))[0]
 
-            try:
-                data_stds = data_rna.X.std(0)
-            except AttributeError:
-                data_stds = data_rna.X.toarray().std(0)
-
             data_rna = data_rna[data_rna_train.obs.index]
             data_atac = sc.read_h5ad(self.opt.data_atac_file_train)
             print("data read!")
@@ -326,10 +321,6 @@ class deepSCENIC:
 
             data_rna_test = sc.read_h5ad(self.opt.data_rna_file_test)
             genes_idx = np.arange(data_rna.shape[1])
-            try:
-                data_stds = data_rna.X.std(0)
-            except AttributeError:
-                data_stds = data_rna.X.toarray().std(0)
 
             data_rna = data_rna[data_rna_test.obs.index]
             data_atac = sc.read_h5ad(self.opt.data_atac_file_test)
@@ -346,10 +337,6 @@ class deepSCENIC:
             self.opt.n_tot_genes = data_rna.shape[1]
 
             genes_idx = np.arange(data_rna.shape[1])
-            try:
-                data_stds = data_rna.X.std(0)
-            except AttributeError:
-                data_stds = data_rna.X.toarray().std(0)
             data_atac = sc.read_h5ad(self.opt.data_atac_file)
             ppi_edge_df = pd.read_csv('https://raw.githubusercontent.com/madilabcode/scNET/11a400488c4f4f4e69b6945eb99a0dde0b8cf7c2/scNET/Data/format_h_sapiens.csv', index_col=0)
             _, ppi, node_features = build_ppi_network(data_rna, ppi_edge_df, human_flag=True)
@@ -384,9 +371,6 @@ class deepSCENIC:
         # Binarize ATAC data
         if self.opt.bin_acc==True:
             data_atac.X[data_atac.X > 0] = 1
-
-        # # positive scaling of rna data    
-        # data_rna.X = data_rna.X / data_stds
 
         # Build RNA/ATAC dataloader
         dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)        
@@ -901,8 +885,6 @@ class deepSCENIC:
         best_loss =  float('inf')
         train_seq_dataloader_shuffle_iterator = iter(train_seq_dataloader_shuffle) # Initialize iterator for sequence dataloader
         # scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=self.opt.lr_patience, verbose=True)
-        cos_sim_train = torch.zeros((4,)).to(self.opt.device)
-        cos_sim_test = torch.zeros((4,)).to(self.opt.device)
         for epoch in range(self.opt.n_epochs):
             vae.train()
             tf2rNet.eval()
@@ -934,7 +916,7 @@ class deepSCENIC:
                 for param in tf2rNet_func_encoder.parameters():
                     param.requires_grad = True
             
-            loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l,E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l = [], [], [], [], [], [], [], []
+            loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l,E1_sparse_l, E2_sparse_l, f1_score_l = [], [], [], [], [], [], []
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
                 torch.backends.cudnn.enabled = True
                 torch.backends.cudnn.benchmark = True
@@ -980,17 +962,10 @@ class deepSCENIC:
                 
                 # Compute sparse loss
                 # with torch.no_grad():
-                # E1_sparse = (adj_E1[seq_data_batch_idx, :].abs().mean()) * self.opt.alpha
-                with torch.no_grad():
-                    cos_sim_train = cos_sim_train.clone()
-                E1_sparse = (self._cosine_similarity(adj_E1, self.prior_E1, seq_data_batch_idx, cos_sims=cos_sim_train)) * self.opt.alpha
-                # E1_sparse = E1_sparse + (self.sign_penalty(adj_E1[seq_data_batch_idx, :])) * self.opt.alpha
-                with torch.no_grad():
-                    cos_loss = self.cosine_similarity(adj_E1[seq_data_batch_idx, :]) 
-                # E2_sparse = (vae.adj_E2.abs() * vae.r2g_dist.values()).mean() * self.opt.alpha
+                E1_sparse = (adj_E1[seq_data_batch_idx, :].abs().mean()) * self.opt.alpha
 
                 if epoch >= self.opt.warmup_vae:
-                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse # + cos_loss
+                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse
                 else:
                     loss = loss_rec_rna + loss_gauss_rna + E2_sparse
 
@@ -1005,7 +980,6 @@ class deepSCENIC:
                 loss_gauss_rna_l.append(loss_gauss_rna.detach().item())
                 E1_sparse_l.append(E1_sparse.detach().item())
                 E2_sparse_l.append(E2_sparse.detach().item())
-                cos_loss_l.append(cos_loss.detach().item())
                 f1_score_l.append(f1_atac.detach().item())            
 
             # Tensorboard logs
@@ -1015,10 +989,9 @@ class deepSCENIC:
             writer.add_scalar('Loss/kl_rna', np.mean(loss_gauss_rna_l), epoch)
             writer.add_scalar('Loss/l1_E1', np.mean(E1_sparse_l), epoch)
             writer.add_scalar('Loss/l1_E2', np.mean(E2_sparse_l), epoch)
-            writer.add_scalar('Loss/cos_loss', np.mean(cos_loss_l), epoch)
             writer.add_scalar('Loss/f1_atac', np.mean(f1_score_l), epoch)
 
-            del loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l, E1_sparse_l, E2_sparse_l, cos_loss_l, f1_score_l
+            del loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l, E1_sparse_l, E2_sparse_l, f1_score_l
 
             # Save model
             torch.save({
@@ -1080,11 +1053,8 @@ class deepSCENIC:
                     loss_rec_atac = vae.losses.reconstruction_loss(inputs_atac, out_gen_atac['x_rec'], False, rec_type=self.opt.loss_atac) * self.opt.atac_tau
                     loss_gauss_rna = vae.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
-                    # sparse_loss = (adj_E1_test.abs().mean()) * self.opt.alpha
-                    cos_sim_test = cos_sim_test.clone()
-                    sparse_loss = (self._cosine_similarity(adj_E1_test, self.prior_E1_test, cos_sims=cos_sim_test)) * self.opt.alpha
-                    # sparse_loss = sparse_loss + (self.sign_penalty(adj_E1_test)) * self.opt.alpha
-                    loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna #+ loss_rec_ppi
+                    sparse_loss = (adj_E1_test.abs().mean()) * self.opt.alpha
+                    loss = loss_rec_rna + loss_rec_atac + loss_gauss_rna + sparse_loss
                             
                     rec_rna.append(loss_rec_rna.item())
                     rec_atac.append(loss_rec_atac.item())
@@ -1093,7 +1063,7 @@ class deepSCENIC:
                     loss_sparse.append(sparse_loss.detach().item())
                     f1_score.append(f1_atac.detach().item())
 
-                if np.mean(loss_all) <= best_loss:
+                if np.mean(rec_atac) <= best_loss:
                     torch.save({
                         'epoch': epoch,
                         'model_state_dict': vae.state_dict(),
@@ -1107,7 +1077,7 @@ class deepSCENIC:
                         'epoch': epoch,
                         'model_state_dict': tf2rNet_func_encoder.state_dict(),
                     }, self.opt.save_name + '/best_model_tf2r_encoder.pth')                        
-                    best_loss = np.mean(loss_all)
+                    best_loss = np.mean(rec_atac)
 
                 # Tensorboard logs
                 writer.add_scalar('Test/loss_total', np.mean(loss_all), epoch)

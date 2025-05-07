@@ -35,11 +35,7 @@ class LossFunctions:
             else:
                 loss = torch.Tensor([0]).to(self.dev)
         elif rec_type == 'cos':
-            mask = ~(real == -1).all(dim=1)
-            if real[mask].shape[0] !=0:
-                loss = (1- torch.mean(F.cosine_similarity(real[mask], predicted[mask], dim=1)))
-            else:
-                loss = torch.Tensor([0]).to(self.dev)
+            loss = (1- torch.mean(F.cosine_similarity(real, predicted, dim=1)))
         else:
             raise Exception
         return loss
