@@ -537,7 +537,7 @@ class deepSCENIC:
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
                 out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna, x_rna_ppi = vae.predict(
-                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2)
+                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2, epoch=self.opt.warmup_grn)
 
                 z_rna_l += [z_rna.cpu().numpy()]
                 rna_ppi_l += [x_rna_ppi.cpu().numpy()]
