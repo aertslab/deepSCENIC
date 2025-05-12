@@ -84,8 +84,8 @@ def build_seq_dataloader(opt, ad=None):
     data = TensorDatasetWithIndex(ds)
     dataloader =  DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=False, num_workers=0)
     if opt.balance_dars==True:
-        region_weights = sc.read_h5ad(opt.data_atac_file).var.dar + 1
-        region_weights = region_weights.loc[ad.var_names].values
+        region_dar = sc.read_h5ad(opt.data_atac_file).var.dar.loc[ad.var_names].values
+        region_weights = np.where(region_dar == 1, 1.5, 1.0)
         sampler = WeightedRandomSampler(region_weights, len(region_weights))
 
         dataloader_shuffle = DataLoader(data, batch_size=opt.seqs_batch_size, shuffle=False, num_workers=0, sampler=sampler)
