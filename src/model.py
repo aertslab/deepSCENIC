@@ -36,6 +36,7 @@ class LossFunctions:
                 loss = torch.Tensor([0]).to(self.dev)
         elif rec_type == 'cos':
             loss = (1- torch.mean(F.cosine_similarity(real, predicted, dim=1)))
+            # loss = loss + (1- torch.mean(F.cosine_similarity(real, predicted, dim=0)))
         else:
             raise Exception
         return loss
@@ -363,6 +364,7 @@ class VAE(nn.Module):
         loss_gauss_rna = self.losses.gaussian_loss(out_inf_rna['mean'], out_inf_rna['logvar']) * self.opt.beta
 
         E2_sparse_loss = (self.adj_E2.abs() * self.r2g_dist.values()).mean() * self.opt.gamma
-        E2_sparse_loss = E2_sparse_loss
+        ppi_loss = (1 - x_rna_ppi.abs().mean()) * self.opt.alpha
+        # E2_sparse_loss = E2_sparse_loss
 
-        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
+        return loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse_loss, ppi_loss, out_gen_rna['x_rec'].detach(), out_gen_atac['x_rec'].detach(), z_rna.detach(), out_inf_rna['mean'].detach(),  out_inf_rna['logvar'].detach(), enh_act.detach(), f1_atac.detach()
