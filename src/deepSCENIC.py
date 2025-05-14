@@ -103,6 +103,8 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
         data_atac: scATAC-seq data
         opt: model hyperparams
     """
+    sc.pp.log1p(data_atac)
+    
     # Get batch info
     if opt.batch_key is not None:
         batch_ids = sc.read_h5ad(opt.data_rna_file).obs.loc[:, opt.batch_key].unique()
@@ -964,10 +966,10 @@ class deepSCENIC:
                 # with torch.no_grad():
                 E1_sparse = (adj_E1[seq_data_batch_idx, :].abs().mean()) * self.opt.alpha
 
-                if epoch >= self.opt.warmup_vae:
+                if epoch >= self.opt.warmup_grn:
                     loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse + ppi_loss
                 else:
-                    loss = loss_rec_rna + loss_gauss_rna + E2_sparse + ppi_loss
+                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse
 
                 loss.backward()
                 optimizer.step()
