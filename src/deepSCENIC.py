@@ -911,9 +911,9 @@ class deepSCENIC:
                 for param in tf2rNet_func_encoder.parameters():
                     param.requires_grad = False
                 for param in vae.parameters():
-                    param.requires_grad = False
-                for param in vae.PPInet.parameters():
                     param.requires_grad = True
+                # for param in vae.PPInet.parameters():
+                #     param.requires_grad = True
             else:
                 for param in tf2rNet.parameters():
                     param.requires_grad = True
