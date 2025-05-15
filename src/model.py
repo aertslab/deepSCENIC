@@ -259,7 +259,7 @@ class VAE(nn.Module):
 
             x_rna_tfs = x_rna_tfs * x_rna_ppi
         else:
-            x_rna_ppi = None
+            x_rna_ppi = torch.ones_like(x_rna_tfs).to(self.opt.device)
 
         out_inf_rna = self.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))
         if self.opt.train==True:
