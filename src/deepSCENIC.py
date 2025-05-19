@@ -749,13 +749,15 @@ class deepSCENIC:
                 inputs_rna = Variable(inputs_rna.type(Tensor))
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
-                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
+                loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _, _,  _, _, _, _, _, f1_atac = vae(
                     inputs_rna,
                     inputs_atac,
                     inputs_batch=inputs_batch,
                     dropout_mask_rna=self.opt.dropout_loss,
                     dropout_mask_atac=self.opt.dropout_loss,
-                    adj_E1=adj_E1)
+                    adj_E1=adj_E1,
+                    epoch=self.opt.warmup_grn,
+                    )
                 
                 # Compute sparse loss
                 # E2_sparse = (vae.adj_E2.abs() * vae.r2g_dist.values()).mean() * self.opt.alpha
@@ -799,15 +801,16 @@ class deepSCENIC:
 
                     inputs_rna = Variable(inputs_rna.type(Tensor))
                     inputs_atac = Variable(inputs_atac.type(Tensor))
-
-                    loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _,  _, _, _, _, _, f1_atac = vae(
+                    
+                    loss_rec_rna, loss_rec_atac, loss_gauss_rna, E2_sparse, _, _,  _, _, _, _, _, f1_atac = vae(
                         inputs_rna,
                         inputs_atac,
                         inputs_batch=inputs_batch,
                         dropout_mask_rna=self.opt.dropout_loss,
                         dropout_mask_atac=self.opt.dropout_loss,
-                        adj_E1=adj_E1)
-                    
+                        adj_E1=adj_E1,
+                        epoch=self.opt.warmup_grn,
+                        )                    
                     # Compute sparse loss
                     # E2_sparse = (vae.adj_E2.abs() * vae.r2g_dist.values()).mean() * self.opt.alpha
 
