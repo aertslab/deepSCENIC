@@ -278,8 +278,6 @@ class deepSCENIC:
         TFs_df = pd.read_csv(self.opt.TF_file, header=None, names=["name"], usecols=[0])
         TFs = set(TFs_df['name'])
         
-
-
         # Read region to gene mask
         r2g_dist_coo = load_npz(self.opt.r2g_mask)
 
@@ -354,15 +352,11 @@ class deepSCENIC:
         ppi_genes_idx = np.array([data_rna.var_names.get_loc(i) for i in node_features.index])
 
 
-        # Check if sparse data
-        if type(data_rna.X)!=np.ndarray:
-            data_rna.X = data_rna.X.toarray()
-        else:
-            data_rna.X = data_rna.X
-        if type(data_atac.X)!=np.ndarray:
-            data_atac.X = data_atac.X.toarray()
-        else:
-            data_atac.X = data_atac.X
+        # # Check if sparse data
+        # if type(data_rna.X)!=np.ndarray:
+        #     data_rna.X = data_rna.X.toarray()
+        # if type(data_atac.X)!=np.ndarray:
+        #     data_atac.X = data_atac.X.toarray()
 
         self.n_cells = data_rna.shape[0]
         self.n_genes = data_rna.shape[1]
@@ -373,9 +367,11 @@ class deepSCENIC:
             data_atac.X[data_atac.X > 0] = 1
 
         # Build RNA/ATAC dataloader
-        dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)        
+        print("Building dataloader...")  
+        dataloader = build_dataloader(data_rna, data_atac, self.opt.batch_size, self.opt)      
 
         # Build sequence dataloader
+        print("Building sequence dataloader...")  
         train_seq_dataloader, train_seq_data_shuffle = build_seq_dataloader(self.opt, ad=data_atac)
 
         return dataloader, TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, train_seq_dataloader, train_seq_data_shuffle
@@ -473,6 +469,96 @@ class deepSCENIC:
                 # return z_tf_perturbed, Wrna_pert
                 return perturbed_matrix, logFC.cpu().numpy()
 
+    def fast_simulate_perturbation(
+        self, vae, perturbation={}, clip_val=99.9, n_iter=5,
+        original_matrix=None, keep_intermediate=False,
+        adj_E1=None, adj_E2=None, adj_E1_pert=None, eps=1e-8,
+        batch_size=256   # NEW
+    ):
+        """Efficient simulation with GNN mini-batching."""
+
+        self.opt.train = False
+        vae.eval()
+        device = self.opt.device
+        device1 = self.opt.device1
+
+        original_matrix_np = original_matrix.values if hasattr(original_matrix, 'values') else original_matrix
+        columns = list(original_matrix.columns) if hasattr(original_matrix, 'columns') else None
+        tfs_idx = vae.TFs_idx
+        ppi_genes_idx = vae.ppi_genes_idx
+        ppi_edge_idx = vae.ppi_edge_idx
+        ppi_tfs_idx_keys = vae.ppi_tfs_idx_keys
+        ppi_tfs_idx_values = vae.ppi_tfs_idx_values
+        orig_mtx_p99 = np.percentile(original_matrix_np, clip_val)
+
+        def batch_ppi_pass(mat_t):
+            # mat_t: (n_cells, n_genes)
+            n_cells = mat_t.shape[0]
+            outs = []
+            for start in range(0, n_cells, batch_size):
+                end = min(start + batch_size, n_cells)
+                data_list = [
+                    Data(
+                        x=mat_t[i, ppi_genes_idx].unsqueeze(-1),
+                        edge_index=ppi_edge_idx
+                    )
+                    for i in range(start, end)
+                ]
+                batch = Batch.from_data_list(data_list).to(device1)
+                ppi_out = vae.PPInet(batch.x, batch.edge_index)
+                ppi_out = ppi_out.view(-1, len(ppi_genes_idx))
+                ppi_out = torch.sigmoid(ppi_out[:, ppi_tfs_idx_keys])
+                ppi_out = ppi_out[:, ppi_tfs_idx_values].to(device)
+                outs.append(ppi_out)
+            return torch.cat(outs, dim=0)
+
+        with torch.no_grad():
+            if keep_intermediate:
+                perturbation_over_iter = {}
+                fcs = {}
+
+            original_matrix_t = torch.tensor(original_matrix_np, dtype=torch.float, device=device)
+            x_rna_ppi = batch_ppi_pass(original_matrix_t)
+            x_rna_tfs = original_matrix_t[:, tfs_idx] * x_rna_ppi
+            z_tf_orig = vae.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))['mean']
+            Wrna = adj_E1 @ adj_E2
+            Wrna_ct = z_tf_orig @ Wrna
+
+            if adj_E1_pert is not None:
+                Wrna_pert = adj_E1_pert @ adj_E2
+            else:
+                Wrna_pert = Wrna
+
+            perturbed_matrix = original_matrix_np.copy()
+            if perturbation and columns is not None:
+                for gene, value in perturbation.items():
+                    if gene in columns:
+                        idx = columns.index(gene)
+                        perturbed_matrix[:, idx] = value
+
+            for i in range(n_iter):
+                perturbed_matrix_t = torch.tensor(perturbed_matrix, dtype=torch.float, device=device)
+                x_rna_ppi_pert = batch_ppi_pass(perturbed_matrix_t)
+                x_rna_tfs_pert = perturbed_matrix_t[:, tfs_idx] * x_rna_ppi_pert
+
+                z_tf_perturbed = vae.inference_rna(x_rna_tfs_pert.reshape(x_rna_tfs_pert.size(0), -1, 1))['mean']
+                Wrna_pert_ct = z_tf_perturbed @ Wrna_pert
+
+                logFC = Wrna_pert_ct - Wrna_ct
+                logFC = vae.generative_rna(logFC.to(torch.float))['x_rec']
+
+                perturbed_matrix = original_matrix_t + logFC
+                torch.clip(perturbed_matrix, 0, orig_mtx_p99, out=perturbed_matrix)
+
+                if keep_intermediate:
+                    perturbation_over_iter[str(i + 2)] = perturbed_matrix.copy()
+                    fcs[str(i + 2)] = logFC.cpu().numpy()
+
+            if keep_intermediate:
+                return perturbation_over_iter, fcs
+            else:
+                return perturbed_matrix.cpu().numpy(), logFC.cpu().numpy()
+
     def to_latent(self, adj_E1, adj_E2):
         """ Function for saving model embeddings.
             
@@ -537,7 +623,7 @@ class deepSCENIC:
                 inputs_atac = Variable(inputs_atac.type(Tensor))
 
                 out_gen_rna, out_gen_atac, out_inf_rna, enh_act, z_rna, x_rna_ppi = vae.predict(
-                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2, epoch=self.opt.warmup_grn)
+                        inputs_rna, adj_E1=adj_E1, adj_E2=adj_E2, epoch=0)
 
                 z_rna_l += [z_rna.cpu().numpy()]
                 rna_ppi_l += [x_rna_ppi.cpu().numpy()]
@@ -601,7 +687,7 @@ class deepSCENIC:
         print("Loaded weights for TF2rNet")
 
         # Initialize VAE
-        vae = VAE(TFs_idx, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
+        vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         vae.load_state_dict(torch.load(vae_model_path, map_location=torch.device(self.opt.device))['model_state_dict'])
         vae.adj_E2 = nn.Parameter(adj_E2)
 
