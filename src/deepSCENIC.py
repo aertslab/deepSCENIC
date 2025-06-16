@@ -127,12 +127,12 @@ def build_dataloader(data_rna, data_atac, batch_size, opt):
     num_regions_atac = data_atac.shape[1]
 
     if issparse(data_rna.X)==True:
-        feat_rna = torch.FloatTensor(data_rna.X.A)
+        feat_rna = torch.FloatTensor(data_rna.X.toarray())
     else:
         feat_rna = torch.FloatTensor(data_rna.X)
 
     if issparse(data_atac.X)==True:
-        feat_atac = torch.FloatTensor(data_atac.X.A)
+        feat_atac = torch.FloatTensor(data_atac.X.toarray())
     else:
         feat_atac = torch.FloatTensor(data_atac.X) 
 
@@ -770,8 +770,11 @@ class deepSCENIC:
         vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index,  r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
         vae.PPInet = vae.PPInet.to(self.opt.device1)
         # Exclude 'adj_E2' from the state dict
-        state_dict = torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict']
-        print("Best training epoch: ", torch.load(vae_model_path)['epoch'])
+        state_dict = torch.load(vae_model_path,  map_location=torch.device(self.opt.device))
+        best_epoch = state_dict['epoch']
+        state_dict = state_dict['model_state_dict']
+        ['model_state_dict']
+        print("Best training epoch: ", best_epoch)
         if 'adj_E2' in state_dict:
             del state_dict['adj_E2']
         if 'batch_layer_rna' in state_dict:
@@ -950,7 +953,7 @@ class deepSCENIC:
         if self.opt.load_model is not None:
             vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float()
             if os.path.exists(self.opt.load_model + 'model.pth'):
-                vae_d = torch.load(self.opt.load_model + 'model.pth')['model_state_dict']
+                vae_d = torch.load(self.opt.load_model + 'model.pth', map_location=torch.device(self.opt.device))['model_state_dict']
                 vae.load_state_dict(vae_d)
                 vae = vae.to(self.opt.device)
                 vae.PPInet = vae.PPInet.to(self.opt.device1)
