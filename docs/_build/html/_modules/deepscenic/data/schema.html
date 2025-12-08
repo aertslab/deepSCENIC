@@ -1,0 +1,527 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>deepscenic.data.schema &#8212; deepscenic  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=356f8d28" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../../../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/deepscenic/data/schema';</script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/deepSCENIC.png" class="logo__image only-light" alt="deepscenic  documentation - Home"/>
+    <script>document.write(`<img src="../../../_static/deepSCENIC.png" class="logo__image only-dark" alt="deepscenic  documentation - Home"/>`);</script>
+  
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../tutorials.html">Tutorials</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/01_data_loading.html">Tutorial 1: Data Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/02_preprocessing.html">Tutorial 2: Preprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/03_training.html">Tutorial 3: Training</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/04_grn_analysis.html">Tutorial 4: GRN Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/05_perturbation_simulation.html">Tutorial 5: Perturbation Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/06_visualization.html">Tutorial 6: Advanced Visualization</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api.html">API Reference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/preprocessing.html">Preprocessing (<code class="docutils literal notranslate"><span class="pre">ds.pp</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/tools.html">Tools (<code class="docutils literal notranslate"><span class="pre">ds.tl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/plotting.html">Plotting (<code class="docutils literal notranslate"><span class="pre">ds.pl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/io.html">Input/Output (<code class="docutils literal notranslate"><span class="pre">ds.io</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/data.html">Data Structures (<code class="docutils literal notranslate"><span class="pre">ds.data</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/datasets.html">Datasets (<code class="docutils literal notranslate"><span class="pre">ds.datasets</span></code>)</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/aertslab/deepSCENIC" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1></h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for deepscenic.data.schema</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;MuData schema validation for deepSCENIC.&quot;&quot;&quot;</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">mudata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">md</span>
+
+
+<div class="viewcode-block" id="SchemaError">
+<a class="viewcode-back" href="../../../api/data.html#deepscenic.data.SchemaError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SchemaError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when MuData doesn&#39;t conform to deepSCENIC schema.&quot;&quot;&quot;</span>
+
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="SchemaWarning">
+<a class="viewcode-back" href="../../../api/data.html#deepscenic.data.SchemaWarning">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SchemaWarning</span><span class="p">(</span><span class="ne">UserWarning</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Warning for non-critical schema issues.&quot;&quot;&quot;</span>
+
+    <span class="k">pass</span></div>
+
+
+
+<div class="viewcode-block" id="validate_schema">
+<a class="viewcode-back" href="../../../api/data.html#deepscenic.data.validate_schema">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_schema</span><span class="p">(</span>
+    <span class="n">mdata</span><span class="p">:</span> <span class="n">md</span><span class="o">.</span><span class="n">MuData</span><span class="p">,</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;training&quot;</span><span class="p">,</span>
+    <span class="n">strict</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Validate MuData against deepSCENIC schema.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mdata : MuData</span>
+<span class="sd">        Data to validate</span>
+<span class="sd">    mode : {&#39;training&#39;, &#39;inference&#39;}</span>
+<span class="sd">        Validation mode:</span>
+<span class="sd">        - &#39;training&#39;: require rna + atac + r2g (strict)</span>
+<span class="sd">        - &#39;inference&#39;: require rna only (flexible)</span>
+<span class="sd">    strict : bool</span>
+<span class="sd">        If True, raise errors. If False, collect warnings.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    list[str]</span>
+<span class="sd">        List of validation issues (empty if valid)</span>
+
+<span class="sd">    Raises</span>
+<span class="sd">    ------</span>
+<span class="sd">    SchemaError</span>
+<span class="sd">        If strict=True and validation fails</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; # Validate for training (strict)</span>
+<span class="sd">    &gt;&gt;&gt; validate_schema(mdata, mode=&quot;training&quot;, strict=True)</span>
+
+<span class="sd">    &gt;&gt;&gt; # Validate for inference (RNA-only OK)</span>
+<span class="sd">    &gt;&gt;&gt; validate_schema(mdata, mode=&quot;inference&quot;)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">issues</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="k">if</span> <span class="n">mode</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;training&quot;</span><span class="p">,</span> <span class="s2">&quot;inference&quot;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;mode must be &#39;training&#39; or &#39;inference&#39;, got: </span><span class="si">{</span><span class="n">mode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check RNA modality (always required)</span>
+    <span class="k">if</span> <span class="s2">&quot;rna&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">:</span>
+        <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;Missing &#39;rna&#39; modality&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check ATAC modality (required for training, optional for inference)</span>
+    <span class="k">if</span> <span class="s2">&quot;atac&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;training&quot;</span><span class="p">:</span>
+            <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;Missing &#39;atac&#39; modality (required for training)&quot;</span><span class="p">)</span>
+        <span class="c1"># For inference mode, this is OK</span>
+
+    <span class="k">if</span> <span class="n">issues</span> <span class="ow">and</span> <span class="n">strict</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">SchemaError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Schema validation failed: </span><span class="si">{</span><span class="n">issues</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check RNA modality</span>
+    <span class="k">if</span> <span class="s2">&quot;rna&quot;</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">:</span>
+        <span class="n">rna</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">[</span><span class="s2">&quot;rna&quot;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="s2">&quot;is_tf&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rna</span><span class="o">.</span><span class="n">var</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;rna.var missing &#39;is_tf&#39; column&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">rna</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s2">&quot;is_tf&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">dtype</span> <span class="o">!=</span> <span class="nb">bool</span><span class="p">:</span>
+            <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;rna.var[&#39;is_tf&#39;] should be bool&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s2">&quot;tf_order&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">rna</span><span class="o">.</span><span class="n">uns</span><span class="p">:</span>
+            <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;rna.uns missing &#39;tf_order&#39;&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check ATAC modality</span>
+    <span class="k">if</span> <span class="s2">&quot;atac&quot;</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">:</span>
+        <span class="n">atac</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">[</span><span class="s2">&quot;atac&quot;</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">col</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;chromosome&quot;</span><span class="p">,</span> <span class="s2">&quot;start&quot;</span><span class="p">,</span> <span class="s2">&quot;end&quot;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="n">col</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">atac</span><span class="o">.</span><span class="n">var</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+                <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;atac.var missing &#39;</span><span class="si">{</span><span class="n">col</span><span class="si">}</span><span class="s2">&#39; column&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="s2">&quot;split&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">atac</span><span class="o">.</span><span class="n">var</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;atac.var missing &#39;split&#39; column&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check shared obs</span>
+    <span class="k">if</span> <span class="s2">&quot;split&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">obs</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;mdata.obs missing &#39;split&#39; column&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check r2g (required for training, not for inference)</span>
+    <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;training&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="s2">&quot;r2g&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">:</span>
+            <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;mdata.uns missing &#39;r2g&#39; (required for training)&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">r2g</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;r2g&quot;</span><span class="p">]</span>
+            <span class="c1"># Check required keys</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;train&quot;</span><span class="p">,</span> <span class="s2">&quot;test&quot;</span><span class="p">,</span> <span class="s2">&quot;config&quot;</span><span class="p">]:</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">r2g</span><span class="p">:</span>
+                    <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;mdata.uns[&#39;r2g&#39;] missing &#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Check ordering arrays (critical for alignment)</span>
+            <span class="n">ordering_keys</span> <span class="o">=</span> <span class="p">[</span>
+                <span class="s2">&quot;region_order_train&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;region_order_test&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;gene_order_train&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;gene_order_test&quot;</span><span class="p">,</span>
+            <span class="p">]</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">ordering_keys</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">r2g</span><span class="p">:</span>
+                    <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;mdata.uns[&#39;r2g&#39;] missing &#39;</span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">&#39; (required for alignment)&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Check PPI (optional, only warn if missing)</span>
+    <span class="c1"># PPI is used during training but not strictly required</span>
+
+    <span class="c1"># Check version</span>
+    <span class="k">if</span> <span class="s2">&quot;deepscenic_version&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">:</span>
+        <span class="n">issues</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;mdata.uns missing &#39;deepscenic_version&#39;&quot;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">issues</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">strict</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">SchemaError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Schema validation failed: </span><span class="si">{</span><span class="n">issues</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">issue</span> <span class="ow">in</span> <span class="n">issues</span><span class="p">:</span>
+                <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="n">issue</span><span class="p">,</span> <span class="n">SchemaWarning</span><span class="p">,</span> <span class="n">stacklevel</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">issues</span></div>
+
+
+
+<div class="viewcode-block" id="is_valid_schema">
+<a class="viewcode-back" href="../../../api/data.html#deepscenic.data.is_valid_schema">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">is_valid_schema</span><span class="p">(</span><span class="n">mdata</span><span class="p">:</span> <span class="n">md</span><span class="o">.</span><span class="n">MuData</span><span class="p">,</span> <span class="n">mode</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;training&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if MuData conforms to schema without raising.&quot;&quot;&quot;</span>
+    <span class="n">issues</span> <span class="o">=</span> <span class="n">validate_schema</span><span class="p">(</span><span class="n">mdata</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="n">mode</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="n">issues</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span></div>
+
+</pre></div>
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By deepSCENIC Team
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2025, deepSCENIC Team.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

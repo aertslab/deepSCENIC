@@ -1,0 +1,623 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>deepscenic.datasets.gene_annotation &#8212; deepscenic  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=356f8d28" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../../../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/deepscenic/datasets/gene_annotation';</script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/deepSCENIC.png" class="logo__image only-light" alt="deepscenic  documentation - Home"/>
+    <script>document.write(`<img src="../../../_static/deepSCENIC.png" class="logo__image only-dark" alt="deepscenic  documentation - Home"/>`);</script>
+  
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../tutorials.html">Tutorials</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/01_data_loading.html">Tutorial 1: Data Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/02_preprocessing.html">Tutorial 2: Preprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/03_training.html">Tutorial 3: Training</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/04_grn_analysis.html">Tutorial 4: GRN Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/05_perturbation_simulation.html">Tutorial 5: Perturbation Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/06_visualization.html">Tutorial 6: Advanced Visualization</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api.html">API Reference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/preprocessing.html">Preprocessing (<code class="docutils literal notranslate"><span class="pre">ds.pp</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/tools.html">Tools (<code class="docutils literal notranslate"><span class="pre">ds.tl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/plotting.html">Plotting (<code class="docutils literal notranslate"><span class="pre">ds.pl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/io.html">Input/Output (<code class="docutils literal notranslate"><span class="pre">ds.io</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/data.html">Data Structures (<code class="docutils literal notranslate"><span class="pre">ds.data</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/datasets.html">Datasets (<code class="docutils literal notranslate"><span class="pre">ds.datasets</span></code>)</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/aertslab/deepSCENIC" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1></h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for deepscenic.datasets.gene_annotation</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Gene annotation download utilities.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">re</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="k">pass</span>
+
+<span class="c1"># Setup logging</span>
+<span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;deepscenic.datasets&quot;</span><span class="p">)</span>
+
+<span class="n">_NCBI_MAX_RETRIES</span> <span class="o">=</span> <span class="mi">3</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">NCBIError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Error fetching data from NCBI.&quot;&quot;&quot;</span>
+
+    <span class="k">pass</span>
+
+
+<div class="viewcode-block" id="fetch_gene_annotation">
+<a class="viewcode-back" href="../../../api/datasets.html#deepscenic.datasets.fetch_gene_annotation">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">fetch_gene_annotation</span><span class="p">(</span>
+    <span class="n">species</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;hsapiens&quot;</span><span class="p">,</span>
+    <span class="n">biomart_host</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;http://www.ensembl.org&quot;</span><span class="p">,</span>
+    <span class="n">use_ucsc_chromosome_style</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">transcript_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;protein_coding&quot;</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Download gene annotation from Ensembl Biomart.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    species : str, default=&quot;hsapiens&quot;</span>
+<span class="sd">        Species name for Ensembl (e.g., &quot;hsapiens&quot;, &quot;mmusculus&quot;, &quot;dmelanogaster&quot;).</span>
+<span class="sd">    biomart_host : str</span>
+<span class="sd">        Biomart host URL. Use archived hosts for reproducibility:</span>
+<span class="sd">        - &quot;http://nov2020.archive.ensembl.org/&quot; for GRCm38</span>
+<span class="sd">        - &quot;http://www.ensembl.org&quot; for latest</span>
+<span class="sd">    use_ucsc_chromosome_style : bool, default=True</span>
+<span class="sd">        Convert chromosome names to UCSC style (chr1, chr2, etc.).</span>
+<span class="sd">    transcript_type : str, default=&quot;protein_coding&quot;</span>
+<span class="sd">        Filter for transcript type. Set to None to include all types.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    gene_annotation : DataFrame</span>
+<span class="sd">        Gene annotation with columns:</span>
+<span class="sd">        - Chromosome, Start, End, Strand, Transcription_Start_Site, Transcript_type</span>
+<span class="sd">        Index is Gene name.</span>
+<span class="sd">    chromsizes : DataFrame or None</span>
+<span class="sd">        Chromosome sizes (if available from NCBI):</span>
+<span class="sd">        - Chromosome, Start (0), End</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; import deepscenic as ds</span>
+<span class="sd">    &gt;&gt;&gt; annot, chromsizes = ds.datasets.fetch_gene_annotation(</span>
+<span class="sd">    ...     species=&quot;mmusculus&quot;,</span>
+<span class="sd">    ...     biomart_host=&quot;http://nov2020.archive.ensembl.org/&quot;,</span>
+<span class="sd">    ... )</span>
+<span class="sd">    &gt;&gt;&gt; annot.head()</span>
+<span class="sd">       Chromosome  Start    End Strand  Transcription_Start_Site</span>
+<span class="sd">    Gene</span>
+<span class="sd">    0610005C13Rik  chr7  ...</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">pybiomart</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pbm</span>
+
+    <span class="n">dataset_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">species</span><span class="si">}</span><span class="s2">_gene_ensembl&quot;</span>
+
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Connecting to Biomart host: </span><span class="si">{</span><span class="n">biomart_host</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">server</span> <span class="o">=</span> <span class="n">pbm</span><span class="o">.</span><span class="n">Server</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="n">biomart_host</span><span class="p">,</span> <span class="n">use_cache</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">mart</span> <span class="o">=</span> <span class="n">server</span><span class="p">[</span><span class="s2">&quot;ENSEMBL_MART_ENSEMBL&quot;</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">dataset_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">mart</span><span class="o">.</span><span class="n">list_datasets</span><span class="p">()[</span><span class="s2">&quot;name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Dataset &#39;</span><span class="si">{</span><span class="n">dataset_name</span><span class="si">}</span><span class="s2">&#39; not found. &quot;</span> <span class="s2">&quot;Check species name or Biomart host.&quot;</span><span class="p">)</span>
+
+    <span class="n">dataset</span> <span class="o">=</span> <span class="n">mart</span><span class="p">[</span><span class="n">dataset_name</span><span class="p">]</span>
+
+    <span class="c1"># Handle different Biomart attribute names across versions</span>
+    <span class="n">external_gene_name_query</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;external_gene_name&quot;</span> <span class="k">if</span> <span class="s2">&quot;external_gene_name&quot;</span> <span class="ow">in</span> <span class="n">dataset</span><span class="o">.</span><span class="n">attributes</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">else</span> <span class="s2">&quot;hgnc_symbol&quot;</span>
+    <span class="p">)</span>
+    <span class="n">tss_query</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="s2">&quot;transcription_start_site&quot;</span> <span class="k">if</span> <span class="s2">&quot;transcription_start_site&quot;</span> <span class="ow">in</span> <span class="n">dataset</span><span class="o">.</span><span class="n">attributes</span><span class="o">.</span><span class="n">keys</span><span class="p">()</span> <span class="k">else</span> <span class="s2">&quot;transcript_start&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Querying gene annotation for </span><span class="si">{</span><span class="n">species</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">dataset</span><span class="o">.</span><span class="n">query</span><span class="p">(</span>
+        <span class="n">attributes</span><span class="o">=</span><span class="p">[</span>
+            <span class="s2">&quot;chromosome_name&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;start_position&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;end_position&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;strand&quot;</span><span class="p">,</span>
+            <span class="n">external_gene_name_query</span><span class="p">,</span>
+            <span class="n">tss_query</span><span class="p">,</span>
+            <span class="s2">&quot;transcript_biotype&quot;</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+    <span class="n">annot</span><span class="o">.</span><span class="n">columns</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="s2">&quot;Chromosome&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Start&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;End&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Strand&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Gene&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Transcription_Start_Site&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;Transcript_type&quot;</span><span class="p">,</span>
+    <span class="p">]</span>
+
+    <span class="c1"># Filter for transcript type</span>
+    <span class="k">if</span> <span class="n">transcript_type</span><span class="p">:</span>
+        <span class="n">annot</span> <span class="o">=</span> <span class="n">annot</span><span class="p">[</span><span class="n">annot</span><span class="o">.</span><span class="n">Transcript_type</span> <span class="o">==</span> <span class="n">transcript_type</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># Convert strand from numeric to +/-</span>
+    <span class="n">annot</span><span class="p">[</span><span class="s2">&quot;Strand&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;+&quot;</span> <span class="k">if</span> <span class="n">strand</span> <span class="o">==</span> <span class="mi">1</span> <span class="k">else</span> <span class="s2">&quot;-&quot;</span> <span class="k">for</span> <span class="n">strand</span> <span class="ow">in</span> <span class="n">annot</span><span class="p">[</span><span class="s2">&quot;Strand&quot;</span><span class="p">]]</span>
+
+    <span class="c1"># Try to get chromosome sizes from NCBI</span>
+    <span class="n">chromsizes</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">chromsizes</span><span class="p">,</span> <span class="n">annot</span> <span class="o">=</span> <span class="n">_fetch_chromsizes_and_filter</span><span class="p">(</span><span class="n">annot</span><span class="p">,</span> <span class="n">dataset</span><span class="p">,</span> <span class="n">use_ucsc_chromosome_style</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">NCBIError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Could not fetch chromosome info from NCBI: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Returning annotation without chromosome filtering.&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Remove duplicate genes (keep first occurrence)</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">drop_duplicates</span><span class="p">(</span><span class="n">subset</span><span class="o">=</span><span class="s2">&quot;Gene&quot;</span><span class="p">,</span> <span class="n">keep</span><span class="o">=</span><span class="s2">&quot;first&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Remove rows with empty gene names</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">annot</span><span class="p">[</span><span class="n">annot</span><span class="p">[</span><span class="s2">&quot;Gene&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">notna</span><span class="p">()</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">annot</span><span class="p">[</span><span class="s2">&quot;Gene&quot;</span><span class="p">]</span> <span class="o">!=</span> <span class="s2">&quot;&quot;</span><span class="p">)]</span>
+
+    <span class="c1"># Set Gene as index for easy lookup</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">annot</span><span class="o">.</span><span class="n">set_index</span><span class="p">(</span><span class="s2">&quot;Gene&quot;</span><span class="p">)</span>
+
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Downloaded annotation for </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">annot</span><span class="p">)</span><span class="si">}</span><span class="s2"> genes&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">annot</span><span class="p">,</span> <span class="n">chromsizes</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fetch_chromsizes_and_filter</span><span class="p">(</span>
+    <span class="n">annot</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+    <span class="n">dataset</span><span class="p">,</span>
+    <span class="n">use_ucsc_style</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fetch chromosome sizes from NCBI and filter annotation.&quot;&quot;&quot;</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">xml.etree.ElementTree</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">xml_tree</span>
+
+    <span class="c1"># Get assembly name from dataset</span>
+    <span class="n">regex_display</span> <span class="o">=</span> <span class="n">re</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="sa">r</span><span class="s2">&quot;\((.*?)\)&quot;</span><span class="p">,</span> <span class="n">dataset</span><span class="o">.</span><span class="n">display_name</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">regex_display</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">NCBIError</span><span class="p">(</span><span class="s2">&quot;Could not find assembly from Biomart display name&quot;</span><span class="p">)</span>
+
+    <span class="n">ncbi_search_term</span> <span class="o">=</span> <span class="n">regex_display</span><span class="o">.</span><span class="n">group</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using genome assembly: </span><span class="si">{</span><span class="n">ncbi_search_term</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_with_retries</span><span class="p">(</span><span class="n">url</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">params</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">requests</span><span class="o">.</span><span class="n">Response</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">_NCBI_MAX_RETRIES</span><span class="p">):</span>
+            <span class="n">resp</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">params</span><span class="o">=</span><span class="n">params</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">resp</span><span class="o">.</span><span class="n">ok</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">resp</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">NCBIError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Failed to fetch from </span><span class="si">{</span><span class="n">url</span><span class="si">}</span><span class="s2"> after </span><span class="si">{</span><span class="n">_NCBI_MAX_RETRIES</span><span class="si">}</span><span class="s2"> retries&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Search NCBI assembly database</span>
+    <span class="n">esearch_resp</span> <span class="o">=</span> <span class="n">_get_with_retries</span><span class="p">(</span>
+        <span class="s2">&quot;https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi&quot;</span><span class="p">,</span>
+        <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;db&quot;</span><span class="p">:</span> <span class="s2">&quot;assembly&quot;</span><span class="p">,</span> <span class="s2">&quot;term&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">ncbi_search_term</span><span class="si">}</span><span class="s2">[Assembly Name]&quot;</span><span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">id_list</span> <span class="o">=</span> <span class="n">xml_tree</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">esearch_resp</span><span class="o">.</span><span class="n">content</span><span class="p">)</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s2">&quot;IdList&quot;</span><span class="p">)</span>
+    <span class="n">id_elem</span> <span class="o">=</span> <span class="n">id_list</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s2">&quot;Id&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">id_list</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">id_elem</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">NCBIError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;No assembly found for: </span><span class="si">{</span><span class="n">ncbi_search_term</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="n">assembly_id</span> <span class="o">=</span> <span class="n">id_elem</span><span class="o">.</span><span class="n">text</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found NCBI assembly ID: </span><span class="si">{</span><span class="n">assembly_id</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Get assembly summary</span>
+    <span class="n">esummary_resp</span> <span class="o">=</span> <span class="n">_get_with_retries</span><span class="p">(</span>
+        <span class="s2">&quot;https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi&quot;</span><span class="p">,</span>
+        <span class="n">params</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;db&quot;</span><span class="p">:</span> <span class="s2">&quot;assembly&quot;</span><span class="p">,</span> <span class="s2">&quot;id&quot;</span><span class="p">:</span> <span class="n">assembly_id</span><span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="n">doc_summary</span> <span class="o">=</span> <span class="n">xml_tree</span><span class="o">.</span><span class="n">fromstring</span><span class="p">(</span><span class="n">esummary_resp</span><span class="o">.</span><span class="n">content</span><span class="p">)</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s2">&quot;.//DocumentSummary&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">doc_summary</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">NCBIError</span><span class="p">(</span><span class="s2">&quot;No DocumentSummary in NCBI response&quot;</span><span class="p">)</span>
+
+    <span class="n">ftp_path</span> <span class="o">=</span> <span class="n">doc_summary</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s2">&quot;FtpPath_Assembly_rpt&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ftp_path</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">ftp_path</span><span class="o">.</span><span class="n">text</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">NCBIError</span><span class="p">(</span><span class="s2">&quot;No FTP path for assembly report&quot;</span><span class="p">)</span>
+
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Downloading assembly report from: </span><span class="si">{</span><span class="n">ftp_path</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Load assembly report</span>
+    <span class="n">assembly_report</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span>
+        <span class="n">ftp_path</span><span class="o">.</span><span class="n">text</span><span class="p">,</span>
+        <span class="n">comment</span><span class="o">=</span><span class="s2">&quot;#&quot;</span><span class="p">,</span>
+        <span class="n">names</span><span class="o">=</span><span class="p">[</span>
+            <span class="s2">&quot;Sequence-Name&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Sequence-Role&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Assigned-Molecule&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Assigned-Molecule-Location/Type&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;GenBank-Accn&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Relationship&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;RefSeq-Accn&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Assembly-Unit&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;Sequence-Length&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;UCSC-style-name&quot;</span><span class="p">,</span>
+        <span class="p">],</span>
+        <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Filter to assembled chromosomes only</span>
+    <span class="n">assembly_report</span> <span class="o">=</span> <span class="n">assembly_report</span><span class="p">[</span><span class="n">assembly_report</span><span class="p">[</span><span class="s2">&quot;Sequence-Role&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;assembled-molecule&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="n">assembled_molecules</span> <span class="o">=</span> <span class="n">assembly_report</span><span class="p">[</span><span class="s2">&quot;Sequence-Name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+    <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">assembled_molecules</span><span class="p">)</span><span class="si">}</span><span class="s2"> assembled chromosomes&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Filter annotation to assembled chromosomes</span>
+    <span class="n">annot</span> <span class="o">=</span> <span class="n">annot</span><span class="p">[</span><span class="n">annot</span><span class="p">[</span><span class="s2">&quot;Chromosome&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">isin</span><span class="p">(</span><span class="n">assembled_molecules</span><span class="p">)]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># Build chromsizes DataFrame</span>
+    <span class="n">chromsizes</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;Chromosome&quot;</span><span class="p">:</span> <span class="n">assembly_report</span><span class="p">[</span><span class="s2">&quot;Sequence-Name&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
+            <span class="s2">&quot;Start&quot;</span><span class="p">:</span> <span class="mi">0</span><span class="p">,</span>
+            <span class="s2">&quot;End&quot;</span><span class="p">:</span> <span class="n">assembly_report</span><span class="p">[</span><span class="s2">&quot;Sequence-Length&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Convert to UCSC style if requested</span>
+    <span class="k">if</span> <span class="n">use_ucsc_style</span><span class="p">:</span>
+        <span class="n">ensembl_to_ucsc</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+            <span class="nb">zip</span><span class="p">(</span>
+                <span class="n">assembly_report</span><span class="p">[</span><span class="s2">&quot;Sequence-Name&quot;</span><span class="p">],</span>
+                <span class="n">assembly_report</span><span class="p">[</span><span class="s2">&quot;UCSC-style-name&quot;</span><span class="p">],</span>
+                <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="p">)</span>
+        <span class="p">)</span>
+        <span class="n">annot</span><span class="p">[</span><span class="s2">&quot;Chromosome&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">ensembl_to_ucsc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">annot</span><span class="p">[</span><span class="s2">&quot;Chromosome&quot;</span><span class="p">]]</span>
+        <span class="n">chromsizes</span><span class="p">[</span><span class="s2">&quot;Chromosome&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">ensembl_to_ucsc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">c</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">chromsizes</span><span class="p">[</span><span class="s2">&quot;Chromosome&quot;</span><span class="p">]]</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Converted chromosome names to UCSC style&quot;</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">chromsizes</span><span class="p">,</span> <span class="n">annot</span>
+</pre></div>
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By deepSCENIC Team
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2025, deepSCENIC Team.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

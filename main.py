@@ -1,4 +1,5 @@
 import argparse
+
 from src.deepSCENIC import deepSCENIC
 
 parser = argparse.ArgumentParser()

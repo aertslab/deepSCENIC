@@ -1,0 +1,901 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>deepscenic.tl._train &#8212; deepscenic  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=356f8d28" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../../../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/deepscenic/tl/_train';</script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/deepSCENIC.png" class="logo__image only-light" alt="deepscenic  documentation - Home"/>
+    <script>document.write(`<img src="../../../_static/deepSCENIC.png" class="logo__image only-dark" alt="deepscenic  documentation - Home"/>`);</script>
+  
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../tutorials.html">Tutorials</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/01_data_loading.html">Tutorial 1: Data Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/02_preprocessing.html">Tutorial 2: Preprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/03_training.html">Tutorial 3: Training</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/04_grn_analysis.html">Tutorial 4: GRN Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/05_perturbation_simulation.html">Tutorial 5: Perturbation Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/06_visualization.html">Tutorial 6: Advanced Visualization</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api.html">API Reference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/preprocessing.html">Preprocessing (<code class="docutils literal notranslate"><span class="pre">ds.pp</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/tools.html">Tools (<code class="docutils literal notranslate"><span class="pre">ds.tl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/plotting.html">Plotting (<code class="docutils literal notranslate"><span class="pre">ds.pl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/io.html">Input/Output (<code class="docutils literal notranslate"><span class="pre">ds.io</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/data.html">Data Structures (<code class="docutils literal notranslate"><span class="pre">ds.data</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/datasets.html">Datasets (<code class="docutils literal notranslate"><span class="pre">ds.datasets</span></code>)</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/aertslab/deepSCENIC" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1></h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for deepscenic.tl._train</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Main training loop for deepSCENIC.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Any</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch.optim</span><span class="w"> </span><span class="kn">import</span> <span class="n">AdamW</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torch.optim.lr_scheduler</span><span class="w"> </span><span class="kn">import</span> <span class="n">CosineAnnealingLR</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm.auto</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">..models</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeepSCENICVAE</span><span class="p">,</span> <span class="n">MotifNet</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._dataloaders</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_cell_dataloader</span><span class="p">,</span> <span class="n">build_sequence_dataloader</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._logging</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._loss</span><span class="w"> </span><span class="kn">import</span> <span class="n">compute_total_loss</span><span class="p">,</span> <span class="n">e1_sparsity_loss</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._model</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeepSCENICModel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">._training_state</span><span class="w"> </span><span class="kn">import</span> <span class="n">Checkpoint</span><span class="p">,</span> <span class="n">EarlyStopping</span><span class="p">,</span> <span class="n">TrainingConfig</span><span class="p">,</span> <span class="n">TrainingHistory</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">import</span><span class="w"> </span><span class="nn">mudata</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">md</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_init_enformer</span><span class="p">(</span><span class="n">device</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize Enformer model.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">enformer_pytorch</span><span class="w"> </span><span class="kn">import</span> <span class="n">Enformer</span>
+
+    <span class="n">enformer</span> <span class="o">=</span> <span class="n">Enformer</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span>
+        <span class="s2">&quot;EleutherAI/enformer-official-rough&quot;</span><span class="p">,</span>
+        <span class="n">target_length</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">enformer</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">enformer</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_enformer_embeddings</span><span class="p">(</span>
+    <span class="n">enformer</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
+    <span class="n">sequences</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+    <span class="n">bottleneck_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">emb_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get Enformer embeddings for sequences.&quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">amp</span><span class="o">.</span><span class="n">autocast</span><span class="p">(</span><span class="n">enabled</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">output</span> <span class="o">=</span> <span class="n">enformer</span><span class="p">(</span><span class="n">sequences</span><span class="p">,</span> <span class="n">return_only_embeddings</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="c1"># Flatten: (batch, emb_len, bottleneck) -&gt; (batch, bottleneck * emb_len)</span>
+    <span class="k">return</span> <span class="n">output</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">bottleneck_size</span> <span class="o">*</span> <span class="n">emb_len</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_init_e1_cache</span><span class="p">(</span>
+    <span class="n">enformer</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">,</span>
+    <span class="n">tf2rnet</span><span class="p">:</span> <span class="n">MotifNet</span><span class="p">,</span>
+    <span class="n">seq_dataloader</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">utils</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">DataLoader</span><span class="p">,</span>
+    <span class="n">device</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">TrainingConfig</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Initialize E1 cache by running all sequences through Enformer + TF2rNet.&quot;&quot;&quot;</span>
+    <span class="n">enformer</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="n">tf2rnet</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+
+    <span class="n">n_regions</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">seq_dataloader</span><span class="o">.</span><span class="n">dataset</span><span class="p">)</span>
+    <span class="n">adj_E1</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_regions</span><span class="p">,</span> <span class="n">tf2rnet</span><span class="o">.</span><span class="n">n_tfs</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">sequences</span><span class="p">,),</span> <span class="n">seq_idx</span> <span class="ow">in</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">seq_dataloader</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="s2">&quot;Initializing E1&quot;</span><span class="p">):</span>
+            <span class="n">sequences</span> <span class="o">=</span> <span class="n">sequences</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">emb</span> <span class="o">=</span> <span class="n">_get_enformer_embeddings</span><span class="p">(</span>
+                <span class="n">enformer</span><span class="p">,</span> <span class="n">sequences</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">bottleneck_size</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">emb_len</span>
+            <span class="p">)</span>
+            <span class="n">tf_pred</span> <span class="o">=</span> <span class="n">tf2rnet</span><span class="p">(</span><span class="n">emb</span><span class="p">)</span>
+            <span class="n">adj_E1</span><span class="p">[</span><span class="n">seq_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">tf_pred</span>
+
+    <span class="k">return</span> <span class="n">adj_E1</span>
+
+
+<div class="viewcode-block" id="train">
+<a class="viewcode-back" href="../../../api/tools.html#deepscenic.tl.train">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">train</span><span class="p">(</span>
+    <span class="n">mdata</span><span class="p">:</span> <span class="n">md</span><span class="o">.</span><span class="n">MuData</span><span class="p">,</span>
+    <span class="n">epochs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
+    <span class="n">warmup_vae</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">warmup_grn</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span>
+    <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">64</span><span class="p">,</span>
+    <span class="n">seq_batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="n">lr</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span>
+    <span class="n">device</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;cuda&quot;</span><span class="p">,</span>
+    <span class="n">logger</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;dict&quot;</span><span class="p">,</span>
+    <span class="n">log_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;./runs&quot;</span><span class="p">,</span>
+    <span class="n">checkpoint_dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">checkpoint_every</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="n">resume_from</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">early_stopping_patience</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">balance_dars</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">num_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+    <span class="n">bed_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">fasta_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DeepSCENICModel</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Train deepSCENIC model on multiome data.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mdata</span>
+<span class="sd">        MuData with preprocessed RNA + ATAC data</span>
+<span class="sd">    epochs</span>
+<span class="sd">        Total training epochs</span>
+<span class="sd">    warmup_vae</span>
+<span class="sd">        Epochs before enabling TF2rNet</span>
+<span class="sd">    warmup_grn</span>
+<span class="sd">        Epochs before enabling PPI</span>
+<span class="sd">    batch_size</span>
+<span class="sd">        Cells per batch</span>
+<span class="sd">    seq_batch_size</span>
+<span class="sd">        Sequences per batch</span>
+<span class="sd">    lr</span>
+<span class="sd">        Base learning rate</span>
+<span class="sd">    device</span>
+<span class="sd">        Training device</span>
+<span class="sd">    logger</span>
+<span class="sd">        Logging backend: &#39;dict&#39;, &#39;tensorboard&#39;, &#39;wandb&#39;</span>
+<span class="sd">    log_dir</span>
+<span class="sd">        Directory for tensorboard/wandb logs</span>
+<span class="sd">    checkpoint_dir</span>
+<span class="sd">        Directory for checkpoints (None = no checkpoints)</span>
+<span class="sd">    checkpoint_every</span>
+<span class="sd">        Save checkpoint every N epochs</span>
+<span class="sd">    resume_from</span>
+<span class="sd">        Path to checkpoint to resume from</span>
+<span class="sd">    early_stopping_patience</span>
+<span class="sd">        Stop if no improvement for N epochs (None = disabled)</span>
+<span class="sd">    balance_dars</span>
+<span class="sd">        Whether to upweight DAR regions during sequence sampling (1.5x weight).</span>
+<span class="sd">        Requires DARs to be marked via ds.pp.mark_dars() first.</span>
+<span class="sd">    num_workers</span>
+<span class="sd">        Number of workers for parallel data loading (0 = main process only)</span>
+<span class="sd">    bed_file</span>
+<span class="sd">        Path to BED file with region coordinates</span>
+<span class="sd">    fasta_file</span>
+<span class="sd">        Path to genome FASTA file</span>
+<span class="sd">    **kwargs</span>
+<span class="sd">        Additional config options (ppi_device, etc.)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    DeepSCENICModel</span>
+<span class="sd">        Trained model (self-contained, ready for inference)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Build config</span>
+    <span class="n">config</span> <span class="o">=</span> <span class="n">TrainingConfig</span><span class="p">(</span>
+        <span class="n">epochs</span><span class="o">=</span><span class="n">epochs</span><span class="p">,</span>
+        <span class="n">warmup_vae</span><span class="o">=</span><span class="n">warmup_vae</span><span class="p">,</span>
+        <span class="n">warmup_grn</span><span class="o">=</span><span class="n">warmup_grn</span><span class="p">,</span>
+        <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span>
+        <span class="n">seq_batch_size</span><span class="o">=</span><span class="n">seq_batch_size</span><span class="p">,</span>
+        <span class="n">lr_vae</span><span class="o">=</span><span class="n">lr</span><span class="p">,</span>
+        <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
+        <span class="n">balance_dars</span><span class="o">=</span><span class="n">balance_dars</span><span class="p">,</span>
+        <span class="n">num_workers</span><span class="o">=</span><span class="n">num_workers</span><span class="p">,</span>
+        <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">TrainingConfig</span><span class="o">.</span><span class="n">__dataclass_fields__</span><span class="p">},</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Setup logging</span>
+    <span class="n">training_logger</span> <span class="o">=</span> <span class="n">get_logger</span><span class="p">(</span><span class="n">logger</span><span class="p">,</span> <span class="n">log_dir</span><span class="o">=</span><span class="n">log_dir</span><span class="p">)</span>
+    <span class="n">training_logger</span><span class="o">.</span><span class="n">log_hyperparams</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">to_dict</span><span class="p">())</span>
+
+    <span class="c1"># Extract metadata from MuData</span>
+    <span class="n">tf_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;tfs&quot;</span><span class="p">])</span>
+    <span class="n">gene_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">[</span><span class="s2">&quot;rna&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">var_names</span><span class="p">)</span>
+    <span class="n">region_names</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">[</span><span class="s2">&quot;atac&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">var_names</span><span class="p">)</span>
+
+    <span class="n">n_tfs</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">tf_names</span><span class="p">)</span>
+    <span class="n">n_genes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">gene_names</span><span class="p">)</span>
+    <span class="n">n_regions</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">region_names</span><span class="p">)</span>
+
+    <span class="c1"># Get indices from MuData</span>
+    <span class="n">tf_indices</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;tf_indices&quot;</span><span class="p">])</span>
+    <span class="n">gene_indices</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_genes</span><span class="p">)</span>
+
+    <span class="c1"># Get r2g sparse matrix info</span>
+    <span class="n">r2g_mask</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;r2g_mask&quot;</span><span class="p">]</span>
+    <span class="n">r2g_indices</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">r2g_mask</span><span class="o">.</span><span class="n">row</span><span class="p">,</span> <span class="n">r2g_mask</span><span class="o">.</span><span class="n">col</span><span class="p">]))</span>
+    <span class="n">r2g_distances</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">r2g_mask</span><span class="o">.</span><span class="n">data</span><span class="p">)</span><span class="o">.</span><span class="n">float</span><span class="p">()</span>
+
+    <span class="c1"># Get PPI info if present</span>
+    <span class="n">ppi_edge_index</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">ppi_genes_idx</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">ppi_tfs_idx_keys</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">ppi_tfs_idx_values</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">use_ppi</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">use_ppi</span> <span class="ow">and</span> <span class="s2">&quot;ppi_edge_index&quot;</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">uns</span>
+
+    <span class="k">if</span> <span class="n">use_ppi</span><span class="p">:</span>
+        <span class="n">ppi_edge_index</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;ppi_edge_index&quot;</span><span class="p">])</span>
+        <span class="n">ppi_genes_idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;ppi_genes_idx&quot;</span><span class="p">])</span>
+        <span class="n">ppi_tfs_idx_keys</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;ppi_tfs_idx_keys&quot;</span><span class="p">])</span>
+        <span class="n">ppi_tfs_idx_values</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="p">[</span><span class="s2">&quot;ppi_tfs_idx_values&quot;</span><span class="p">])</span>
+
+    <span class="c1"># Batch correction</span>
+    <span class="n">n_batches</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">batch_key</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">n_batches</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">obs</span><span class="p">[</span><span class="n">config</span><span class="o">.</span><span class="n">batch_key</span><span class="p">]</span><span class="o">.</span><span class="n">nunique</span><span class="p">()</span>
+
+    <span class="c1"># Initialize models</span>
+    <span class="n">vae</span> <span class="o">=</span> <span class="n">DeepSCENICVAE</span><span class="p">(</span>
+        <span class="n">n_tfs</span><span class="o">=</span><span class="n">n_tfs</span><span class="p">,</span>
+        <span class="n">n_genes</span><span class="o">=</span><span class="n">n_genes</span><span class="p">,</span>
+        <span class="n">n_regions</span><span class="o">=</span><span class="n">n_regions</span><span class="p">,</span>
+        <span class="n">r2g_indices</span><span class="o">=</span><span class="n">r2g_indices</span><span class="p">,</span>
+        <span class="n">r2g_distances</span><span class="o">=</span><span class="n">r2g_distances</span><span class="p">,</span>
+        <span class="n">tf_indices</span><span class="o">=</span><span class="n">tf_indices</span><span class="p">,</span>
+        <span class="n">gene_indices</span><span class="o">=</span><span class="n">gene_indices</span><span class="p">,</span>
+        <span class="n">ppi_edge_index</span><span class="o">=</span><span class="n">ppi_edge_index</span><span class="p">,</span>
+        <span class="n">ppi_genes_idx</span><span class="o">=</span><span class="n">ppi_genes_idx</span><span class="p">,</span>
+        <span class="n">ppi_tfs_idx_keys</span><span class="o">=</span><span class="n">ppi_tfs_idx_keys</span><span class="p">,</span>
+        <span class="n">ppi_tfs_idx_values</span><span class="o">=</span><span class="n">ppi_tfs_idx_values</span><span class="p">,</span>
+        <span class="n">n_hidden</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">n_hidden</span><span class="p">,</span>
+        <span class="n">use_ppi</span><span class="o">=</span><span class="n">use_ppi</span><span class="p">,</span>
+        <span class="n">binary_atac</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">binary_atac</span><span class="p">,</span>
+        <span class="n">n_batches</span><span class="o">=</span><span class="n">n_batches</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">tf2rnet</span> <span class="o">=</span> <span class="n">MotifNet</span><span class="p">(</span>
+        <span class="n">n_tfs</span><span class="o">=</span><span class="n">n_tfs</span><span class="p">,</span>
+        <span class="n">bottleneck_size</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">bottleneck_size</span><span class="p">,</span>
+        <span class="n">emb_len</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">emb_len</span><span class="p">,</span>
+    <span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="n">enformer</span> <span class="o">=</span> <span class="n">_init_enformer</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+    <span class="c1"># Build dataloaders</span>
+    <span class="n">train_cell_loader</span> <span class="o">=</span> <span class="n">build_cell_dataloader</span><span class="p">(</span>
+        <span class="n">mdata</span><span class="p">,</span>
+        <span class="n">split</span><span class="o">=</span><span class="s2">&quot;train&quot;</span><span class="p">,</span>
+        <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span>
+        <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">balance_class</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">balance_class</span><span class="p">,</span>
+        <span class="n">class_key</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">class_key</span><span class="p">,</span>
+        <span class="n">batch_key</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">batch_key</span><span class="p">,</span>
+        <span class="n">num_workers</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">num_workers</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">test_cell_loader</span> <span class="o">=</span> <span class="n">build_cell_dataloader</span><span class="p">(</span>
+        <span class="n">mdata</span><span class="p">,</span>
+        <span class="n">split</span><span class="o">=</span><span class="s2">&quot;test&quot;</span><span class="p">,</span>
+        <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span><span class="p">,</span>
+        <span class="n">shuffle</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="n">batch_key</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">batch_key</span><span class="p">,</span>
+        <span class="n">num_workers</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">num_workers</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Sequence dataloader (for TF2rNet training)</span>
+    <span class="k">if</span> <span class="n">bed_file</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">bed_file</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;bed_file&quot;</span><span class="p">,</span> <span class="s2">&quot;regions.bed&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">fasta_file</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fasta_file</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">uns</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;fasta_file&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Get DAR indices if balance_dars is enabled</span>
+    <span class="n">dar_indices</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">balance_dars</span> <span class="ow">and</span> <span class="s2">&quot;atac&quot;</span> <span class="ow">in</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">:</span>
+        <span class="n">atac_var</span> <span class="o">=</span> <span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">[</span><span class="s2">&quot;atac&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">var</span>
+        <span class="k">if</span> <span class="s2">&quot;is_dar&quot;</span> <span class="ow">in</span> <span class="n">atac_var</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="n">dar_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">atac_var</span><span class="p">[</span><span class="s2">&quot;is_dar&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">train_seq_loader</span> <span class="o">=</span> <span class="n">build_sequence_dataloader</span><span class="p">(</span>
+        <span class="n">bed_file</span><span class="o">=</span><span class="n">bed_file</span><span class="p">,</span>
+        <span class="n">fasta_file</span><span class="o">=</span><span class="n">fasta_file</span><span class="p">,</span>
+        <span class="n">batch_size</span><span class="o">=</span><span class="n">seq_batch_size</span><span class="p">,</span>
+        <span class="n">shuffle</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">shift_augs</span><span class="o">=</span><span class="p">(</span><span class="o">-</span><span class="mi">3</span><span class="p">,</span> <span class="mi">3</span><span class="p">),</span>
+        <span class="n">rc_aug</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">context_length</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">seq_len</span><span class="p">,</span>
+        <span class="n">num_workers</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">num_workers</span><span class="p">,</span>
+        <span class="n">balance_dars</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">balance_dars</span><span class="p">,</span>
+        <span class="n">dar_indices</span><span class="o">=</span><span class="n">dar_indices</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Initialize E1 cache</span>
+    <span class="n">adj_E1_cache</span> <span class="o">=</span> <span class="n">_init_e1_cache</span><span class="p">(</span><span class="n">enformer</span><span class="p">,</span> <span class="n">tf2rnet</span><span class="p">,</span> <span class="n">train_seq_loader</span><span class="p">,</span> <span class="n">device</span><span class="p">,</span> <span class="n">config</span><span class="p">)</span>
+
+    <span class="c1"># Optimizers</span>
+    <span class="n">optimizer_vae</span> <span class="o">=</span> <span class="n">AdamW</span><span class="p">(</span><span class="n">vae</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">lr_vae</span><span class="p">,</span> <span class="n">weight_decay</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">weight_decay</span><span class="p">)</span>
+    <span class="n">optimizer_tf2rnet</span> <span class="o">=</span> <span class="n">AdamW</span><span class="p">(</span>
+        <span class="nb">list</span><span class="p">(</span><span class="n">tf2rnet</span><span class="o">.</span><span class="n">parameters</span><span class="p">())</span> <span class="o">+</span> <span class="nb">list</span><span class="p">(</span><span class="n">enformer</span><span class="o">.</span><span class="n">parameters</span><span class="p">()),</span>
+        <span class="n">lr</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">lr_tf2rnet</span><span class="p">,</span>
+        <span class="n">weight_decay</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">weight_decay</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">scheduler</span> <span class="o">=</span> <span class="n">CosineAnnealingLR</span><span class="p">(</span><span class="n">optimizer_vae</span><span class="p">,</span> <span class="n">T_max</span><span class="o">=</span><span class="n">epochs</span><span class="p">)</span>
+
+    <span class="c1"># History and early stopping</span>
+    <span class="n">history</span> <span class="o">=</span> <span class="n">TrainingHistory</span><span class="p">()</span>
+    <span class="n">early_stopping</span> <span class="o">=</span> <span class="n">EarlyStopping</span><span class="p">(</span><span class="n">patience</span><span class="o">=</span><span class="n">early_stopping_patience</span><span class="p">)</span> <span class="k">if</span> <span class="n">early_stopping_patience</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="c1"># Resume from checkpoint</span>
+    <span class="n">start_epoch</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">if</span> <span class="n">resume_from</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">checkpoint</span> <span class="o">=</span> <span class="n">Checkpoint</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">resume_from</span><span class="p">,</span> <span class="n">map_location</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">vae</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">vae_state_dict</span><span class="p">)</span>
+        <span class="n">tf2rnet</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">tf2rnet_state_dict</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">checkpoint</span><span class="o">.</span><span class="n">enformer_state_dict</span><span class="p">:</span>
+            <span class="n">enformer</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">enformer_state_dict</span><span class="p">)</span>
+        <span class="n">optimizer_vae</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">optimizer_state_dict</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">checkpoint</span><span class="o">.</span><span class="n">scheduler_state_dict</span><span class="p">:</span>
+            <span class="n">scheduler</span><span class="o">.</span><span class="n">load_state_dict</span><span class="p">(</span><span class="n">checkpoint</span><span class="o">.</span><span class="n">scheduler_state_dict</span><span class="p">)</span>
+        <span class="n">history</span> <span class="o">=</span> <span class="n">checkpoint</span><span class="o">.</span><span class="n">history</span>
+        <span class="n">adj_E1_cache</span> <span class="o">=</span> <span class="n">checkpoint</span><span class="o">.</span><span class="n">adj_E1</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+        <span class="n">start_epoch</span> <span class="o">=</span> <span class="n">checkpoint</span><span class="o">.</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span>
+
+    <span class="c1"># Sequence iterator for cycling</span>
+    <span class="n">seq_iterator</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">train_seq_loader</span><span class="p">)</span>
+
+    <span class="c1"># Training loop</span>
+    <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start_epoch</span><span class="p">,</span> <span class="n">epochs</span><span class="p">):</span>
+        <span class="n">vae</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
+        <span class="n">tf2rnet</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
+        <span class="n">enformer</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
+
+        <span class="n">epoch_metrics</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;loss&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+            <span class="s2">&quot;rec_rna&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+            <span class="s2">&quot;rec_atac&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+            <span class="s2">&quot;kl&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+            <span class="s2">&quot;e1_sparse&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+            <span class="s2">&quot;e2_sparse&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+            <span class="s2">&quot;ppi&quot;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">n_batches_seen</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">train_cell_loader</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;Epoch </span><span class="si">{</span><span class="n">epoch</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">epochs</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">pbar</span><span class="p">:</span>
+            <span class="n">x_rna</span> <span class="o">=</span> <span class="n">batch</span><span class="p">[</span><span class="s2">&quot;rna&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">x_atac</span> <span class="o">=</span> <span class="n">batch</span><span class="p">[</span><span class="s2">&quot;atac&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+            <span class="n">batch_id</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;batch_id&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">batch_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">batch_id</span> <span class="o">=</span> <span class="n">batch_id</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+            <span class="c1"># Clone E1 cache</span>
+            <span class="n">adj_E1</span> <span class="o">=</span> <span class="n">adj_E1_cache</span><span class="o">.</span><span class="n">clone</span><span class="p">()</span>
+
+            <span class="c1"># Update E1 for a batch of sequences (after warmup)</span>
+            <span class="k">if</span> <span class="n">epoch</span> <span class="o">&gt;=</span> <span class="n">warmup_vae</span><span class="p">:</span>
+                <span class="c1"># Get next sequence batch (cycle if exhausted)</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="p">(</span><span class="n">sequences</span><span class="p">,),</span> <span class="n">seq_idx</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">seq_iterator</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">StopIteration</span><span class="p">:</span>
+                    <span class="n">seq_iterator</span> <span class="o">=</span> <span class="nb">iter</span><span class="p">(</span><span class="n">train_seq_loader</span><span class="p">)</span>
+                    <span class="p">(</span><span class="n">sequences</span><span class="p">,),</span> <span class="n">seq_idx</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">seq_iterator</span><span class="p">)</span>
+
+                <span class="n">sequences</span> <span class="o">=</span> <span class="n">sequences</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+                <span class="c1"># Forward through Enformer + TF2rNet</span>
+                <span class="n">optimizer_tf2rnet</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+                <span class="n">emb</span> <span class="o">=</span> <span class="n">_get_enformer_embeddings</span><span class="p">(</span>
+                    <span class="n">enformer</span><span class="p">,</span> <span class="n">sequences</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">bottleneck_size</span><span class="p">,</span> <span class="n">config</span><span class="o">.</span><span class="n">emb_len</span>
+                <span class="p">)</span>
+                <span class="n">tf_pred</span> <span class="o">=</span> <span class="n">tf2rnet</span><span class="p">(</span><span class="n">emb</span><span class="p">)</span>
+
+                <span class="c1"># Update E1 for this batch</span>
+                <span class="n">adj_E1</span><span class="p">[</span><span class="n">seq_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">tf_pred</span>
+
+                <span class="c1"># Update cache (no gradients)</span>
+                <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+                    <span class="n">adj_E1_cache</span><span class="p">[</span><span class="n">seq_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">tf_pred</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span>
+
+            <span class="c1"># VAE forward</span>
+            <span class="n">optimizer_vae</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
+            <span class="n">use_ppi_this_batch</span> <span class="o">=</span> <span class="n">use_ppi</span> <span class="ow">and</span> <span class="n">epoch</span> <span class="o">&gt;=</span> <span class="n">warmup_grn</span>
+            <span class="n">output</span> <span class="o">=</span> <span class="n">vae</span><span class="p">(</span>
+                <span class="n">x_rna</span><span class="p">,</span>
+                <span class="n">x_atac</span><span class="p">,</span>
+                <span class="n">adj_E1</span><span class="p">,</span>
+                <span class="n">batch_id</span><span class="o">=</span><span class="n">batch_id</span><span class="p">,</span>
+                <span class="n">use_ppi</span><span class="o">=</span><span class="n">use_ppi_this_batch</span><span class="p">,</span>
+                <span class="n">use_mean</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                <span class="n">ppi_device</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ppi_device</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Compute losses</span>
+            <span class="n">losses</span> <span class="o">=</span> <span class="n">compute_total_loss</span><span class="p">(</span>
+                <span class="n">x_rna</span><span class="o">=</span><span class="n">x_rna</span><span class="p">,</span>
+                <span class="n">x_atac</span><span class="o">=</span><span class="n">x_atac</span><span class="p">,</span>
+                <span class="n">x_rna_rec</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">x_rna_rec</span><span class="p">,</span>
+                <span class="n">x_atac_rec</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">x_atac_rec</span><span class="p">,</span>
+                <span class="n">mu</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span>
+                <span class="n">logvar</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">logvar</span><span class="p">,</span>
+                <span class="n">adj_E1_batch</span><span class="o">=</span><span class="n">adj_E1</span><span class="p">[</span><span class="n">seq_idx</span><span class="p">]</span> <span class="k">if</span> <span class="n">epoch</span> <span class="o">&gt;=</span> <span class="n">warmup_vae</span> <span class="k">else</span> <span class="n">adj_E1</span><span class="p">,</span>
+                <span class="n">adj_E2</span><span class="o">=</span><span class="n">vae</span><span class="o">.</span><span class="n">adj_E2</span><span class="p">,</span>
+                <span class="n">r2g_distances</span><span class="o">=</span><span class="n">vae</span><span class="o">.</span><span class="n">r2g_distances</span><span class="p">,</span>
+                <span class="n">x_rna_ppi</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">x_rna_ppi</span><span class="p">,</span>
+                <span class="n">gene_indices</span><span class="o">=</span><span class="n">vae</span><span class="o">.</span><span class="n">gene_indices</span><span class="p">,</span>
+                <span class="n">loss_rna</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">loss_rna</span><span class="p">,</span>
+                <span class="n">loss_atac</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">loss_atac</span><span class="p">,</span>
+                <span class="n">dropout_mask_rna</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">dropout_mask_rna</span><span class="p">,</span>
+                <span class="n">dropout_mask_atac</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">dropout_mask_atac</span><span class="p">,</span>
+                <span class="n">beta</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">beta</span><span class="p">,</span>
+                <span class="n">alpha</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">alpha</span><span class="p">,</span>
+                <span class="n">gamma</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">gamma</span><span class="p">,</span>
+                <span class="n">rna_tau</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">rna_tau</span><span class="p">,</span>
+                <span class="n">atac_tau</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">atac_tau</span><span class="p">,</span>
+                <span class="n">use_ppi</span><span class="o">=</span><span class="n">use_ppi_this_batch</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Add E1 sparsity loss (only for updated batch)</span>
+            <span class="k">if</span> <span class="n">epoch</span> <span class="o">&gt;=</span> <span class="n">warmup_vae</span><span class="p">:</span>
+                <span class="n">e1_loss</span> <span class="o">=</span> <span class="n">e1_sparsity_loss</span><span class="p">(</span><span class="n">tf_pred</span><span class="p">)</span> <span class="o">*</span> <span class="n">config</span><span class="o">.</span><span class="n">alpha</span>
+                <span class="n">total_loss</span> <span class="o">=</span> <span class="n">losses</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span> <span class="o">+</span> <span class="n">e1_loss</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">total_loss</span> <span class="o">=</span> <span class="n">losses</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span>
+
+            <span class="c1"># Backward</span>
+            <span class="n">total_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+            <span class="n">optimizer_vae</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">epoch</span> <span class="o">&gt;=</span> <span class="n">warmup_vae</span><span class="p">:</span>
+                <span class="n">optimizer_tf2rnet</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+
+            <span class="c1"># Accumulate metrics</span>
+            <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">epoch_metrics</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">losses</span><span class="p">:</span>
+                    <span class="n">epoch_metrics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">+=</span> <span class="n">losses</span><span class="p">[</span><span class="n">key</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            <span class="n">epoch_metrics</span><span class="p">[</span><span class="s2">&quot;loss&quot;</span><span class="p">]</span> <span class="o">+=</span> <span class="n">total_loss</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            <span class="n">n_batches_seen</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="n">pbar</span><span class="o">.</span><span class="n">set_postfix</span><span class="p">(</span><span class="n">loss</span><span class="o">=</span><span class="n">total_loss</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+
+        <span class="c1"># Average epoch metrics</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">epoch_metrics</span><span class="p">:</span>
+            <span class="n">epoch_metrics</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">/=</span> <span class="n">n_batches_seen</span>
+
+        <span class="c1"># Step scheduler</span>
+        <span class="n">scheduler</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
+
+        <span class="c1"># Log metrics</span>
+        <span class="n">history</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s2">&quot;train&quot;</span><span class="p">,</span> <span class="n">epoch_metrics</span><span class="p">)</span>
+        <span class="n">training_logger</span><span class="o">.</span><span class="n">log_metrics</span><span class="p">(</span>
+            <span class="p">{</span><span class="sa">f</span><span class="s2">&quot;train/</span><span class="si">{</span><span class="n">k</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">epoch_metrics</span><span class="o">.</span><span class="n">items</span><span class="p">()},</span> <span class="n">step</span><span class="o">=</span><span class="n">epoch</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Validation</span>
+        <span class="n">vae</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+        <span class="n">val_loss</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="n">n_val_batches</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">batch</span> <span class="ow">in</span> <span class="n">test_cell_loader</span><span class="p">:</span>
+                <span class="n">x_rna</span> <span class="o">=</span> <span class="n">batch</span><span class="p">[</span><span class="s2">&quot;rna&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">x_atac</span> <span class="o">=</span> <span class="n">batch</span><span class="p">[</span><span class="s2">&quot;atac&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">batch_id</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;batch_id&quot;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">batch_id</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">batch_id</span> <span class="o">=</span> <span class="n">batch_id</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
+
+                <span class="n">output</span> <span class="o">=</span> <span class="n">vae</span><span class="p">(</span>
+                    <span class="n">x_rna</span><span class="p">,</span>
+                    <span class="n">x_atac</span><span class="p">,</span>
+                    <span class="n">adj_E1_cache</span><span class="p">,</span>
+                    <span class="n">batch_id</span><span class="o">=</span><span class="n">batch_id</span><span class="p">,</span>
+                    <span class="n">use_ppi</span><span class="o">=</span><span class="n">use_ppi</span> <span class="ow">and</span> <span class="n">epoch</span> <span class="o">&gt;=</span> <span class="n">warmup_grn</span><span class="p">,</span>
+                    <span class="n">use_mean</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                    <span class="n">ppi_device</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">ppi_device</span><span class="p">,</span>
+                <span class="p">)</span>
+
+                <span class="n">losses</span> <span class="o">=</span> <span class="n">compute_total_loss</span><span class="p">(</span>
+                    <span class="n">x_rna</span><span class="o">=</span><span class="n">x_rna</span><span class="p">,</span>
+                    <span class="n">x_atac</span><span class="o">=</span><span class="n">x_atac</span><span class="p">,</span>
+                    <span class="n">x_rna_rec</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">x_rna_rec</span><span class="p">,</span>
+                    <span class="n">x_atac_rec</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">x_atac_rec</span><span class="p">,</span>
+                    <span class="n">mu</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span>
+                    <span class="n">logvar</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">logvar</span><span class="p">,</span>
+                    <span class="n">adj_E1_batch</span><span class="o">=</span><span class="n">adj_E1_cache</span><span class="p">,</span>
+                    <span class="n">adj_E2</span><span class="o">=</span><span class="n">vae</span><span class="o">.</span><span class="n">adj_E2</span><span class="p">,</span>
+                    <span class="n">r2g_distances</span><span class="o">=</span><span class="n">vae</span><span class="o">.</span><span class="n">r2g_distances</span><span class="p">,</span>
+                    <span class="n">x_rna_ppi</span><span class="o">=</span><span class="n">output</span><span class="o">.</span><span class="n">x_rna_ppi</span><span class="p">,</span>
+                    <span class="n">gene_indices</span><span class="o">=</span><span class="n">vae</span><span class="o">.</span><span class="n">gene_indices</span><span class="p">,</span>
+                    <span class="n">loss_rna</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">loss_rna</span><span class="p">,</span>
+                    <span class="n">loss_atac</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">loss_atac</span><span class="p">,</span>
+                    <span class="n">beta</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">beta</span><span class="p">,</span>
+                    <span class="n">alpha</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">alpha</span><span class="p">,</span>
+                    <span class="n">gamma</span><span class="o">=</span><span class="n">config</span><span class="o">.</span><span class="n">gamma</span><span class="p">,</span>
+                    <span class="n">use_ppi</span><span class="o">=</span><span class="n">use_ppi</span> <span class="ow">and</span> <span class="n">epoch</span> <span class="o">&gt;=</span> <span class="n">warmup_grn</span><span class="p">,</span>
+                <span class="p">)</span>
+
+                <span class="n">val_loss</span> <span class="o">+=</span> <span class="n">losses</span><span class="p">[</span><span class="s2">&quot;total&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+                <span class="n">n_val_batches</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="n">val_loss</span> <span class="o">/=</span> <span class="n">n_val_batches</span>
+        <span class="n">history</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="s2">&quot;test&quot;</span><span class="p">,</span> <span class="p">{</span><span class="s2">&quot;loss&quot;</span><span class="p">:</span> <span class="n">val_loss</span><span class="p">})</span>
+        <span class="n">training_logger</span><span class="o">.</span><span class="n">log_metrics</span><span class="p">({</span><span class="s2">&quot;test/loss&quot;</span><span class="p">:</span> <span class="n">val_loss</span><span class="p">},</span> <span class="n">step</span><span class="o">=</span><span class="n">epoch</span><span class="p">)</span>
+
+        <span class="c1"># Early stopping</span>
+        <span class="k">if</span> <span class="n">early_stopping</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">early_stopping</span><span class="p">(</span><span class="n">val_loss</span><span class="p">):</span>
+                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Early stopping at epoch </span><span class="si">{</span><span class="n">epoch</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">break</span>
+
+        <span class="c1"># Checkpointing</span>
+        <span class="k">if</span> <span class="n">checkpoint_dir</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="p">(</span><span class="n">epoch</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="n">checkpoint_every</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">checkpoint_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">checkpoint_dir</span><span class="p">)</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;epoch_</span><span class="si">{</span><span class="n">epoch</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="si">}</span><span class="s2">.pt&quot;</span>
+            <span class="n">checkpoint_path</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">checkpoint</span> <span class="o">=</span> <span class="n">Checkpoint</span><span class="p">(</span>
+                <span class="n">epoch</span><span class="o">=</span><span class="n">epoch</span><span class="p">,</span>
+                <span class="n">vae_state_dict</span><span class="o">=</span><span class="n">vae</span><span class="o">.</span><span class="n">state_dict</span><span class="p">(),</span>
+                <span class="n">tf2rnet_state_dict</span><span class="o">=</span><span class="n">tf2rnet</span><span class="o">.</span><span class="n">state_dict</span><span class="p">(),</span>
+                <span class="n">enformer_state_dict</span><span class="o">=</span><span class="n">enformer</span><span class="o">.</span><span class="n">state_dict</span><span class="p">(),</span>
+                <span class="n">optimizer_state_dict</span><span class="o">=</span><span class="n">optimizer_vae</span><span class="o">.</span><span class="n">state_dict</span><span class="p">(),</span>
+                <span class="n">scheduler_state_dict</span><span class="o">=</span><span class="n">scheduler</span><span class="o">.</span><span class="n">state_dict</span><span class="p">(),</span>
+                <span class="n">history</span><span class="o">=</span><span class="n">history</span><span class="p">,</span>
+                <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+                <span class="n">adj_E1</span><span class="o">=</span><span class="n">adj_E1_cache</span><span class="p">,</span>
+                <span class="n">best_loss</span><span class="o">=</span><span class="n">val_loss</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">checkpoint</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="n">checkpoint_path</span><span class="p">)</span>
+
+    <span class="c1"># Close logger</span>
+    <span class="n">training_logger</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="c1"># Return trained model</span>
+    <span class="n">vae</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="n">tf2rnet</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="n">enformer</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">DeepSCENICModel</span><span class="p">(</span>
+        <span class="n">vae</span><span class="o">=</span><span class="n">vae</span><span class="p">,</span>
+        <span class="n">tf2rnet</span><span class="o">=</span><span class="n">tf2rnet</span><span class="p">,</span>
+        <span class="n">enformer</span><span class="o">=</span><span class="n">enformer</span><span class="p">,</span>
+        <span class="n">adj_E1</span><span class="o">=</span><span class="n">adj_E1_cache</span><span class="p">,</span>
+        <span class="n">config</span><span class="o">=</span><span class="n">config</span><span class="p">,</span>
+        <span class="n">tf_names</span><span class="o">=</span><span class="n">tf_names</span><span class="p">,</span>
+        <span class="n">gene_names</span><span class="o">=</span><span class="n">gene_names</span><span class="p">,</span>
+        <span class="n">region_names</span><span class="o">=</span><span class="n">region_names</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+</pre></div>
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By deepSCENIC Team
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2025, deepSCENIC Team.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

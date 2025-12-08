@@ -1,0 +1,216 @@
+"""Shared fixtures for deepSCENIC tests."""
+
+import mudata as md
+import numpy as np
+import pandas as pd
+import pytest
+import scanpy as sc
+import torch
+from scipy.sparse import csr_matrix
+
+
+MINIMAL_DIMS = {
+    "n_tfs": 5,
+    "n_genes": 20,
+    "n_regions": 30,
+    "n_links": 50,
+    "n_cells": 8,
+    "n_hidden": 8,
+    "bottleneck_size": 16,
+    "emb_len": 2,
+}
+
+
+@pytest.fixture
+def minimal_dims():
+    """Shared minimal dimensions for tests."""
+    return MINIMAL_DIMS
+
+
+@pytest.fixture(autouse=True)
+def force_cpu(monkeypatch):
+    """Force all tests to run on CPU by disabling CUDA."""
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    yield
+
+
+class MockEnformer(torch.nn.Module):
+    """Mock Enformer for testing (avoids loading real model)."""
+
+    def __init__(self):
+        super().__init__()
+        self.linear = torch.nn.Linear(10, 10)
+
+    def forward(self, x):
+        return x
+
+
+@pytest.fixture
+def sample_rna():
+    """Create sample RNA AnnData."""
+    n_cells = 100
+    n_genes = 50
+
+    adata = sc.AnnData(np.random.randn(n_cells, n_genes).astype(np.float32))
+    adata.var_names = [f"Gene_{i}" for i in range(n_genes)]
+    adata.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+
+    adata.var["is_tf"] = [i < 10 for i in range(n_genes)]
+    adata.var["tf_index"] = -1
+    for i in range(10):
+        adata.var.loc[f"Gene_{i}", "tf_index"] = i
+    adata.uns["tf_order"] = [f"Gene_{i}" for i in range(10)]
+
+    chromosomes = ["chr1"] * 30 + ["chr7"] * 10 + ["chr11"] * 10
+    adata.var["chromosome"] = chromosomes
+    adata.var["tss"] = [i * 10000 for i in range(n_genes)]
+    adata.var["split"] = pd.Categorical(["train"] * 30 + ["test"] * 20, categories=["train", "test"])
+
+    return adata
+
+
+@pytest.fixture
+def sample_atac():
+    """Create sample ATAC AnnData."""
+    n_cells = 100
+    n_regions = 30
+
+    adata = sc.AnnData(np.random.rand(n_cells, n_regions).astype(np.float32))
+    adata.var_names = [f"chr1:{i * 1000}-{i * 1000 + 640}" for i in range(20)] + [
+        f"chr7:{i * 1000}-{i * 1000 + 640}" for i in range(10)
+    ]
+    adata.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+
+    adata.var["chromosome"] = ["chr1"] * 20 + ["chr7"] * 10
+    adata.var["start"] = [i * 1000 for i in range(20)] + [i * 1000 for i in range(10)]
+    adata.var["end"] = [i * 1000 + 640 for i in range(20)] + [i * 1000 + 640 for i in range(10)]
+    adata.var["split"] = pd.Categorical(["train"] * 20 + ["test"] * 10, categories=["train", "test"])
+
+    return adata
+
+
+@pytest.fixture
+def sample_mdata(sample_rna, sample_atac):
+    """Create sample MuData with full schema."""
+    mdata = md.MuData({"rna": sample_rna, "atac": sample_atac})
+
+    mdata.obs["split"] = pd.Categorical(["train"] * 80 + ["test"] * 20, categories=["train", "test"])
+
+    mdata.uns["deepscenic_version"] = "0.1.0"
+    mdata.uns["r2g"] = {
+        "train": csr_matrix(np.random.rand(20, 30).astype(np.float32)),
+        "test": csr_matrix(np.random.rand(10, 20).astype(np.float32)),
+        "config": {"max_distance": 1000000, "sigma": 100000, "method": "gaussian"},
+        "region_order_train": sample_atac.var_names[:20].tolist(),
+        "region_order_test": sample_atac.var_names[20:].tolist(),
+        "gene_order_train": sample_rna.var_names[:30].tolist(),
+        "gene_order_test": sample_rna.var_names[30:].tolist(),
+    }
+
+    return mdata
+
+
+@pytest.fixture
+def minimal_mdata():
+    """Create minimal MuData without full schema (for testing validation)."""
+    rna = sc.AnnData(np.random.randn(10, 20).astype(np.float32))
+    rna.var_names = [f"Gene_{i}" for i in range(20)]
+    rna.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    atac = sc.AnnData(np.random.rand(10, 15).astype(np.float32))
+    atac.var_names = [f"chr1:{i * 1000}-{i * 1000 + 640}" for i in range(15)]
+    atac.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    return md.MuData({"rna": rna, "atac": atac})
+
+
+@pytest.fixture
+def mock_vae():
+    """Create a minimal VAE for testing."""
+    from deepscenic.models import DeepSCENICVAE
+
+    d = MINIMAL_DIMS
+
+    r2g_indices = torch.stack([
+        torch.randint(0, d["n_regions"], (d["n_links"],)),
+        torch.randint(0, d["n_genes"], (d["n_links"],)),
+    ])
+    r2g_distances = torch.rand(d["n_links"])
+    tf_indices = torch.randperm(d["n_genes"])[:d["n_tfs"]]
+    gene_indices = torch.arange(d["n_genes"])
+
+    return DeepSCENICVAE(
+        n_tfs=d["n_tfs"],
+        n_genes=d["n_genes"],
+        n_regions=d["n_regions"],
+        r2g_indices=r2g_indices,
+        r2g_distances=r2g_distances,
+        tf_indices=tf_indices,
+        gene_indices=gene_indices,
+        n_hidden=d["n_hidden"],
+        use_ppi=False,
+        n_batches=0,
+    )
+
+
+@pytest.fixture
+def mock_tf2rnet():
+    """Create a minimal TF2rNet/MotifNet for testing."""
+    from deepscenic.models import MotifNet
+
+    d = MINIMAL_DIMS
+    return MotifNet(
+        n_tfs=d["n_tfs"],
+        bottleneck_size=d["bottleneck_size"],
+        emb_len=d["emb_len"],
+    )
+
+
+@pytest.fixture
+def mock_adj_E1():
+    """Create a mock E1 adjacency matrix with positive values."""
+    d = MINIMAL_DIMS
+    return torch.abs(torch.randn(d["n_regions"], d["n_tfs"])) + 0.1
+
+
+@pytest.fixture
+def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
+    """Create a complete DeepSCENICModel for testing."""
+    from deepscenic.tl._model import DeepSCENICModel
+    from deepscenic.tl._training_state import TrainingConfig
+
+    d = MINIMAL_DIMS
+    config = TrainingConfig(epochs=10, batch_size=d["n_cells"])
+
+    return DeepSCENICModel(
+        vae=mock_vae,
+        tf2rnet=mock_tf2rnet,
+        enformer=MockEnformer(),
+        adj_E1=mock_adj_E1,
+        config=config,
+        tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
+        gene_names=[f"GENE{i}" for i in range(d["n_genes"])],
+        region_names=[f"chr1:{i*100}-{i*100+100}" for i in range(d["n_regions"])],
+    )
+
+
+@pytest.fixture
+def mock_mdata_for_model():
+    """Create MuData compatible with mock_deepscenic_model dimensions."""
+    import anndata as ad
+
+    d = MINIMAL_DIMS
+    n_cells = d["n_cells"] * 2  # 16 cells (8 train, 8 test)
+
+    rna = ad.AnnData(X=np.random.rand(n_cells, d["n_genes"]).astype(np.float32))
+    rna.var_names = [f"GENE{i}" for i in range(d["n_genes"])]
+    rna.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+
+    atac = ad.AnnData(X=np.random.rand(n_cells, d["n_regions"]).astype(np.float32))
+    atac.var_names = [f"chr1:{i*100}-{i*100+100}" for i in range(d["n_regions"])]
+    atac.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+
+    mdata = md.MuData({"rna": rna, "atac": atac})
+    mdata.obs["split"] = ["train"] * (n_cells // 2) + ["test"] * (n_cells // 2)
+
+    return mdata

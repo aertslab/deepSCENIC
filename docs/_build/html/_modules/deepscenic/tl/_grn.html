@@ -1,0 +1,674 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../../../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>deepscenic.tl._grn &#8212; deepscenic  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/custom.css?v=356f8d28" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../../../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/deepscenic/tl/_grn';</script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../../../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+        
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../../../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../../../_static/deepSCENIC.png" class="logo__image only-light" alt="deepscenic  documentation - Home"/>
+    <script>document.write(`<img src="../../../_static/deepSCENIC.png" class="logo__image only-dark" alt="deepscenic  documentation - Home"/>`);</script>
+  
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../tutorials.html">Tutorials</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/01_data_loading.html">Tutorial 1: Data Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/02_preprocessing.html">Tutorial 2: Preprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/03_training.html">Tutorial 3: Training</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/04_grn_analysis.html">Tutorial 4: GRN Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/05_perturbation_simulation.html">Tutorial 5: Perturbation Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../notebooks/06_visualization.html">Tutorial 6: Advanced Visualization</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../api.html">API Reference</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/preprocessing.html">Preprocessing (<code class="docutils literal notranslate"><span class="pre">ds.pp</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/tools.html">Tools (<code class="docutils literal notranslate"><span class="pre">ds.tl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/plotting.html">Plotting (<code class="docutils literal notranslate"><span class="pre">ds.pl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/io.html">Input/Output (<code class="docutils literal notranslate"><span class="pre">ds.io</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/data.html">Data Structures (<code class="docutils literal notranslate"><span class="pre">ds.data</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../api/datasets.html">Datasets (<code class="docutils literal notranslate"><span class="pre">ds.datasets</span></code>)</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../references.html">References</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/aertslab/deepSCENIC" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1></h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <h1>Source code for deepscenic.tl._grn</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;GRN extraction functions for deepSCENIC.&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">._model</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeepSCENICModel</span>
+
+
+<div class="viewcode-block" id="extract_grn">
+<a class="viewcode-back" href="../../../api/tools.html#deepscenic.tl.extract_grn">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_grn</span><span class="p">(</span><span class="n">model</span><span class="p">:</span> <span class="n">DeepSCENICModel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract GRN matrices as DataFrames with names.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model</span>
+<span class="sd">        Trained DeepSCENICModel</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dict[str, pd.DataFrame]</span>
+<span class="sd">        Dictionary with:</span>
+<span class="sd">        - &#39;E1&#39;: DataFrame (n_regions, n_tfs) with region/TF names</span>
+<span class="sd">        - &#39;E2&#39;: DataFrame (sparse format) with region/gene links</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; model = ds.tl.load_model(&quot;model.pt&quot;)</span>
+<span class="sd">    &gt;&gt;&gt; grn = ds.tl.extract_grn(model)</span>
+<span class="sd">    &gt;&gt;&gt; E1 = grn[&#39;E1&#39;]  # TF → region weights</span>
+<span class="sd">    &gt;&gt;&gt; E2 = grn[&#39;E2&#39;]  # region → gene weights</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="c1"># E1: TF → region (from adj_E1 cache)</span>
+        <span class="n">E1_values</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">adj_E1</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+        <span class="n">E1_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="n">E1_values</span><span class="p">,</span>
+            <span class="n">index</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">,</span>
+            <span class="n">columns</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">tf_names</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># E2: region → gene (sparse)</span>
+        <span class="c1"># Get sparse indices and weights from VAE</span>
+        <span class="n">r2g_indices</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">r2g_indices</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="n">adj_E2</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">adj_E2</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+        <span class="n">E2_data</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">adj_E2</span><span class="p">)):</span>
+            <span class="n">region_idx</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
+            <span class="n">gene_idx</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
+            <span class="n">weight</span> <span class="o">=</span> <span class="n">adj_E2</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="n">E2_data</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s2">&quot;region&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">[</span><span class="n">region_idx</span><span class="p">],</span>
+                <span class="s2">&quot;gene&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">gene_names</span><span class="p">[</span><span class="n">gene_idx</span><span class="p">],</span>
+                <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="n">weight</span><span class="p">,</span>
+            <span class="p">})</span>
+
+        <span class="n">E2_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">E2_data</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;E1&quot;</span><span class="p">:</span> <span class="n">E1_df</span><span class="p">,</span> <span class="s2">&quot;E2&quot;</span><span class="p">:</span> <span class="n">E2_df</span><span class="p">}</span></div>
+
+
+
+<div class="viewcode-block" id="extract_e1_matrix">
+<a class="viewcode-back" href="../../../api/tools.html#deepscenic.tl.extract_e1_matrix">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_e1_matrix</span><span class="p">(</span><span class="n">model</span><span class="p">:</span> <span class="n">DeepSCENICModel</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract E1 (TF→region) matrix as DataFrame.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model</span>
+<span class="sd">        Trained DeepSCENICModel</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.DataFrame</span>
+<span class="sd">        E1 matrix (n_regions, n_tfs) with region/TF names</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">E1_values</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">adj_E1</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+        <span class="n">E1_values</span><span class="p">,</span>
+        <span class="n">index</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">,</span>
+        <span class="n">columns</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">tf_names</span><span class="p">,</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="extract_e2_matrix">
+<a class="viewcode-back" href="../../../api/tools.html#deepscenic.tl.extract_e2_matrix">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_e2_matrix</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">DeepSCENICModel</span><span class="p">,</span>
+    <span class="n">as_sparse</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract E2 (region→gene) matrix.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model</span>
+<span class="sd">        Trained DeepSCENICModel</span>
+<span class="sd">    as_sparse</span>
+<span class="sd">        If True, return sparse format (region, gene, weight).</span>
+<span class="sd">        If False, return dense DataFrame.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.DataFrame</span>
+<span class="sd">        E2 matrix in sparse or dense format</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">r2g_indices</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">r2g_indices</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="n">adj_E2</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">adj_E2</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">as_sparse</span><span class="p">:</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">adj_E2</span><span class="p">)):</span>
+            <span class="n">region_idx</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
+            <span class="n">gene_idx</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
+            <span class="n">weight</span> <span class="o">=</span> <span class="n">adj_E2</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">data</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s2">&quot;region&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">[</span><span class="n">region_idx</span><span class="p">],</span>
+                <span class="s2">&quot;gene&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">gene_names</span><span class="p">[</span><span class="n">gene_idx</span><span class="p">],</span>
+                <span class="s2">&quot;weight&quot;</span><span class="p">:</span> <span class="n">weight</span><span class="p">,</span>
+            <span class="p">})</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Dense format (warning: may be very large)</span>
+        <span class="n">E2_dense</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">gene_names</span><span class="p">)))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">adj_E2</span><span class="p">)):</span>
+            <span class="n">region_idx</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
+            <span class="n">gene_idx</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span>
+            <span class="n">E2_dense</span><span class="p">[</span><span class="n">region_idx</span><span class="p">,</span> <span class="n">gene_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">adj_E2</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
+            <span class="n">E2_dense</span><span class="p">,</span>
+            <span class="n">index</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">,</span>
+            <span class="n">columns</span><span class="o">=</span><span class="n">model</span><span class="o">.</span><span class="n">gene_names</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_tf_targets">
+<a class="viewcode-back" href="../../../api/tools.html#deepscenic.tl.get_tf_targets">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_tf_targets</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">DeepSCENICModel</span><span class="p">,</span>
+    <span class="n">tf_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get target regions and genes for a specific TF.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model</span>
+<span class="sd">        Trained DeepSCENICModel</span>
+<span class="sd">    tf_name</span>
+<span class="sd">        Name of the TF</span>
+<span class="sd">    threshold</span>
+<span class="sd">        Minimum weight threshold</span>
+<span class="sd">    top_k</span>
+<span class="sd">        If specified, return only top K targets</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.DataFrame</span>
+<span class="sd">        DataFrame with columns: region, E1_weight, gene, E2_weight, combined_weight</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">tf_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">tf_names</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;TF &#39;</span><span class="si">{</span><span class="n">tf_name</span><span class="si">}</span><span class="s2">&#39; not found&quot;</span><span class="p">)</span>
+
+    <span class="n">tf_idx</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">tf_names</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">tf_name</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="c1"># Get E1 weights for this TF</span>
+        <span class="n">E1_tf</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">adj_E1</span><span class="p">[:,</span> <span class="n">tf_idx</span><span class="p">]</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+        <span class="c1"># Get E2 sparse info</span>
+        <span class="n">r2g_indices</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">r2g_indices</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="n">adj_E2</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">adj_E2</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="c1"># Find regions with non-zero E1 weight</span>
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">region_idx</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">E1_tf</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">)[</span><span class="mi">0</span><span class="p">]:</span>
+        <span class="n">e1_weight</span> <span class="o">=</span> <span class="n">E1_tf</span><span class="p">[</span><span class="n">region_idx</span><span class="p">]</span>
+        <span class="n">region_name</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">[</span><span class="n">region_idx</span><span class="p">]</span>
+
+        <span class="c1"># Find genes linked to this region</span>
+        <span class="n">link_mask</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">region_idx</span>
+        <span class="k">if</span> <span class="n">link_mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">gene_indices</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">link_mask</span><span class="p">]</span>
+            <span class="n">e2_weights</span> <span class="o">=</span> <span class="n">adj_E2</span><span class="p">[</span><span class="n">link_mask</span><span class="p">]</span>
+
+            <span class="k">for</span> <span class="n">gene_idx</span><span class="p">,</span> <span class="n">e2_weight</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">gene_indices</span><span class="p">,</span> <span class="n">e2_weights</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">e2_weight</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">:</span>
+                    <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                        <span class="s2">&quot;tf&quot;</span><span class="p">:</span> <span class="n">tf_name</span><span class="p">,</span>
+                        <span class="s2">&quot;region&quot;</span><span class="p">:</span> <span class="n">region_name</span><span class="p">,</span>
+                        <span class="s2">&quot;E1_weight&quot;</span><span class="p">:</span> <span class="n">e1_weight</span><span class="p">,</span>
+                        <span class="s2">&quot;gene&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">gene_names</span><span class="p">[</span><span class="n">gene_idx</span><span class="p">],</span>
+                        <span class="s2">&quot;E2_weight&quot;</span><span class="p">:</span> <span class="n">e2_weight</span><span class="p">,</span>
+                        <span class="s2">&quot;combined_weight&quot;</span><span class="p">:</span> <span class="n">e1_weight</span> <span class="o">*</span> <span class="n">e2_weight</span><span class="p">,</span>
+                    <span class="p">})</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;combined_weight&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">top_k</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="n">top_k</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">df</span></div>
+
+
+
+<div class="viewcode-block" id="get_gene_regulators">
+<a class="viewcode-back" href="../../../api/tools.html#deepscenic.tl.get_gene_regulators">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_gene_regulators</span><span class="p">(</span>
+    <span class="n">model</span><span class="p">:</span> <span class="n">DeepSCENICModel</span><span class="p">,</span>
+    <span class="n">gene_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span>
+    <span class="n">top_k</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get TFs and regions that regulate a specific gene.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    model</span>
+<span class="sd">        Trained DeepSCENICModel</span>
+<span class="sd">    gene_name</span>
+<span class="sd">        Name of the gene</span>
+<span class="sd">    threshold</span>
+<span class="sd">        Minimum weight threshold</span>
+<span class="sd">    top_k</span>
+<span class="sd">        If specified, return only top K regulators</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pd.DataFrame</span>
+<span class="sd">        DataFrame with columns: tf, region, E1_weight, E2_weight, combined_weight</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">gene_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">gene_names</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Gene &#39;</span><span class="si">{</span><span class="n">gene_name</span><span class="si">}</span><span class="s2">&#39; not found&quot;</span><span class="p">)</span>
+
+    <span class="n">gene_idx</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">gene_names</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">gene_name</span><span class="p">)</span>
+
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">E1</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">adj_E1</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="n">r2g_indices</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">r2g_indices</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="n">adj_E2</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">vae</span><span class="o">.</span><span class="n">adj_E2</span><span class="o">.</span><span class="n">abs</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="c1"># Find regions linked to this gene</span>
+    <span class="n">link_mask</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">gene_idx</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">link_mask</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">()</span>
+
+    <span class="n">region_indices</span> <span class="o">=</span> <span class="n">r2g_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">link_mask</span><span class="p">]</span>
+    <span class="n">e2_weights</span> <span class="o">=</span> <span class="n">adj_E2</span><span class="p">[</span><span class="n">link_mask</span><span class="p">]</span>
+
+    <span class="n">results</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">region_idx</span><span class="p">,</span> <span class="n">e2_weight</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">region_indices</span><span class="p">,</span> <span class="n">e2_weights</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">e2_weight</span> <span class="o">&lt;=</span> <span class="n">threshold</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">region_name</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">region_names</span><span class="p">[</span><span class="n">region_idx</span><span class="p">]</span>
+
+        <span class="c1"># Get TFs that bind this region</span>
+        <span class="k">for</span> <span class="n">tf_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">tf_names</span><span class="p">)):</span>
+            <span class="n">e1_weight</span> <span class="o">=</span> <span class="n">E1</span><span class="p">[</span><span class="n">region_idx</span><span class="p">,</span> <span class="n">tf_idx</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">e1_weight</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">:</span>
+                <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                    <span class="s2">&quot;gene&quot;</span><span class="p">:</span> <span class="n">gene_name</span><span class="p">,</span>
+                    <span class="s2">&quot;tf&quot;</span><span class="p">:</span> <span class="n">model</span><span class="o">.</span><span class="n">tf_names</span><span class="p">[</span><span class="n">tf_idx</span><span class="p">],</span>
+                    <span class="s2">&quot;region&quot;</span><span class="p">:</span> <span class="n">region_name</span><span class="p">,</span>
+                    <span class="s2">&quot;E1_weight&quot;</span><span class="p">:</span> <span class="n">e1_weight</span><span class="p">,</span>
+                    <span class="s2">&quot;E2_weight&quot;</span><span class="p">:</span> <span class="n">e2_weight</span><span class="p">,</span>
+                    <span class="s2">&quot;combined_weight&quot;</span><span class="p">:</span> <span class="n">e1_weight</span> <span class="o">*</span> <span class="n">e2_weight</span><span class="p">,</span>
+                <span class="p">})</span>
+
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="s2">&quot;combined_weight&quot;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">top_k</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">df</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="n">top_k</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">df</span></div>
+
+</pre></div>
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By deepSCENIC Team
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2025, deepSCENIC Team.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>

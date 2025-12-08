@@ -1,0 +1,1024 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta property="og:title" content="Preprocessing (ds.pp)" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="api/preprocessing.html" />
+<meta property="og:site_name" content="deepscenic" />
+<meta property="og:description" content="Functions for preparing multimodal data for GRN learning. Data Integration: Basic Preprocessing: TF Annotation: DAR Handling: Search Space: PPI Network: Train/Test Splitting: High-Level Functions:" />
+<meta property="og:image:width" content="1146" />
+<meta property="og:image:height" content="600" />
+<meta property="og:image" content="_images/social_previews/summary_api_preprocessing_6a025659.png" />
+<meta property="og:image:alt" content="Functions for preparing multimodal data for GRN learning. Data Integration: Basic Preprocessing: TF Annotation: DAR Handling: Search Space: PPI Network: Train/Test Splitting: High-Level Functions:" />
+<meta name="description" content="Functions for preparing multimodal data for GRN learning. Data Integration: Basic Preprocessing: TF Annotation: DAR Handling: Search Space: PPI Network: Train/Test Splitting: High-Level Functions:" />
+<meta name="twitter:card" content="summary_large_image" />
+
+    <title>Preprocessing (ds.pp) &#8212; deepscenic  documentation</title>
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+
+  
+  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/sphinx-book-theme.css?v=eba8b062" />
+    <link rel="stylesheet" type="text/css" href="../_static/mystnb.8ecb98da25f57f5357bf6f572d296f466b2cfe2517ffebfabe82451661e28f02.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/custom.css?v=356f8d28" />
+  
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+    <script src="../_static/documentation_options.js?v=9eb32ce0"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="../_static/scripts/sphinx-book-theme.js?v=887ef09a"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'api/preprocessing';</script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Tools (ds.tl)" href="tools.html" />
+    <link rel="prev" title="API Reference" href="../api.html" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  </head>
+  
+  
+  <body data-bs-spy="scroll" data-bs-target=".bd-toc-nav" data-offset="180" data-bs-root-margin="0px 0px -60%" data-default-mode="">
+
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-primary-sidebar-checkbox"/>
+  <label class="overlay overlay-primary" for="pst-primary-sidebar-checkbox"></label>
+  
+  <input type="checkbox"
+          class="sidebar-toggle"
+          id="pst-secondary-sidebar-checkbox"/>
+  <label class="overlay overlay-secondary" for="pst-secondary-sidebar-checkbox"></label>
+  
+  <div class="search-button__wrapper">
+    <div class="search-button__overlay"></div>
+    <div class="search-button__search-container">
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         id="search-input"
+         placeholder="Search..."
+         aria-label="Search..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form></div>
+  </div>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+    <header class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+    </header>
+  
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <div class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+    
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/deepSCENIC.png" class="logo__image only-light" alt="deepscenic  documentation - Home"/>
+    <script>document.write(`<img src="../_static/deepSCENIC.png" class="logo__image only-dark" alt="deepscenic  documentation - Home"/>`);</script>
+  
+  
+</a></div>
+        <div class="sidebar-primary-item">
+
+ <script>
+ document.write(`
+   <button class="btn search-button-field search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <span class="search-button__default-text">Search</span>
+    <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd class="kbd-shortcut__modifier">K</kbd></span>
+   </button>
+ `);
+ </script></div>
+        <div class="sidebar-primary-item"><nav class="bd-links bd-docs-nav" aria-label="Main">
+    <div class="bd-toc-item navbar-nav active">
+        <ul class="current nav bd-sidenav">
+<li class="toctree-l1"><a class="reference internal" href="../installation.html">Installation</a></li>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../tutorials.html">Tutorials</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="../notebooks/01_data_loading.html">Tutorial 1: Data Loading</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../notebooks/02_preprocessing.html">Tutorial 2: Preprocessing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../notebooks/03_training.html">Tutorial 3: Training</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../notebooks/04_grn_analysis.html">Tutorial 4: GRN Analysis</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../notebooks/05_perturbation_simulation.html">Tutorial 5: Perturbation Simulation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../notebooks/06_visualization.html">Tutorial 6: Advanced Visualization</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="../api.html">API Reference</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">Preprocessing (<code class="docutils literal notranslate"><span class="pre">ds.pp</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="tools.html">Tools (<code class="docutils literal notranslate"><span class="pre">ds.tl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="plotting.html">Plotting (<code class="docutils literal notranslate"><span class="pre">ds.pl</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="io.html">Input/Output (<code class="docutils literal notranslate"><span class="pre">ds.io</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="data.html">Data Structures (<code class="docutils literal notranslate"><span class="pre">ds.data</span></code>)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="datasets.html">Datasets (<code class="docutils literal notranslate"><span class="pre">ds.datasets</span></code>)</a></li>
+</ul>
+</details></li>
+<li class="toctree-l1"><a class="reference internal" href="../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../changelog.html">Changelog</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../contributing.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../references.html">References</a></li>
+</ul>
+
+    </div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+  </div>
+  
+  <div id="rtd-footer-container"></div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+
+<div class="sbt-scroll-pixel-helper"></div>
+
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item"><button class="sidebar-toggle primary-toggle btn btn-sm" title="Toggle primary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+  <span class="fa-solid fa-bars"></span>
+</button></div>
+      
+    </div>
+  
+  
+    <div class="header-article-items__end">
+      
+        <div class="header-article-item">
+
+<div class="article-header-buttons">
+
+
+<a href="https://github.com/aertslab/deepSCENIC" target="_blank"
+   class="btn btn-sm btn-source-repository-button"
+   title="Source repository"
+   data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fab fa-github"></i>
+  </span>
+
+</a>
+
+
+
+
+
+
+<div class="dropdown dropdown-download-buttons">
+  <button class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Download this page">
+    <i class="fas fa-download"></i>
+  </button>
+  <ul class="dropdown-menu">
+      
+      
+      
+      <li><a href="../_sources/api/preprocessing.md" target="_blank"
+   class="btn btn-sm btn-download-source-button dropdown-item"
+   title="Download source file"
+   data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file"></i>
+  </span>
+<span class="btn__text-container">.md</span>
+</a>
+</li>
+      
+      
+      
+      
+      <li>
+<button onclick="window.print()"
+  class="btn btn-sm btn-download-pdf-button dropdown-item"
+  title="Print to PDF"
+  data-bs-placement="left" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-file-pdf"></i>
+  </span>
+<span class="btn__text-container">.pdf</span>
+</button>
+</li>
+      
+  </ul>
+</div>
+
+
+
+
+<button onclick="toggleFullScreen()"
+  class="btn btn-sm btn-fullscreen-button"
+  title="Fullscreen mode"
+  data-bs-placement="bottom" data-bs-toggle="tooltip"
+>
+  
+
+<span class="btn__icon-container">
+  <i class="fas fa-expand"></i>
+  </span>
+
+</button>
+
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button" title="light/dark" aria-label="light/dark" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="theme-switch fa-solid fa-sun fa-lg" data-mode="light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg" data-mode="dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg" data-mode="auto"></i>
+  </button>
+`);
+</script>
+
+
+<script>
+document.write(`
+  <button class="btn btn-sm pst-navbar-icon search-button search-button__button" title="Search" aria-label="Search" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <i class="fa-solid fa-magnifying-glass fa-lg"></i>
+  </button>
+`);
+</script>
+<button class="sidebar-toggle secondary-toggle btn btn-sm" title="Toggle secondary sidebar" data-bs-placement="bottom" data-bs-toggle="tooltip">
+    <span class="fa-solid fa-list"></span>
+</button>
+</div></div>
+      
+    </div>
+  
+</div>
+</div>
+              
+              
+
+<div id="jb-print-docs-body" class="onlyprint">
+    <h1>Preprocessing (ds.pp)</h1>
+    <!-- Table of contents -->
+    <div id="print-main-content">
+        <div id="jb-print-toc">
+            
+            <div>
+                <h2> Contents </h2>
+            </div>
+            <nav aria-label="Page">
+                <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#data-integration">Data Integration</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.create_mudata"><code class="docutils literal notranslate"><span class="pre">create_mudata()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basic-preprocessing">Basic Preprocessing</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.filter_genes"><code class="docutils literal notranslate"><span class="pre">filter_genes()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.normalize_rna"><code class="docutils literal notranslate"><span class="pre">normalize_rna()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.filter_regions_by_celltype"><code class="docutils literal notranslate"><span class="pre">filter_regions_by_celltype()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tf-annotation">TF Annotation</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.mark_tfs"><code class="docutils literal notranslate"><span class="pre">mark_tfs()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.parse_region_coordinates"><code class="docutils literal notranslate"><span class="pre">parse_region_coordinates()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dar-handling">DAR Handling</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.mark_dars"><code class="docutils literal notranslate"><span class="pre">mark_dars()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.load_dars_from_bed"><code class="docutils literal notranslate"><span class="pre">load_dars_from_bed()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#search-space">Search Space</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.compute_r2g_penalty"><code class="docutils literal notranslate"><span class="pre">compute_r2g_penalty()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.split_r2g_by_chromosome"><code class="docutils literal notranslate"><span class="pre">split_r2g_by_chromosome()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ppi-network">PPI Network</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.build_ppi_network"><code class="docutils literal notranslate"><span class="pre">build_ppi_network()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.load_string_ppi"><code class="docutils literal notranslate"><span class="pre">load_string_ppi()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#train-test-splitting">Train/Test Splitting</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.split_cells"><code class="docutils literal notranslate"><span class="pre">split_cells()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.split_features_by_chromosome"><code class="docutils literal notranslate"><span class="pre">split_features_by_chromosome()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#high-level-functions">High-Level Functions</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.prepare_for_training"><code class="docutils literal notranslate"><span class="pre">prepare_for_training()</span></code></a></li>
+</ul>
+</li>
+</ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section class="tex2jax_ignore mathjax_ignore" id="preprocessing-ds-pp">
+<h1>Preprocessing (<code class="docutils literal notranslate"><span class="pre">ds.pp</span></code>)<a class="headerlink" href="#preprocessing-ds-pp" title="Link to this heading">#</a></h1>
+<p>Functions for preparing multimodal data for GRN learning.</p>
+<section id="data-integration">
+<h2>Data Integration<a class="headerlink" href="#data-integration" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.create_mudata">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">create_mudata</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">adata_rna</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">adata_atac</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">copy</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp.html#create_mudata"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.create_mudata" title="Link to this definition">#</a></dt>
+<dd><p>Create MuData from RNA and ATAC AnnData objects.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>adata_rna</strong> (<em>AnnData</em>) – RNA expression data (log-normalized recommended).</p></li>
+<li><p><strong>adata_atac</strong> (<em>AnnData</em>) – <p>ATAC accessibility data.</p>
+<p><strong>IMPORTANT</strong>: ATAC data should be imputed accessibility from
+pyCisTopic, NOT raw fragment counts. pyCisTopic performs:</p>
+<ul>
+<li><p>Topic modeling on the accessibility matrix</p></li>
+<li><p>Imputation of accessibility scores per cell per region</p></li>
+<li><p>Region filtering and quality control</p></li>
+</ul>
+<p>The imputed matrix provides continuous accessibility values
+that are better suited for the VAE architecture than sparse
+binary fragment counts.</p>
+<p>See: <a class="reference external" href="https://pycistopic.readthedocs.io/">https://pycistopic.readthedocs.io/</a></p>
+</p></li>
+<li><p><strong>copy</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to copy the input data.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Combined multimodal data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">deepscenic</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ds</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mdata</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">create_mudata</span><span class="p">(</span><span class="n">adata_rna</span><span class="p">,</span> <span class="n">adata_atac</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="basic-preprocessing">
+<h2>Basic Preprocessing<a class="headerlink" href="#basic-preprocessing" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.filter_genes">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">filter_genes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">adata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_cells</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">10</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/basic.html#filter_genes"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.filter_genes" title="Link to this definition">#</a></dt>
+<dd><p>Filter genes expressed in too few cells.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>adata</strong> (<em>AnnData</em>) – RNA expression data</p></li>
+<li><p><strong>min_cells</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>default=10</em>) – Minimum number of cells a gene must be expressed in</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns filtered AnnData</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AnnData or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.normalize_rna">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">normalize_rna</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">adata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_sum</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">log</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/basic.html#normalize_rna"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.normalize_rna" title="Link to this definition">#</a></dt>
+<dd><p>Normalize RNA data (total count + log1p).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>adata</strong> (<em>AnnData</em>) – RNA expression data</p></li>
+<li><p><strong>target_sum</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>, </em><em>optional</em>) – Target sum for normalization. If None, uses median.</p></li>
+<li><p><strong>log</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to apply log1p transformation</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns normalized AnnData</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AnnData or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.filter_regions_by_celltype">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">filter_regions_by_celltype</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">adata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">celltype_key</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">min_fraction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/basic.html#filter_regions_by_celltype"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.filter_regions_by_celltype" title="Link to this definition">#</a></dt>
+<dd><p>Filter ATAC regions: keep if present in &gt;min_fraction cells of ANY cell type.</p>
+<p>This mimics the filtering in format_data.ipynb where regions are kept if
+they pass the threshold in at least one cell type.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>adata</strong> (<em>AnnData</em>) – ATAC accessibility data</p></li>
+<li><p><strong>celltype_key</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Key in adata.obs for cell type labels</p></li>
+<li><p><strong>min_fraction</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>, </em><em>default=0.1</em>) – Minimum fraction of cells per cell type</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns filtered AnnData</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>AnnData or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="tf-annotation">
+<h2>TF Annotation<a class="headerlink" href="#tf-annotation" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.mark_tfs">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">mark_tfs</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tf_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp.html#mark_tfs"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.mark_tfs" title="Link to this definition">#</a></dt>
+<dd><p>Mark transcription factors in RNA modality.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mdata</strong> (<em>MuData</em>) – Input multimodal data</p></li>
+<li><p><strong>tf_list</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em> or </em><em>path</em>) – List of TF names or path to file with one TF per line</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns modified MuData</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.parse_region_coordinates">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">parse_region_coordinates</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp.html#parse_region_coordinates"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.parse_region_coordinates" title="Link to this definition">#</a></dt>
+<dd><p>Parse ATAC region names to extract chromosome, start, end coordinates.</p>
+<p>Expects region names in format: ‘chr1:1000-2000’</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mdata</strong> (<em>MuData</em>) – Input multimodal data</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns modified MuData</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="dar-handling">
+<h2>DAR Handling<a class="headerlink" href="#dar-handling" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.mark_dars">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">mark_dars</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dar_dir</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dar_dict</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">celltype_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/dars.html#mark_dars"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.mark_dars" title="Link to this definition">#</a></dt>
+<dd><p>Mark Differentially Accessible Regions in ATAC modality.</p>
+<p>DARs can be loaded from a directory of BED files (pyCisTopic output)
+or provided directly as a dictionary. DARs are typically more
+informative for training and may be upweighted during sampling.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mdata</strong> (<em>MuData</em>) – Input multimodal data with ‘atac’ modality.</p></li>
+<li><p><strong>dar_dir</strong> (<em>path</em><em>, </em><em>optional</em>) – Directory containing DAR BED files (one per cell type).
+Files should be named: {celltype}.bed
+BED format: chrom, start, end (tab-separated, no header).</p></li>
+<li><p><strong>dar_dict</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><em>dict</em></a><em>, </em><em>optional</em>) – Dictionary mapping cell type names to lists of region names.
+Region names should match mdata.mod[‘atac’].var_names format.</p></li>
+<li><p><strong>celltype_key</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Key in obs for cell type labels. Currently unused, reserved for
+future per-celltype DAR tracking.</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify mdata in-place.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns modified MuData.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData or None</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>DARs are typically identified using pyCisTopic’s differential
+accessibility analysis. This function simply marks regions as DARs
+based on external files.</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># From pyCisTopic BED files</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">mark_dars</span><span class="p">(</span><span class="n">mdata</span><span class="p">,</span> <span class="n">dar_dir</span><span class="o">=</span><span class="s2">&quot;/path/to/DARs/&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># From dictionary</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">dars</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;Astro&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;chr1:1000-2000&quot;</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="s2">&quot;Oligo&quot;</span><span class="p">:</span> <span class="p">[</span><span class="o">...</span><span class="p">]}</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">mark_dars</span><span class="p">(</span><span class="n">mdata</span><span class="p">,</span> <span class="n">dar_dict</span><span class="o">=</span><span class="n">dars</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Check result</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mdata</span><span class="o">.</span><span class="n">mod</span><span class="p">[</span><span class="s1">&#39;atac&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">var</span><span class="p">[</span><span class="s1">&#39;is_dar&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+<span class="go">5000</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.load_dars_from_bed">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">load_dars_from_bed</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">bed_file</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/dars.html#load_dars_from_bed"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.load_dars_from_bed" title="Link to this definition">#</a></dt>
+<dd><p>Load region names from a single BED file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>bed_file</strong> (<em>path</em>) – Path to BED file (chrom, start, end format).</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>List of region names in ‘chr:start-end’ format.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)">list</a>[<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)">str</a>]</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">regions</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">load_dars_from_bed</span><span class="p">(</span><span class="s2">&quot;my_regions.bed&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="nb">len</span><span class="p">(</span><span class="n">regions</span><span class="p">)</span>
+<span class="go">1234</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+<section id="search-space">
+<h2>Search Space<a class="headerlink" href="#search-space" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.compute_r2g_penalty">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">compute_r2g_penalty</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">regions</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">genes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_distance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sigma</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'gaussian'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/search_space.html#compute_r2g_penalty"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.compute_r2g_penalty" title="Link to this definition">#</a></dt>
+<dd><p>Compute region-to-gene distance penalty matrix.</p>
+<p>For each region-gene pair within max_distance, compute a penalty
+value where 0 = very close (no penalty), 1 = far (high penalty).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>regions</strong> (<em>DataFrame</em>) – Must have columns: ‘chromosome’, ‘start’, ‘end’
+Index should be region names</p></li>
+<li><p><strong>genes</strong> (<em>DataFrame</em>) – Must have columns: ‘tss’ (transcription start site), ‘chromosome’
+Index should be gene names</p></li>
+<li><p><strong>max_distance</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>default=1_000_000</em>) – Maximum distance to consider (1Mb)</p></li>
+<li><p><strong>sigma</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>default=100_000</em>) – Gaussian sigma for distance penalty (100kb)</p></li>
+<li><p><strong>method</strong> (<em>{'gaussian'</em><em>, </em><em>'linear'}</em>) – Penalty function</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html#scipy.sparse.csr_matrix" title="(in SciPy v1.16.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">csr_matrix</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p><strong>r2g</strong> (<em>csr_matrix</em>) – Sparse penalty matrix (n_regions x n_genes)</p></li>
+<li><p><strong>config</strong> (<em>dict</em>) – Configuration used</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<dl class="simple">
+<dt>The penalty formula (Gaussian):</dt><dd><p>penalty = 1 - exp(-d^2 / (2*sigma^2))</p>
+</dd>
+</dl>
+<p>Where d is distance from region center to gene TSS.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.split_r2g_by_chromosome">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">split_r2g_by_chromosome</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">r2g</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">regions_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">genes_df</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_chromosomes</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/search_space.html#split_r2g_by_chromosome"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.split_r2g_by_chromosome" title="Link to this definition">#</a></dt>
+<dd><p>Split R2G matrix into train/test by chromosome.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>r2g</strong> (<em>csr_matrix</em>) – Full R2G matrix (n_regions x n_genes)</p></li>
+<li><p><strong>regions_df</strong> (<em>DataFrame</em>) – Must have ‘chromosome’ column, index = region names</p></li>
+<li><p><strong>genes_df</strong> (<em>DataFrame</em>) – Must have ‘chromosome’ column, index = gene names</p></li>
+<li><p><strong>test_chromosomes</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a>) – Chromosomes for test set (e.g., [‘chr7’, ‘chr11’, ‘chr18’, ‘chr19’])</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><span class="sphinx_autodoc_typehints-type"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#tuple" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">tuple</span></code></a>[<a class="reference external" href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html#scipy.sparse.csr_matrix" title="(in SciPy v1.16.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">csr_matrix</span></code></a>, <a class="reference external" href="https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.csr_matrix.html#scipy.sparse.csr_matrix" title="(in SciPy v1.16.2)"><code class="xref py py-class docutils literal notranslate"><span class="pre">csr_matrix</span></code></a>, <a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#dict" title="(in Python v3.14)"><code class="xref py py-class docutils literal notranslate"><span class="pre">dict</span></code></a>]</span></p>
+</dd>
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p><ul class="simple">
+<li><p><strong>r2g_train</strong> (<em>csr_matrix</em>) – Train regions x train genes</p></li>
+<li><p><strong>r2g_test</strong> (<em>csr_matrix</em>) – Test regions x test genes</p></li>
+<li><p><strong>split_info</strong> (<em>dict</em>) – Information about the split including ordering</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="ppi-network">
+<h2>PPI Network<a class="headerlink" href="#ppi-network" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.build_ppi_network">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">build_ppi_network</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">ppi_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">species</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'mouse'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">source_col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Source'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Target'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">confidence_col</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'Conn'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/ppi.html#build_ppi_network"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.build_ppi_network" title="Link to this definition">#</a></dt>
+<dd><p>Build PPI network from interaction data and store in MuData.</p>
+<p>Filters interactions by confidence, matches genes to expression data,
+and stores the PyG-compatible edge index in mdata.uns.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mdata</strong> (<em>MuData</em>) – Input multimodal data with ‘rna’ modality.</p></li>
+<li><p><strong>ppi_data</strong> (<em>DataFrame</em>) – Protein-protein interaction data with source/target columns.
+If confidence_col is provided, interactions below threshold are filtered.</p></li>
+<li><p><strong>confidence_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>, </em><em>default=0.5</em>) – Minimum confidence score for interactions (if confidence_col provided).</p></li>
+<li><p><strong>species</strong> (<em>{'mouse'</em><em>, </em><em>'human'}</em>) – Species for gene name formatting.
+- ‘mouse’: Capitalizes first letter only (e.g., ‘SOX2’ -&gt; ‘Sox2’)
+- ‘human’: Keeps uppercase (e.g., ‘SOX2’ -&gt; ‘SOX2’)</p></li>
+<li><p><strong>source_col</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>default='Source'</em>) – Column name for source gene in ppi_data.</p></li>
+<li><p><strong>target_col</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>default='Target'</em>) – Column name for target gene in ppi_data.</p></li>
+<li><p><strong>confidence_col</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em> or </em><em>None</em><em>, </em><em>default='Conn'</em>) – Column name for confidence score. If None, no filtering is applied
+(useful for BioGRID data which has no confidence scores).</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify mdata in-place.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns modified MuData.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData or None</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>Stores the following in mdata.uns:
+- ‘ppi_edge_index’: PyG-compatible edge index (2, n_edges)
+- ‘ppi_genes_idx’: Indices of genes in PPI network
+- ‘ppi_tfs_idx_keys’: TF indices within PPI genes
+- ‘ppi_tfs_idx_values’: Target TF indices for reordering
+- ‘ppi_gene_order’: Gene names in PPI node order</p>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># Load STRING PPI data</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ppi_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">&quot;string_ppi.tsv&quot;</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">build_ppi_network</span><span class="p">(</span><span class="n">mdata</span><span class="p">,</span> <span class="n">ppi_df</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="s2">&quot;mouse&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="c1"># BioGRID (no confidence scores)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">biogrid_df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_csv</span><span class="p">(</span><span class="s2">&quot;biogrid.tsv&quot;</span><span class="p">,</span> <span class="n">sep</span><span class="o">=</span><span class="s2">&quot;</span><span class="se">\t</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">build_ppi_network</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">mdata</span><span class="p">,</span> <span class="n">biogrid_df</span><span class="p">,</span> <span class="n">confidence_col</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">species</span><span class="o">=</span><span class="s2">&quot;human&quot;</span>
+<span class="gp">... </span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.load_string_ppi">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">load_string_ppi</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filepath</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">score_threshold</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">400</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp/ppi.html#load_string_ppi"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.load_string_ppi" title="Link to this definition">#</a></dt>
+<dd><p>Load STRING PPI data from file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>filepath</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – Path to STRING protein links file.</p></li>
+<li><p><strong>score_threshold</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>default=400</em>) – Minimum combined score (STRING scores are 0-1000).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>DataFrame with Source, Target, Conn columns.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>pd.DataFrame</p>
+</dd>
+</dl>
+<p class="rubric">Notes</p>
+<p>STRING files typically have columns: protein1, protein2, combined_score.
+Gene names may need species prefix removed (e.g., ‘9606.ENSP…’ for human).</p>
+</dd></dl>
+
+</section>
+<section id="train-test-splitting">
+<h2>Train/Test Splitting<a class="headerlink" href="#train-test-splitting" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.split_cells">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">split_cells</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_fraction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">42</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stratify_key</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp.html#split_cells"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.split_cells" title="Link to this definition">#</a></dt>
+<dd><p>Split cells into train/test sets.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mdata</strong> (<em>MuData</em>) – Input multimodal data</p></li>
+<li><p><strong>test_fraction</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em>, </em><em>default=0.2</em>) – Fraction of cells for test set</p></li>
+<li><p><strong>seed</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>default=42</em>) – Random seed</p></li>
+<li><p><strong>stratify_key</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – Key in obs for stratified splitting (e.g., ‘cell_type’)</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns modified MuData</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.split_features_by_chromosome">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">split_features_by_chromosome</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_chromosomes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['chr7',</span> <span class="pre">'chr11',</span> <span class="pre">'chr18',</span> <span class="pre">'chr19']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp.html#split_features_by_chromosome"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.split_features_by_chromosome" title="Link to this definition">#</a></dt>
+<dd><p>Split features (genes/regions) by chromosome.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mdata</strong> (<em>MuData</em>) – Input multimodal data</p></li>
+<li><p><strong>test_chromosomes</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em>, </em><em>default=</em><em>[</em><em>'chr7'</em><em>, </em><em>'chr11'</em><em>, </em><em>'chr18'</em><em>, </em><em>'chr19'</em><em>]</em>) – Chromosomes for test set</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a><em>, </em><em>default=True</em>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>If inplace=False, returns modified MuData</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData or None</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+<section id="high-level-functions">
+<h2>High-Level Functions<a class="headerlink" href="#high-level-functions" title="Link to this heading">#</a></h2>
+<dl class="py function">
+<dt class="sig sig-object py" id="deepscenic.pp.prepare_for_training">
+<span class="sig-prename descclassname"><span class="pre">deepscenic.pp.</span></span><span class="sig-name descname"><span class="pre">prepare_for_training</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mdata</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tf_list</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gene_annotation</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">test_chromosomes</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">['chr7',</span> <span class="pre">'chr11',</span> <span class="pre">'chr18',</span> <span class="pre">'chr19']</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_test_fraction</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cell_split_seed</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">42</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_r2g_distance</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1000000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r2g_sigma</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">100000</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">inplace</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/deepscenic/pp.html#prepare_for_training"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#deepscenic.pp.prepare_for_training" title="Link to this definition">#</a></dt>
+<dd><p>Prepare MuData for deepSCENIC training.</p>
+<p>This is the main preprocessing function that:
+1. Marks TFs in the RNA var
+2. Parses ATAC region coordinates
+3. Splits cells and features by chromosome
+4. Computes R2G penalty matrix
+5. Adds all required metadata</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>mdata</strong> (<em>MuData</em>) – Input data (RNA + ATAC)</p></li>
+<li><p><strong>tf_list</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a><em> or </em><em>path</em>) – List of TF names or path to file</p></li>
+<li><p><strong>gene_annotation</strong> (<em>DataFrame</em><em>, </em><em>optional</em>) – Gene annotation with ‘tss’ and ‘chromosome’ columns.
+Index should be gene names.</p></li>
+<li><p><strong>test_chromosomes</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#list" title="(in Python v3.14)"><em>list</em></a>) – Chromosomes for test set</p></li>
+<li><p><strong>cell_test_fraction</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Fraction of cells for test set</p></li>
+<li><p><strong>cell_split_seed</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Random seed for cell split</p></li>
+<li><p><strong>max_r2g_distance</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Maximum R2G distance in bp</p></li>
+<li><p><strong>r2g_sigma</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – Gaussian sigma for R2G penalty in bp</p></li>
+<li><p><strong>inplace</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><em>bool</em></a>) – Whether to modify in-place</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>Prepared MuData if inplace=False</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>MuData or None</p>
+</dd>
+</dl>
+<p class="rubric">Examples</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="kn">import</span><span class="w"> </span><span class="nn">deepscenic</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ds</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">mdata</span> <span class="o">=</span> <span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">create_mudata</span><span class="p">(</span><span class="n">adata_rna</span><span class="p">,</span> <span class="n">adata_atac</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">pp</span><span class="o">.</span><span class="n">prepare_for_training</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">mdata</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">tf_list</span><span class="o">=</span><span class="s2">&quot;allTFs_mm.txt&quot;</span><span class="p">,</span>
+<span class="gp">... </span>    <span class="n">gene_annotation</span><span class="o">=</span><span class="n">gene_df</span><span class="p">,</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">ds</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">mdata</span><span class="p">,</span> <span class="s2">&quot;prepared_dataset.h5mu&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</dd></dl>
+
+</section>
+</section>
+
+
+                </article>
+              
+
+              
+              
+              
+              
+                <footer class="prev-next-footer d-print-none">
+                  
+<div class="prev-next-area">
+    <a class="left-prev"
+       href="../api.html"
+       title="previous page">
+      <i class="fa-solid fa-angle-left"></i>
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">previous</p>
+        <p class="prev-next-title">API Reference</p>
+      </div>
+    </a>
+    <a class="right-next"
+       href="tools.html"
+       title="next page">
+      <div class="prev-next-info">
+        <p class="prev-next-subtitle">next</p>
+        <p class="prev-next-title">Tools (<code class="docutils literal notranslate"><span class="pre">ds.tl</span></code>)</p>
+      </div>
+      <i class="fa-solid fa-angle-right"></i>
+    </a>
+</div>
+                </footer>
+              
+            </div>
+            
+            
+              
+                <div class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+  <div class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> Contents
+  </div>
+  <nav class="bd-toc-nav page-toc">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#data-integration">Data Integration</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.create_mudata"><code class="docutils literal notranslate"><span class="pre">create_mudata()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#basic-preprocessing">Basic Preprocessing</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.filter_genes"><code class="docutils literal notranslate"><span class="pre">filter_genes()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.normalize_rna"><code class="docutils literal notranslate"><span class="pre">normalize_rna()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.filter_regions_by_celltype"><code class="docutils literal notranslate"><span class="pre">filter_regions_by_celltype()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#tf-annotation">TF Annotation</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.mark_tfs"><code class="docutils literal notranslate"><span class="pre">mark_tfs()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.parse_region_coordinates"><code class="docutils literal notranslate"><span class="pre">parse_region_coordinates()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#dar-handling">DAR Handling</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.mark_dars"><code class="docutils literal notranslate"><span class="pre">mark_dars()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.load_dars_from_bed"><code class="docutils literal notranslate"><span class="pre">load_dars_from_bed()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#search-space">Search Space</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.compute_r2g_penalty"><code class="docutils literal notranslate"><span class="pre">compute_r2g_penalty()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.split_r2g_by_chromosome"><code class="docutils literal notranslate"><span class="pre">split_r2g_by_chromosome()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#ppi-network">PPI Network</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.build_ppi_network"><code class="docutils literal notranslate"><span class="pre">build_ppi_network()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.load_string_ppi"><code class="docutils literal notranslate"><span class="pre">load_string_ppi()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#train-test-splitting">Train/Test Splitting</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.split_cells"><code class="docutils literal notranslate"><span class="pre">split_cells()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.split_features_by_chromosome"><code class="docutils literal notranslate"><span class="pre">split_features_by_chromosome()</span></code></a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#high-level-functions">High-Level Functions</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#deepscenic.pp.prepare_for_training"><code class="docutils literal notranslate"><span class="pre">prepare_for_training()</span></code></a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+<div class="bd-footer-content__inner container">
+  
+  <div class="footer-item">
+    
+<p class="component-author">
+By deepSCENIC Team
+</p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+
+  <p class="copyright">
+    
+      © Copyright 2025, deepSCENIC Team.
+      <br/>
+    
+  </p>
+
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+  <div class="footer-item">
+    
+  </div>
+  
+</div>
+          </footer>
+        
+
+      </main>
+    </div>
+  </div>
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+
+  <footer class="bd-footer">
+  </footer>
+  </body>
+</html>
