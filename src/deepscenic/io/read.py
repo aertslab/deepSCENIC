@@ -7,6 +7,8 @@ from scipy.sparse import csr_matrix, load_npz
 
 from ..data.schema import validate_schema
 
+md.set_options(pull_on_update=False)
+
 
 def read(
     path: str | Path,
@@ -86,7 +88,8 @@ def read_legacy(
     Notes
     -----
     This loads data but does NOT apply the full schema.
-    Use `ds.pp.prepare_for_training()` to complete preprocessing.
+    Use preprocessing functions like `ds.pp.mark_tfs()`, `ds.pp.parse_region_coordinates()`,
+    and `ds.pp.compute_r2g_penalty()` to complete preprocessing.
     """
     import scanpy as sc
 

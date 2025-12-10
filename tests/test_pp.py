@@ -8,73 +8,57 @@ import scanpy as sc
 import deepscenic as ds
 
 
-class TestFilterGenes:
-    """Tests for filter_genes function."""
+class TestRemoveZeroVarianceGenes:
+    """Tests for remove_zero_variance_genes function."""
 
-    def test_filter_genes_removes_lowly_expressed(self):
-        """Test that genes with few cells are removed."""
+    def test_removes_zero_variance(self):
+        """Test that zero-variance genes are removed."""
         adata = sc.AnnData(np.random.randn(100, 50).astype(np.float32))
         adata.var_names = [f"Gene_{i}" for i in range(50)]
 
-        # Set first 10 genes to be expressed in very few cells
-        adata.X[:, :10] = 0
-        adata.X[:5, :10] = 1  # Only 5 cells
+        # Set first 5 genes to constant value (zero variance)
+        adata.X[:, :5] = 1.0
 
         original_n_genes = adata.n_vars
-        ds.pp.filter_genes(adata, min_cells=10)
+        ds.pp.remove_zero_variance_genes(adata)
 
-        # Should have removed the first 10 genes
-        assert adata.n_vars < original_n_genes
-        assert adata.n_vars == 40
+        assert adata.n_vars == original_n_genes - 5
+        assert adata.n_vars == 45
 
-    def test_filter_genes_inplace_false(self):
-        """Test filter_genes with inplace=False returns new object."""
+    def test_keeps_all_if_no_zero_variance(self):
+        """Test that all genes kept if none have zero variance."""
         adata = sc.AnnData(np.random.randn(100, 50).astype(np.float32))
         adata.var_names = [f"Gene_{i}" for i in range(50)]
 
-        result = ds.pp.filter_genes(adata, min_cells=1, inplace=False)
+        ds.pp.remove_zero_variance_genes(adata)
+
+        assert adata.n_vars == 50
+
+    def test_inplace_false(self):
+        """Test inplace=False returns new object."""
+        adata = sc.AnnData(np.random.randn(100, 50).astype(np.float32))
+        adata.X[:, :5] = 1.0  # Zero variance
+
+        result = ds.pp.remove_zero_variance_genes(adata, inplace=False)
 
         assert result is not None
         assert result is not adata
-
-
-class TestNormalizeRNA:
-    """Tests for normalize_rna function."""
-
-    def test_normalize_rna_basic(self):
-        """Test basic normalization."""
-        adata = sc.AnnData(np.abs(np.random.randn(100, 50)).astype(np.float32))
-        adata.var_names = [f"Gene_{i}" for i in range(50)]
-
-        ds.pp.normalize_rna(adata, log=True)
-
-        # After log1p, values should be smaller
-        assert adata.X.max() < 20  # Reasonable upper bound after log
-
-    def test_normalize_rna_inplace_false(self):
-        """Test normalize_rna with inplace=False."""
-        adata = sc.AnnData(np.abs(np.random.randn(100, 50)).astype(np.float32))
-
-        result = ds.pp.normalize_rna(adata, inplace=False)
-
-        assert result is not None
-        assert result is not adata
+        assert result.n_vars == 45
+        assert adata.n_vars == 50  # Original unchanged
 
 
 class TestComputeR2GPenalty:
     """Tests for compute_r2g_penalty function."""
 
-    def test_compute_r2g_penalty_basic(self):
-        """Test basic R2G computation."""
-        regions = pd.DataFrame(
-            {
-                "chromosome": ["chr1"] * 5,
-                "start": [0, 10000, 20000, 30000, 40000],
-                "end": [640, 10640, 20640, 30640, 40640],
-            },
-            index=[f"chr1:{i * 10000}-{i * 10000 + 640}" for i in range(5)],
-        )
+    @pytest.fixture
+    def mdata_with_regions(self, sample_rna, sample_atac):
+        """Create MuData with parsed region coordinates."""
+        mdata = ds.pp.create_mudata(sample_rna, sample_atac)
+        ds.pp.parse_region_coordinates(mdata)
+        return mdata
 
+    def test_compute_r2g_penalty_basic(self, mdata_with_regions):
+        """Test basic R2G computation stores in uns."""
         genes = pd.DataFrame(
             {
                 "tss": [5000, 15000, 25000],
@@ -83,28 +67,80 @@ class TestComputeR2GPenalty:
             index=["GeneA", "GeneB", "GeneC"],
         )
 
-        r2g, config = ds.pp.compute_r2g_penalty(
-            regions,
+        ds.pp.compute_r2g_penalty(
+            mdata_with_regions,
             genes,
             max_distance=50000,
             sigma=10000,
         )
 
-        # All should be linked (within 50kb)
-        assert r2g.shape == (5, 3)
-        assert r2g.nnz > 0
-        assert config["n_links"] > 0
+        # Check results stored in uns
+        assert "r2g" in mdata_with_regions.uns
+        r2g_data = mdata_with_regions.uns["r2g"]
+        assert "matrix" in r2g_data
+        assert "config" in r2g_data
+        assert "region_names" in r2g_data
+        assert "gene_names" in r2g_data
 
-    def test_compute_r2g_penalty_no_cross_chromosome(self):
-        """Test that R2G doesn't link across chromosomes."""
-        regions = pd.DataFrame(
-            {
-                "chromosome": ["chr1", "chr2"],
-                "start": [0, 0],
-                "end": [640, 640],
-            },
-            index=["chr1:0-640", "chr2:0-640"],
+        # Check matrix properties
+        assert r2g_data["matrix"].nnz > 0
+        assert r2g_data["config"]["n_links"] > 0
+
+    def test_compute_r2g_penalty_requires_parsed_coords(self, sample_rna, sample_atac):
+        """Test error when coordinates not parsed."""
+        mdata = ds.pp.create_mudata(sample_rna, sample_atac)
+
+        # Remove parsed coordinates
+        del mdata.mod["atac"].var["chromosome"]
+
+        genes = pd.DataFrame(
+            {"tss": [100], "chromosome": ["chr1"]},
+            index=["GeneA"],
         )
+
+        with pytest.raises(ValueError, match="parse_region_coordinates"):
+            ds.pp.compute_r2g_penalty(mdata, genes)
+
+    def test_compute_r2g_penalty_copy(self, mdata_with_regions):
+        """Test copy=True returns new MuData."""
+        genes = pd.DataFrame(
+            {"tss": [5000], "chromosome": ["chr1"]},
+            index=["GeneA"],
+        )
+
+        result = ds.pp.compute_r2g_penalty(
+            mdata_with_regions, genes, copy=True
+        )
+
+        assert result is not None
+        assert result is not mdata_with_regions
+        assert "r2g" in result.uns
+        assert "r2g" not in mdata_with_regions.uns
+
+    def test_compute_r2g_penalty_key_added(self, mdata_with_regions):
+        """Test custom key_added parameter."""
+        genes = pd.DataFrame(
+            {"tss": [5000], "chromosome": ["chr1"]},
+            index=["GeneA"],
+        )
+
+        ds.pp.compute_r2g_penalty(
+            mdata_with_regions, genes, key_added="custom_r2g"
+        )
+
+        assert "custom_r2g" in mdata_with_regions.uns
+        assert "r2g" not in mdata_with_regions.uns
+
+    def test_compute_r2g_penalty_no_cross_chromosome(self, sample_rna):
+        """Test that R2G doesn't link across chromosomes."""
+        # Create ATAC with 2 chromosomes
+        n_cells = sample_rna.n_obs
+        atac = sc.AnnData(np.random.rand(n_cells, 2))
+        atac.obs_names = sample_rna.obs_names
+        atac.var_names = ["chr1:0-640", "chr2:0-640"]
+
+        mdata = ds.pp.create_mudata(sample_rna, atac)
+        ds.pp.parse_region_coordinates(mdata)
 
         genes = pd.DataFrame(
             {
@@ -114,21 +150,21 @@ class TestComputeR2GPenalty:
             index=["GeneA", "GeneB"],
         )
 
-        r2g, config = ds.pp.compute_r2g_penalty(regions, genes, max_distance=1000)
+        ds.pp.compute_r2g_penalty(mdata, genes, max_distance=1000)
 
         # Should only have 2 links (chr1-chr1 and chr2-chr2), not 4
-        assert r2g.nnz == 2
+        assert mdata.uns["r2g"]["matrix"].nnz == 2
 
-    def test_compute_r2g_penalty_gaussian(self):
+    def test_compute_r2g_penalty_gaussian(self, sample_rna):
         """Test Gaussian penalty values."""
-        regions = pd.DataFrame(
-            {
-                "chromosome": ["chr1"],
-                "start": [0],
-                "end": [640],
-            },
-            index=["chr1:0-640"],
-        )
+        # Create ATAC with single region
+        n_cells = sample_rna.n_obs
+        atac = sc.AnnData(np.random.rand(n_cells, 1))
+        atac.obs_names = sample_rna.obs_names
+        atac.var_names = ["chr1:0-640"]
+
+        mdata = ds.pp.create_mudata(sample_rna, atac)
+        ds.pp.parse_region_coordinates(mdata)
 
         genes = pd.DataFrame(
             {
@@ -138,12 +174,12 @@ class TestComputeR2GPenalty:
             index=["GeneA"],
         )
 
-        r2g, _ = ds.pp.compute_r2g_penalty(
-            regions, genes, max_distance=10000, sigma=1000
+        ds.pp.compute_r2g_penalty(
+            mdata, genes, max_distance=10000, sigma=1000
         )
 
         # Distance = 0, so penalty should be ~0
-        assert r2g[0, 0] < 0.01
+        assert mdata.uns["r2g"]["matrix"][0, 0] < 0.01
 
 
 class TestSplitR2GByChromosome:

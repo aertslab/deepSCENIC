@@ -28,7 +28,7 @@ Before starting, ensure you have:
 | Tutorial | Topic | Key Functions |
 |----------|-------|---------------|
 | 01 | Data Loading | `ds.read()`, `ds.datasets.*` |
-| 02 | Preprocessing | `ds.pp.create_mudata()`, `ds.pp.prepare_for_training()` |
+| 02 | Preprocessing | `ds.pp.create_mudata()`, `ds.pp.mark_tfs()`, `ds.pp.compute_r2g_penalty()` |
 | 03 | Training | `ds.tl.train()`, `ds.pl.loss_curves()` |
 | 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.pl.network_*()` |
 | 05 | Perturbation | `ds.tl.simulate_perturbation()`, `ds.pl.volcano_*()` |

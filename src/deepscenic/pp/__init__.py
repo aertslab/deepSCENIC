@@ -1,6 +1,5 @@
 """Preprocessing functions for deepSCENIC."""
 
-from datetime import datetime
 from pathlib import Path
 
 import mudata as md
@@ -9,16 +8,12 @@ import pandas as pd
 from anndata import AnnData
 from sklearn.model_selection import train_test_split
 
-import deepscenic
-
 from .._constants import (
     DEFAULT_CELL_SPLIT_SEED,
     DEFAULT_CELL_TEST_FRACTION,
-    DEFAULT_R2G_MAX_DISTANCE,
-    DEFAULT_R2G_SIGMA,
     DEFAULT_TEST_CHROMOSOMES,
 )
-from .basic import filter_genes, filter_regions_by_celltype, normalize_rna
+from .basic import filter_regions_by_celltype, remove_zero_variance_genes
 from .dars import load_dars_from_bed, mark_dars
 from .ppi import build_ppi_network, load_string_ppi
 from .search_space import compute_r2g_penalty, split_r2g_by_chromosome
@@ -80,6 +75,7 @@ def create_mudata(
 def mark_tfs(
     mdata: md.MuData,
     tf_list: list[str] | str | Path,
+    case_sensitive: bool = False,
     inplace: bool = True,
 ) -> md.MuData | None:
     """
@@ -91,6 +87,11 @@ def mark_tfs(
         Input multimodal data
     tf_list : list or path
         List of TF names or path to file with one TF per line
+    case_sensitive : bool, default=False
+        Whether to match TF names case-sensitively.
+        If False (default), matches genes case-insensitively.
+        This handles cases where gene names have different capitalization
+        (e.g., 'SOX10' vs 'Sox10').
     inplace : bool, default=True
         Whether to modify in-place
 
@@ -98,6 +99,13 @@ def mark_tfs(
     -------
     MuData or None
         If inplace=False, returns modified MuData
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> tfs = ds.datasets.fetch_tf_collection(species="mouse")
+    >>> ds.pp.mark_tfs(mdata, tfs)
+    >>> print(f"Marked {mdata['rna'].var['is_tf'].sum()} TFs")
     """
     if not inplace:
         mdata = mdata.copy()
@@ -111,8 +119,19 @@ def mark_tfs(
 
     rna = mdata.mod["rna"]
 
-    # Filter to TFs in data
-    tf_names_in_data = [tf for tf in tf_names if tf in rna.var_names]
+    if case_sensitive:
+        # Direct matching
+        tf_names_in_data = [tf for tf in tf_names if tf in rna.var_names]
+    else:
+        # Case-insensitive matching
+        # Build lookup: lowercase -> original gene name in data
+        gene_name_lookup = {g.lower(): g for g in rna.var_names}
+        tf_names_in_data = []
+        for tf in tf_names:
+            tf_lower = tf.lower()
+            if tf_lower in gene_name_lookup:
+                # Use the gene name as it appears in the data
+                tf_names_in_data.append(gene_name_lookup[tf_lower])
 
     # Mark TFs
     rna.var["is_tf"] = rna.var_names.isin(tf_names_in_data)
@@ -250,8 +269,7 @@ def split_features_by_chromosome(
     )
 
     # RNA genes: need gene annotation with TSS chromosome
-    # For now, mark all as 'train' - user should provide gene_annotation
-    # or use prepare_for_training which handles this
+    # For now, mark all as 'train' - user should add chromosome info to rna.var
     rna = mdata.mod["rna"]
     if "chromosome" in rna.var.columns:
         rna.var["split"] = pd.Categorical(
@@ -259,165 +277,8 @@ def split_features_by_chromosome(
             categories=["train", "test"],
         )
     else:
-        # Default: all train (will be updated by prepare_for_training)
+        # Default: all train (user should add chromosome info to rna.var for proper splitting)
         rna.var["split"] = pd.Categorical(["train"] * rna.n_vars, categories=["train", "test"])
-
-    if not inplace:
-        return mdata
-    return None
-
-
-def prepare_for_training(
-    mdata: md.MuData,
-    tf_list: list[str] | str | Path,
-    gene_annotation: pd.DataFrame | None = None,
-    test_chromosomes: list[str] = DEFAULT_TEST_CHROMOSOMES,
-    cell_test_fraction: float = DEFAULT_CELL_TEST_FRACTION,
-    cell_split_seed: int = DEFAULT_CELL_SPLIT_SEED,
-    max_r2g_distance: int = DEFAULT_R2G_MAX_DISTANCE,
-    r2g_sigma: int = DEFAULT_R2G_SIGMA,
-    inplace: bool = True,
-) -> md.MuData | None:
-    """
-    Prepare MuData for deepSCENIC training.
-
-    This is the main preprocessing function that:
-    1. Marks TFs in the RNA var
-    2. Parses ATAC region coordinates
-    3. Splits cells and features by chromosome
-    4. Computes R2G penalty matrix
-    5. Adds all required metadata
-
-    Parameters
-    ----------
-    mdata : MuData
-        Input data (RNA + ATAC)
-    tf_list : list or path
-        List of TF names or path to file
-    gene_annotation : DataFrame, optional
-        Gene annotation with 'tss' and 'chromosome' columns.
-        Index should be gene names.
-    test_chromosomes : list
-        Chromosomes for test set
-    cell_test_fraction : float
-        Fraction of cells for test set
-    cell_split_seed : int
-        Random seed for cell split
-    max_r2g_distance : int
-        Maximum R2G distance in bp
-    r2g_sigma : int
-        Gaussian sigma for R2G penalty in bp
-    inplace : bool
-        Whether to modify in-place
-
-    Returns
-    -------
-    MuData or None
-        Prepared MuData if inplace=False
-
-    Examples
-    --------
-    >>> import deepscenic as ds
-    >>> mdata = ds.pp.create_mudata(adata_rna, adata_atac)
-    >>> ds.pp.prepare_for_training(
-    ...     mdata,
-    ...     tf_list="allTFs_mm.txt",
-    ...     gene_annotation=gene_df,
-    ... )
-    >>> ds.write(mdata, "prepared_dataset.h5mu")
-    """
-    if not inplace:
-        mdata = mdata.copy()
-
-    rna = mdata.mod["rna"]
-    atac = mdata.mod["atac"]
-
-    # 1. Mark TFs
-    mark_tfs(mdata, tf_list, inplace=True)
-
-    # 2. Parse region coordinates
-    parse_region_coordinates(mdata, inplace=True)
-
-    # 3. Split cells
-    split_cells(
-        mdata,
-        test_fraction=cell_test_fraction,
-        seed=cell_split_seed,
-        inplace=True,
-    )
-
-    # 4. Split features by chromosome
-    # First, mark ATAC regions
-    atac.var["split"] = pd.Categorical(
-        ["test" if c in test_chromosomes else "train" for c in atac.var["chromosome"]],
-        categories=["train", "test"],
-    )
-
-    # For genes, need annotation
-    if gene_annotation is not None:
-        # Filter to genes in data
-        genes_in_data = [g for g in rna.var_names if g in gene_annotation.index]
-
-        # Add chromosome info to RNA var
-        rna.var["chromosome"] = None
-        rna.var["tss"] = None
-        for gene in genes_in_data:
-            rna.var.loc[gene, "chromosome"] = gene_annotation.loc[gene, "chromosome"]
-            rna.var.loc[gene, "tss"] = gene_annotation.loc[gene, "tss"]
-
-        # Mark split
-        rna.var["split"] = pd.Categorical(
-            ["test" if rna.var.loc[g, "chromosome"] in test_chromosomes else "train" for g in rna.var_names],
-            categories=["train", "test"],
-        )
-
-        # 5. Compute R2G matrix
-        regions_df = atac.var[["chromosome", "start", "end"]].copy()
-        genes_df = gene_annotation.loc[genes_in_data, ["tss", "chromosome"]].copy()
-
-        r2g_full, r2g_config = compute_r2g_penalty(
-            regions_df,
-            genes_df,
-            max_distance=max_r2g_distance,
-            sigma=r2g_sigma,
-        )
-
-        # Split R2G
-        r2g_train, r2g_test, split_info = split_r2g_by_chromosome(
-            r2g_full,
-            regions_df,
-            genes_df,
-            test_chromosomes,
-        )
-
-        # Store R2G in uns
-        mdata.uns["r2g"] = {
-            "train": r2g_train,
-            "test": r2g_test,
-            "config": r2g_config,
-            "region_order_train": split_info["region_order_train"],
-            "region_order_test": split_info["region_order_test"],
-            "gene_order_train": split_info["gene_order_train"],
-            "gene_order_test": split_info["gene_order_test"],
-        }
-    else:
-        # No gene annotation - skip R2G computation
-        # User will need to add R2G manually
-        rna.var["split"] = pd.Categorical(["train"] * rna.n_vars, categories=["train", "test"])
-
-    # 6. Add metadata
-    mdata.uns["deepscenic_version"] = deepscenic.__version__
-    mdata.uns["preprocessing"] = {
-        "rna_normalized": True,  # Assume already done
-        "atac_imputed": True,  # Assume pyCisTopic output
-        "steps": ["prepare_for_training"],
-    }
-    mdata.uns["splits"] = {
-        "cell_split_seed": cell_split_seed,
-        "cell_split_ratio": cell_test_fraction,
-        "region_split_chromosomes": test_chromosomes,
-        "created_at": datetime.now().isoformat(),
-    }
 
     if not inplace:
         return mdata
@@ -426,9 +287,8 @@ def prepare_for_training(
 
 __all__ = [
     # Basic
-    "filter_genes",
-    "normalize_rna",
     "filter_regions_by_celltype",
+    "remove_zero_variance_genes",
     # Search space
     "compute_r2g_penalty",
     "split_r2g_by_chromosome",
@@ -447,5 +307,4 @@ __all__ = [
     "split_features_by_chromosome",
     # High-level
     "create_mudata",
-    "prepare_for_training",
 ]

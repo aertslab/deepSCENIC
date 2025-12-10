@@ -8,7 +8,7 @@ from ._grn import (
     get_tf_targets,
 )
 from ._inference import to_latent
-from ._model import DeepSCENICModel, load_model
+from ._model import DeepSCENICModel, load_legacy_grn, load_legacy_model, load_model
 from ._perturbation import simulate_multi_perturbation, simulate_perturbation
 from ._train import train
 
@@ -18,6 +18,8 @@ __all__ = [
     # Model
     "DeepSCENICModel",
     "load_model",
+    "load_legacy_model",
+    "load_legacy_grn",
     # Inference
     "to_latent",
     # Perturbation

@@ -1,53 +1,57 @@
 """Region-gene search space and distance penalty computation."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
 from .._constants import DEFAULT_R2G_MAX_DISTANCE, DEFAULT_R2G_SIGMA
 
+if TYPE_CHECKING:
+    import mudata as md
 
-def compute_r2g_penalty(
+
+def _normalize_column_name(df: pd.DataFrame, options: list[str]) -> str | None:
+    """Find a column name from a list of options (case-insensitive)."""
+    df_cols_lower: dict[str, str] = {str(c).lower(): str(c) for c in df.columns}
+    for opt in options:
+        if opt.lower() in df_cols_lower:
+            return df_cols_lower[opt.lower()]
+    return None
+
+
+def _compute_r2g_matrix(
     regions: pd.DataFrame,
     genes: pd.DataFrame,
-    max_distance: int = DEFAULT_R2G_MAX_DISTANCE,
-    sigma: int = DEFAULT_R2G_SIGMA,
-    method: str = "gaussian",
+    max_distance: int,
+    sigma: int,
+    method: str,
 ) -> tuple[csr_matrix, dict]:
     """
-    Compute region-to-gene distance penalty matrix.
-
-    For each region-gene pair within max_distance, compute a penalty
-    value where 0 = very close (no penalty), 1 = far (high penalty).
+    Compute R2G penalty matrix from DataFrames.
 
     Parameters
     ----------
     regions : DataFrame
-        Must have columns: 'chromosome', 'start', 'end'
-        Index should be region names
+        Must have columns: chromosome, start, end. Index = region names.
     genes : DataFrame
-        Must have columns: 'tss' (transcription start site), 'chromosome'
-        Index should be gene names
-    max_distance : int, default=1_000_000
-        Maximum distance to consider (1Mb)
-    sigma : int, default=100_000
-        Gaussian sigma for distance penalty (100kb)
-    method : {'gaussian', 'linear'}
-        Penalty function
+        Must have columns: chromosome, tss. Index = gene names.
+    max_distance : int
+        Maximum distance to consider.
+    sigma : int
+        Gaussian sigma for penalty.
+    method : str
+        Penalty method ('gaussian' or 'linear').
 
     Returns
     -------
     r2g : csr_matrix
         Sparse penalty matrix (n_regions x n_genes)
     config : dict
-        Configuration used
-
-    Notes
-    -----
-    The penalty formula (Gaussian):
-        penalty = 1 - exp(-d^2 / (2*sigma^2))
-
-    Where d is distance from region center to gene TSS.
+        Computation parameters and stats
     """
     from tqdm import tqdm
 
@@ -125,6 +129,123 @@ def compute_r2g_penalty(
     }
 
     return r2g, config
+
+
+def compute_r2g_penalty(
+    mdata: md.MuData,
+    gene_annotation: pd.DataFrame,
+    max_distance: int = DEFAULT_R2G_MAX_DISTANCE,
+    sigma: int = DEFAULT_R2G_SIGMA,
+    method: str = "gaussian",
+    key_added: str = "r2g",
+    copy: bool = False,
+) -> md.MuData | None:
+    """
+    Compute region-to-gene distance penalty matrix and store in MuData.
+
+    For each region-gene pair within max_distance, compute a penalty
+    value where 0 = very close (no penalty), 1 = far (high penalty).
+
+    Parameters
+    ----------
+    mdata : MuData
+        Must have 'atac' modality with parsed coordinates.
+        Run ``ds.pp.parse_region_coordinates(mdata)`` first.
+    gene_annotation : DataFrame
+        Gene annotation with columns (case-insensitive):
+        - 'tss' or 'Transcription_Start_Site': transcription start site
+        - 'chromosome' or 'Chromosome': chromosome name
+        Index should be gene names.
+    max_distance : int, default=1_000_000
+        Maximum distance to consider (1Mb).
+    sigma : int, default=100_000
+        Gaussian sigma for distance penalty (100kb).
+    method : {'gaussian', 'linear'}
+        Penalty function.
+    key_added : str, default='r2g'
+        Key in ``mdata.uns`` to store results.
+    copy : bool, default=False
+        If True, return a modified copy instead of modifying in-place.
+
+    Returns
+    -------
+    MuData or None
+        If ``copy=True``, returns modified MuData. Otherwise None.
+
+    Stores
+    ------
+    mdata.uns[key_added] : dict
+        - 'matrix': sparse penalty matrix (n_regions x n_genes)
+        - 'config': computation parameters (max_distance, sigma, method, n_links, density)
+        - 'region_names': ordered region names (list)
+        - 'gene_names': ordered gene names (list)
+
+    Notes
+    -----
+    The penalty formula (Gaussian):
+        penalty = 1 - exp(-d^2 / (2*sigma^2))
+
+    Where d is distance from region center to gene TSS.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> ds.pp.parse_region_coordinates(mdata)
+    >>> annot, _ = ds.datasets.fetch_gene_annotation(species="mmusculus")
+    >>> ds.pp.compute_r2g_penalty(mdata, annot)
+    >>> # Results stored in mdata.uns['r2g']
+    >>> print(f"Created {mdata.uns['r2g']['config']['n_links']} region-gene links")
+    """
+    if copy:
+        mdata = mdata.copy()
+
+    # Validate prerequisites
+    if "atac" not in mdata.mod:
+        raise ValueError("MuData must have 'atac' modality")
+
+    atac = mdata["atac"]
+    if "chromosome" not in atac.var.columns:
+        raise ValueError(
+            "ATAC modality must have parsed coordinates. "
+            "Run ds.pp.parse_region_coordinates(mdata) first."
+        )
+
+    # Extract and normalize regions DataFrame
+    regions = atac.var[["chromosome", "start", "end"]].copy()
+
+    # Normalize gene annotation column names
+    genes = gene_annotation.copy()
+    gene_chrom_col = _normalize_column_name(
+        genes, ["chromosome", "Chromosome", "chrom", "chr"]
+    )
+    gene_tss_col = _normalize_column_name(
+        genes, ["tss", "Transcription_Start_Site", "transcription_start_site", "TSS"]
+    )
+
+    if gene_chrom_col is None or gene_tss_col is None:
+        raise ValueError(
+            f"Gene annotation must have columns for chromosome and TSS. "
+            f"Found columns: {list(genes.columns)}. "
+            f"Expected: chromosome/Chromosome and tss/Transcription_Start_Site"
+        )
+
+    # Rename to standard lowercase names for internal use
+    genes = genes.rename(columns={gene_chrom_col: "chromosome", gene_tss_col: "tss"})
+
+    # Compute matrix using internal function
+    r2g_matrix, config = _compute_r2g_matrix(
+        regions, genes, max_distance, sigma, method
+    )
+
+    # Store in MuData
+    mdata.uns[key_added] = {
+        "matrix": r2g_matrix,
+        "config": config,
+        "region_names": regions.index.tolist(),
+        "gene_names": genes.index.tolist(),
+    }
+
+    return mdata if copy else None
 
 
 def split_r2g_by_chromosome(

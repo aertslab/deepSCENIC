@@ -50,6 +50,7 @@ dependencies = [
     "pooch>=1.6",
     "pybiomart>=0.2",
     "requests>=2.28",
+    "pyarrow>=14.0",  # For parquet caching
 
     # Visualization (required)
     "matplotlib>=3.7",

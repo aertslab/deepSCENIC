@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pandas as pd
+import pooch
 import requests
 
 if TYPE_CHECKING:
     pass
 
-# Setup logging
 log = logging.getLogger("deepscenic.datasets")
-
 _NCBI_MAX_RETRIES = 3
 
 
@@ -25,14 +26,40 @@ class NCBIError(Exception):
     pass
 
 
+def _get_cache_dir() -> Path:
+    """Get the deepscenic cache directory."""
+    cache_dir: Path = pooch.os_cache("deepscenic")
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _get_cache_key(
+    species: str,
+    biomart_host: str,
+    use_ucsc_chromosome_style: bool,
+    transcript_type: str | None,
+) -> str:
+    """Generate a unique cache key for the query parameters."""
+    # Hash the host to keep filename reasonable
+    host_hash = hashlib.md5(biomart_host.encode()).hexdigest()[:8]
+    ucsc = "ucsc" if use_ucsc_chromosome_style else "ensembl"
+    ttype = transcript_type or "all"
+    return f"gene_annot_{species}_{host_hash}_{ucsc}_{ttype}"
+
+
 def fetch_gene_annotation(
     species: str = "hsapiens",
     biomart_host: str = "http://www.ensembl.org",
     use_ucsc_chromosome_style: bool = True,
     transcript_type: str = "protein_coding",
+    force_download: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame | None]:
     """
     Download gene annotation from Ensembl Biomart.
+
+    Results are cached locally as parquet files for fast subsequent access.
+    After the first download, this function loads from cache without
+    making network requests.
 
     Parameters
     ----------
@@ -46,6 +73,8 @@ def fetch_gene_annotation(
         Convert chromosome names to UCSC style (chr1, chr2, etc.).
     transcript_type : str, default="protein_coding"
         Filter for transcript type. Set to None to include all types.
+    force_download : bool, default=False
+        Force re-download even if cached data exists.
 
     Returns
     -------
@@ -69,6 +98,68 @@ def fetch_gene_annotation(
     Gene
     0610005C13Rik  chr7  ...
     """
+    cache_dir = _get_cache_dir()
+    cache_key = _get_cache_key(species, biomart_host, use_ucsc_chromosome_style, transcript_type)
+
+    annot_path = cache_dir / f"{cache_key}.parquet"
+    chromsizes_path = cache_dir / f"{cache_key}_chromsizes.parquet"
+
+    # Try to load from cache
+    if not force_download and annot_path.exists():
+        log.info(f"Loading cached gene annotation from {annot_path}")
+        annot = pd.read_parquet(annot_path)
+        chromsizes = pd.read_parquet(chromsizes_path) if chromsizes_path.exists() else None
+        log.info(f"Loaded annotation for {len(annot)} genes from cache")
+        return annot, chromsizes
+
+    # Fetch from Biomart (this imports pybiomart)
+    log.info(f"Fetching gene annotation from {biomart_host}...")
+    annot, chromsizes = _fetch_from_biomart(
+        species=species,
+        biomart_host=biomart_host,
+        use_ucsc_chromosome_style=use_ucsc_chromosome_style,
+        transcript_type=transcript_type,
+    )
+
+    # Cache results as parquet
+    log.info(f"Caching gene annotation to {annot_path}")
+    annot.to_parquet(annot_path)
+    if chromsizes is not None:
+        chromsizes.to_parquet(chromsizes_path)
+
+    return annot, chromsizes
+
+
+def _fetch_from_biomart(
+    species: str,
+    biomart_host: str,
+    use_ucsc_chromosome_style: bool,
+    transcript_type: str | None,
+) -> tuple[pd.DataFrame, pd.DataFrame | None]:
+    """
+    Fetch gene annotation from Biomart.
+
+    This function imports pybiomart, which creates a .pybiomart.sqlite file.
+    It is isolated here so the main fetch_gene_annotation() can avoid
+    importing pybiomart when loading from cache.
+
+    The requests_cache is redirected to our cache directory to prevent
+    .pybiomart.sqlite appearing in the user's working directory.
+    """
+    # Redirect pybiomart's cache to our cache directory BEFORE importing
+    import requests_cache
+
+    cache_dir = _get_cache_dir()
+    _original_install_cache = requests_cache.install_cache
+
+    def _patched_install_cache(cache_name: str = "http_cache", **kwargs):
+        if cache_name == ".pybiomart":
+            cache_name = str(cache_dir / "pybiomart_requests")
+        return _original_install_cache(cache_name, **kwargs)
+
+    requests_cache.install_cache = _patched_install_cache  # type: ignore[assignment]
+
+    # Now import pybiomart (will use our patched install_cache)
     import pybiomart as pbm
 
     dataset_name = f"{species}_gene_ensembl"
@@ -78,7 +169,7 @@ def fetch_gene_annotation(
     mart = server["ENSEMBL_MART_ENSEMBL"]
 
     if dataset_name not in mart.list_datasets()["name"].to_numpy():
-        raise ValueError(f"Dataset '{dataset_name}' not found. " "Check species name or Biomart host.")
+        raise ValueError(f"Dataset '{dataset_name}' not found. Check species name or Biomart host.")
 
     dataset = mart[dataset_name]
 
@@ -157,7 +248,7 @@ def _fetch_chromsizes_and_filter(
     ncbi_search_term = regex_display.group(1)
     log.info(f"Using genome assembly: {ncbi_search_term}")
 
-    def _get_with_retries(url: str, params: dict = None) -> requests.Response:
+    def _get_with_retries(url: str, params: dict | None = None) -> requests.Response:
         for _ in range(_NCBI_MAX_RETRIES):
             resp = requests.get(url, params=params)
             if resp.ok:

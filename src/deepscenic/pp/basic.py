@@ -1,38 +1,43 @@
 """Basic preprocessing functions for deepSCENIC."""
 
 import numpy as np
-import scanpy as sc
 from anndata import AnnData
 
 
-def filter_genes(
+def remove_zero_variance_genes(
     adata: AnnData,
-    min_cells: int = 10,
     inplace: bool = True,
 ) -> AnnData | None:
     """
-    Filter genes expressed in too few cells.
+    Remove genes with zero variance across cells.
+
+    This is useful after filtering to remove genes that have become
+    constant (e.g., all zeros) across the remaining cells.
 
     Parameters
     ----------
     adata : AnnData
-        RNA expression data
-    min_cells : int, default=10
-        Minimum number of cells a gene must be expressed in
+        Gene expression data.
     inplace : bool, default=True
-        Whether to modify in-place
+        Whether to modify in-place.
 
     Returns
     -------
     AnnData or None
-        If inplace=False, returns filtered AnnData
+        If inplace=False, returns filtered AnnData.
+
+    Examples
+    --------
+    >>> import scanpy as sc
+    >>> import deepscenic as ds
+    >>> # Standard preprocessing with scanpy
+    >>> sc.pp.filter_genes(adata, min_cells=10)
+    >>> # Remove any zero-variance genes that remain
+    >>> ds.pp.remove_zero_variance_genes(adata)
     """
     if not inplace:
         adata = adata.copy()
 
-    sc.pp.filter_genes(adata, min_cells=min_cells)
-
-    # Also remove zero-variance genes
     if hasattr(adata.X, "toarray"):
         var = np.array(adata.X.toarray().std(axis=0)).flatten()
     else:
@@ -40,44 +45,9 @@ def filter_genes(
 
     keep = var > 0
     if not keep.all():
+        n_removed = (~keep).sum()
         adata._inplace_subset_var(keep)
-
-    if not inplace:
-        return adata
-    return None
-
-
-def normalize_rna(
-    adata: AnnData,
-    target_sum: float | None = None,
-    log: bool = True,
-    inplace: bool = True,
-) -> AnnData | None:
-    """
-    Normalize RNA data (total count + log1p).
-
-    Parameters
-    ----------
-    adata : AnnData
-        RNA expression data
-    target_sum : float, optional
-        Target sum for normalization. If None, uses median.
-    log : bool, default=True
-        Whether to apply log1p transformation
-    inplace : bool, default=True
-        Whether to modify in-place
-
-    Returns
-    -------
-    AnnData or None
-        If inplace=False, returns normalized AnnData
-    """
-    if not inplace:
-        adata = adata.copy()
-
-    sc.pp.normalize_total(adata, target_sum=target_sum)
-    if log:
-        sc.pp.log1p(adata)
+        print(f"Removed {n_removed} zero-variance genes")
 
     if not inplace:
         return adata
