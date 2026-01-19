@@ -59,13 +59,13 @@ def sample_rna():
     adata.uns["tf_order"] = [f"Gene_{i}" for i in range(10)]
 
     # Simulate add_gene_annotation behavior: some genes have pd.NA for chromosome/tss
-    # This mimics genes not found in the annotation
-    chromosomes: list = ["chr1"] * 25 + [pd.NA] * 5 + ["chr7"] * 10 + ["chr11"] * 10
-    adata.var["chromosome"] = chromosomes
+    # Use nullable dtypes for h5mu compatibility
+    chromosomes = ["chr1"] * 25 + [pd.NA] * 5 + ["chr7"] * 10 + ["chr11"] * 10
+    adata.var["chromosome"] = pd.array(chromosomes, dtype="string")
 
     # tss column with pd.NA mixed with integers (common case from add_gene_annotation)
-    tss_values: list = [i * 10000 for i in range(25)] + [pd.NA] * 5 + [i * 10000 for i in range(25, 45)]
-    adata.var["tss"] = tss_values
+    tss_values = [i * 10000 for i in range(25)] + [pd.NA] * 5 + [i * 10000 for i in range(25, 45)]
+    adata.var["tss"] = pd.array(tss_values, dtype="Int64")
 
     adata.var["split"] = pd.Categorical(["train"] * 30 + ["test"] * 20, categories=["train", "test"])
 

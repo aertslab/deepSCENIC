@@ -406,9 +406,16 @@ def add_gene_annotation(
         if annot_col is None:
             raise ValueError(f"Column '{col}' not found in annotation. Available: {list(gene_annotation.columns)}")
 
-        # Add to var - initialize with NA, then fill matched genes
-        adata.var[col] = pd.NA
-        adata.var.loc[genes_in_data, col] = gene_annotation.loc[genes_in_data, annot_col].values  # type: ignore
+        # Add to var - use nullable dtypes for h5mu compatibility
+        values = gene_annotation.loc[genes_in_data, annot_col]
+        if col in ("chromosome", "strand"):
+            # String columns
+            adata.var[col] = pd.array([pd.NA] * len(adata.var), dtype="string")
+            adata.var.loc[genes_in_data, col] = values.astype("string").values
+        elif col in ("tss", "start", "end"):
+            # Integer columns
+            adata.var[col] = pd.array([pd.NA] * len(adata.var), dtype="Int64")
+            adata.var.loc[genes_in_data, col] = values.astype("Int64").values
 
     print(f"Added {columns} to {len(genes_in_data)} / {len(adata.var)} genes")
     if n_missing > 0:

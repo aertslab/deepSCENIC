@@ -70,13 +70,176 @@ def test_write_read_sparse_r2g_matrix(sample_mdata):
         assert loaded.uns["r2g"]["config"]["max_distance"] == 1000000
         assert loaded.uns["r2g"]["config"]["method"] == "gaussian"
 
-        # Verify region/gene names are restored as lists
+        # Verify region/gene names are restored (may be list or numpy array)
         assert "region_names" in loaded.uns["r2g"]
         assert "gene_names" in loaded.uns["r2g"]
-        assert isinstance(loaded.uns["r2g"]["region_names"], list)
-        assert isinstance(loaded.uns["r2g"]["gene_names"], list)
-        assert loaded.uns["r2g"]["region_names"] == sample_mdata.uns["r2g"]["region_names"]
-        assert loaded.uns["r2g"]["gene_names"] == sample_mdata.uns["r2g"]["gene_names"]
+        # AnnData converts lists to numpy arrays, which is semantically equivalent
+        np.testing.assert_array_equal(
+            loaded.uns["r2g"]["region_names"],
+            sample_mdata.uns["r2g"]["region_names"],
+        )
+        np.testing.assert_array_equal(
+            loaded.uns["r2g"]["gene_names"],
+            sample_mdata.uns["r2g"]["gene_names"],
+        )
+
+
+def test_write_read_nullable_string_columns():
+    """Test roundtrip with nullable string columns containing pd.NA."""
+    import pandas as pd
+    import scanpy as sc
+
+    rna = sc.AnnData(np.random.rand(10, 5).astype(np.float32))
+    rna.var_names = [f"Gene_{i}" for i in range(5)]
+    rna.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    # Nullable string column with pd.NA
+    rna.var["chromosome"] = pd.array(["chr1", "chr1", pd.NA, "chr7", pd.NA], dtype="string")
+
+    atac = sc.AnnData(np.random.rand(10, 3).astype(np.float32))
+    atac.var_names = [f"chr1:{i * 1000}-{i * 1000 + 500}" for i in range(3)]
+    atac.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    import mudata as md
+
+    mdata = md.MuData({"rna": rna, "atac": atac})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.h5mu"
+        ds.write(mdata, path, validate=False)
+        loaded = ds.read(path, validate=False)
+
+        # Check NA values preserved
+        assert pd.isna(loaded.mod["rna"].var["chromosome"].iloc[2])
+        assert pd.isna(loaded.mod["rna"].var["chromosome"].iloc[4])
+        # Check non-NA values
+        assert loaded.mod["rna"].var["chromosome"].iloc[0] == "chr1"
+        assert loaded.mod["rna"].var["chromosome"].iloc[3] == "chr7"
+
+
+def test_write_read_nullable_integer_columns():
+    """Test roundtrip with nullable integer columns containing pd.NA."""
+    import pandas as pd
+    import scanpy as sc
+
+    rna = sc.AnnData(np.random.rand(10, 5).astype(np.float32))
+    rna.var_names = [f"Gene_{i}" for i in range(5)]
+    rna.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    # Nullable integer column with pd.NA
+    rna.var["tss"] = pd.array([1000, 2000, pd.NA, 4000, pd.NA], dtype="Int64")
+
+    atac = sc.AnnData(np.random.rand(10, 3).astype(np.float32))
+    atac.var_names = [f"chr1:{i * 1000}-{i * 1000 + 500}" for i in range(3)]
+    atac.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    import mudata as md
+
+    mdata = md.MuData({"rna": rna, "atac": atac})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.h5mu"
+        ds.write(mdata, path, validate=False)
+        loaded = ds.read(path, validate=False)
+
+        # Check NA values preserved
+        assert pd.isna(loaded.mod["rna"].var["tss"].iloc[2])
+        assert pd.isna(loaded.mod["rna"].var["tss"].iloc[4])
+        # Check non-NA values
+        assert loaded.mod["rna"].var["tss"].iloc[0] == 1000
+        assert loaded.mod["rna"].var["tss"].iloc[3] == 4000
+
+
+def test_write_read_nested_dict_in_uns():
+    """Test roundtrip with nested dicts in uns."""
+    import scanpy as sc
+
+    rna = sc.AnnData(np.random.rand(10, 5).astype(np.float32))
+    atac = sc.AnnData(np.random.rand(10, 3).astype(np.float32))
+
+    import mudata as md
+
+    mdata = md.MuData({"rna": rna, "atac": atac})
+    mdata.uns["r2g"] = {
+        "config": {"max_distance": 1000000, "sigma": 100000, "method": "gaussian"},
+        "other_key": "value",
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.h5mu"
+        ds.write(mdata, path, validate=False)
+        loaded = ds.read(path, validate=False)
+
+        # Check nested dict preserved
+        assert "r2g" in loaded.uns
+        assert "config" in loaded.uns["r2g"]
+        assert loaded.uns["r2g"]["config"]["max_distance"] == 1000000
+        assert loaded.uns["r2g"]["config"]["sigma"] == 100000
+        assert loaded.uns["r2g"]["config"]["method"] == "gaussian"
+        assert loaded.uns["r2g"]["other_key"] == "value"
+
+
+def test_write_read_none_in_uns():
+    """Test roundtrip with None values in uns."""
+    import scanpy as sc
+
+    rna = sc.AnnData(np.random.rand(10, 5).astype(np.float32))
+    rna.uns["log1p"] = {"base": None}
+
+    atac = sc.AnnData(np.random.rand(10, 3).astype(np.float32))
+
+    import mudata as md
+
+    mdata = md.MuData({"rna": rna, "atac": atac})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.h5mu"
+        ds.write(mdata, path, validate=False)
+        loaded = ds.read(path, validate=False)
+
+        # Check None preserved
+        assert "log1p" in loaded.mod["rna"].uns
+        assert loaded.mod["rna"].uns["log1p"]["base"] is None
+
+
+def test_write_read_object_dtype_with_na():
+    """Test roundtrip converts object dtype with pd.NA to proper nullable dtypes."""
+    import pandas as pd
+    import scanpy as sc
+
+    rna = sc.AnnData(np.random.rand(10, 5).astype(np.float32))
+    rna.var_names = [f"Gene_{i}" for i in range(5)]
+    rna.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    # Object dtype column with pd.NA (what add_gene_annotation produces)
+    chromosomes = ["chr1", "chr1", pd.NA, "chr7", pd.NA]
+    rna.var["chromosome"] = pd.Series(chromosomes, index=rna.var_names)
+    tss_values = [1000, 2000, pd.NA, 4000, pd.NA]
+    rna.var["tss"] = pd.Series(tss_values, index=rna.var_names)
+
+    # Verify object dtype before write
+    assert rna.var["chromosome"].dtype == object
+    assert rna.var["tss"].dtype == object
+
+    atac = sc.AnnData(np.random.rand(10, 3).astype(np.float32))
+    atac.var_names = [f"chr1:{i * 1000}-{i * 1000 + 500}" for i in range(3)]
+    atac.obs_names = [f"Cell_{i}" for i in range(10)]
+
+    import mudata as md
+
+    mdata = md.MuData({"rna": rna, "atac": atac})
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.h5mu"
+        ds.write(mdata, path, validate=False)
+        loaded = ds.read(path, validate=False)
+
+        # Check NA values preserved
+        assert pd.isna(loaded.mod["rna"].var["chromosome"].iloc[2])
+        assert pd.isna(loaded.mod["rna"].var["tss"].iloc[2])
+        # Check non-NA values
+        assert loaded.mod["rna"].var["chromosome"].iloc[0] == "chr1"
+        assert loaded.mod["rna"].var["tss"].iloc[0] == 1000
 
 
 def test_read_nonexistent_file():
