@@ -34,7 +34,7 @@ def _convert_nullable_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col in df.columns:
         if df[col].dtype != object:
             continue
-        if not df[col].isna().any():
+        if not df[col].isna().any():  # type: ignore
             continue
 
         non_null = df[col].dropna()

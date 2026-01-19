@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import anndata as ad
 import mudata as md
 
 from ..data.schema import validate_schema
@@ -54,6 +55,8 @@ def read(
         raise ValueError(f"Expected .h5mu file, got: {path.suffix}")
 
     mdata = md.read(path, backed=backed)
+    if isinstance(mdata, ad.AnnData):
+        raise ValueError("Expected MuData format, got Anndata")
 
     if validate:
         validate_schema(mdata, strict=strict)

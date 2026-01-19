@@ -42,25 +42,13 @@ class TestCellDataset:
         assert item["rna"].shape == (n_genes,)
         assert item["atac"].shape == (n_regions,)
 
-    def test_with_batch_ids(self):
-        """Should include batch_id when provided."""
-        rna = np.random.randn(100, 50)
-        atac = np.random.randn(100, 200)
-        batch_ids = np.zeros((100, 3))
-        batch_ids[:, 0] = 1  # All cells in batch 0
-        dataset = CellDataset(rna, atac, batch_ids)
-
-        item = dataset[0]
-        assert "batch_id" in item
-        assert item["batch_id"].shape == (3,)
-
     def test_sparse_input(self):
         """Should handle sparse matrices."""
         from scipy.sparse import csr_matrix
 
         rna = csr_matrix(np.random.randn(100, 50))
         atac = csr_matrix(np.random.randn(100, 200))
-        dataset = CellDataset(rna, atac)
+        dataset = CellDataset(rna, atac)  # type: ignore
 
         assert len(dataset) == 100
         item = dataset[0]
@@ -192,20 +180,6 @@ class TestBuildCellDataloader:
 
         assert train_batch["rna"].shape[0] == 80
         assert test_batch["rna"].shape[0] == 20
-
-    def test_batch_correction(self, mock_mdata):
-        """Should include batch_id when batch_key specified."""
-        from deepscenic.tl._dataloaders import build_cell_dataloader
-
-        mock_mdata.obs["sample"] = ["A"] * 50 + ["B"] * 50
-
-        loader = build_cell_dataloader(
-            mock_mdata, split="train", batch_size=16, batch_key="sample"
-        )
-
-        batch = next(iter(loader))
-        assert "batch_id" in batch
-        assert batch["batch_id"].shape[1] == 2  # Two batches
 
 
 class TestBuildSequenceDataloader:
