@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-from torch.optim import AdamW
+from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm.auto import tqdm
 
@@ -75,22 +75,23 @@ def _init_e1_cache(
 
 def train(
     mdata: md.MuData,
+    *,
     epochs: int = 100,
-    warmup_vae: int = 10,
-    warmup_grn: int = 50,
     batch_size: int = 64,
-    seq_batch_size: int = 1000,
     lr: float = 1e-3,
     device: str = "cuda",
+    warmup_vae: int = 10,
+    warmup_grn: int = 50,
     logger: str = "dict",
     log_dir: str = "./runs",
     checkpoint_dir: str | None = None,
     checkpoint_every: int = 10,
     resume_from: str | None = None,
     early_stopping_patience: int | None = None,
+    seq_batch_size: int = 1000,
     balance_dars: bool = False,
     num_workers: int = 0,
-    **kwargs: Any,
+    config: TrainingConfig | None = None,
 ) -> DeepSCENICModel:
     """Train deepSCENIC model on multiome data.
 
@@ -100,18 +101,16 @@ def train(
         MuData with preprocessed RNA + ATAC data.
     epochs
         Total training epochs.
-    warmup_vae
-        Epochs before enabling TF2rNet.
-    warmup_grn
-        Epochs before enabling PPI.
     batch_size
         Cells per batch.
-    seq_batch_size
-        Sequences per batch.
     lr
-        Base learning rate.
+        Base learning rate (applied to all models).
     device
-        Training device.
+        Training device ('cuda' or 'cpu').
+    warmup_vae
+        Epochs before enabling TF2rNet updates.
+    warmup_grn
+        Epochs before enabling PPI network.
     logger
         Logging backend: 'dict', 'tensorboard', 'wandb'.
     log_dir
@@ -124,13 +123,16 @@ def train(
         Path to checkpoint to resume from.
     early_stopping_patience
         Stop if no improvement for N epochs (None = disabled).
+    seq_batch_size
+        Sequences per batch for TF2rNet updates.
     balance_dars
         Whether to upweight DAR regions during sequence sampling (1.5x weight).
         Requires DARs to be marked via ``ds.pp.mark_dars()`` first.
     num_workers
         Number of workers for parallel data loading (0 = main process only).
-    **kwargs
-        Additional config options (ppi_device, etc.).
+    config
+        Advanced configuration options. When provided, explicit function
+        parameters take precedence over config values.
 
     Returns
     -------
@@ -145,24 +147,61 @@ def train(
 
     Examples
     --------
+    Simple training with defaults:
+
     >>> import deepscenic as ds
     >>> ds.genome.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
     >>> mdata = ds.read("preprocessed.h5mu")  # doctest: +SKIP
     >>> model = ds.tl.train(mdata, epochs=100, device="cuda")  # doctest: +SKIP
+
+    Training with advanced configuration:
+
+    >>> from deepscenic.tl import TrainingConfig
+    >>> config = TrainingConfig(beta=0.01, alpha=0.02)  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, epochs=200, config=config)  # doctest: +SKIP
     """
-    # Build config
-    config = TrainingConfig(
+    # Build config: start from provided config or defaults, then override with explicit params
+    if config is not None:
+        # Start with provided config and override with explicit parameters
+        base_config = config
+    else:
+        base_config = TrainingConfig()
+
+    # Explicit function parameters override config values
+    final_config = TrainingConfig(
         epochs=epochs,
-        warmup_vae=warmup_vae,
-        warmup_grn=warmup_grn,
         batch_size=batch_size,
         seq_batch_size=seq_batch_size,
+        warmup_vae=warmup_vae,
+        warmup_grn=warmup_grn,
         lr_vae=lr,
+        lr_tf2rnet=base_config.lr_tf2rnet,
+        lr_ppi=base_config.lr_ppi,
+        weight_decay=base_config.weight_decay,
+        beta=base_config.beta,
+        alpha=base_config.alpha,
+        gamma=base_config.gamma,
+        rna_tau=base_config.rna_tau,
+        atac_tau=base_config.atac_tau,
+        loss_rna=base_config.loss_rna,
+        loss_atac=base_config.loss_atac,
+        dropout_mask_rna=base_config.dropout_mask_rna,
+        dropout_mask_atac=base_config.dropout_mask_atac,
+        n_hidden=base_config.n_hidden,
+        use_ppi=base_config.use_ppi,
+        binary_atac=base_config.binary_atac,
         device=device,
+        ppi_device=base_config.ppi_device,
+        batch_key=base_config.batch_key,
+        balance_class=base_config.balance_class,
+        class_key=base_config.class_key,
         balance_dars=balance_dars,
         num_workers=num_workers,
-        **{k: v for k, v in kwargs.items() if k in TrainingConfig.__dataclass_fields__},
+        bottleneck_size=base_config.bottleneck_size,
+        emb_len=base_config.emb_len,
+        seq_len=base_config.seq_len,
     )
+    config = final_config
 
     # Setup logging
     training_logger = get_logger(logger, log_dir=log_dir)
@@ -279,8 +318,8 @@ def train(
     adj_E1_cache = _init_e1_cache(enformer, tf2rnet, train_seq_loader, device, config)
 
     # Optimizers
-    optimizer_vae = AdamW(vae.parameters(), lr=config.lr_vae, weight_decay=config.weight_decay)
-    optimizer_tf2rnet = AdamW(
+    optimizer_vae = Adam(vae.parameters(), lr=config.lr_vae, weight_decay=config.weight_decay)
+    optimizer_tf2rnet = Adam(
         list(tf2rnet.parameters()) + list(enformer.parameters()),
         lr=config.lr_tf2rnet,
         weight_decay=config.weight_decay,

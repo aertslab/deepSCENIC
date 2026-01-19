@@ -86,9 +86,9 @@ class TrainingConfig:
 
     # Learning rates
     lr_vae: float = 1e-3
-    lr_tf2rnet: float = 5e-4
-    lr_ppi: float = 5e-4
-    weight_decay: float = 1e-5
+    lr_tf2rnet: float = 1e-3
+    lr_ppi: float = 1e-3
+    weight_decay: float = 0.0
 
     # Loss weights
     beta: float = 1e-2  # KL divergence
