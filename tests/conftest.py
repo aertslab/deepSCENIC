@@ -8,7 +8,6 @@ import scanpy as sc
 import torch
 from scipy.sparse import csr_matrix
 
-
 MINIMAL_DIMS = {
     "n_tfs": 5,
     "n_genes": 20,
@@ -42,6 +41,7 @@ class MockEnformer(torch.nn.Module):
         self.linear = torch.nn.Linear(10, 10)
 
     def forward(self, x):
+        """Mock forward."""
         return x
 
 
@@ -56,14 +56,17 @@ def sample_rna():
     adata.obs_names = [f"Cell_{i}" for i in range(n_cells)]
 
     adata.var["is_tf"] = [i < 10 for i in range(n_genes)]
-    adata.var["tf_index"] = -1
-    for i in range(10):
-        adata.var.loc[f"Gene_{i}", "tf_index"] = i
     adata.uns["tf_order"] = [f"Gene_{i}" for i in range(10)]
 
-    chromosomes = ["chr1"] * 30 + ["chr7"] * 10 + ["chr11"] * 10
+    # Simulate add_gene_annotation behavior: some genes have pd.NA for chromosome/tss
+    # This mimics genes not found in the annotation
+    chromosomes: list = ["chr1"] * 25 + [pd.NA] * 5 + ["chr7"] * 10 + ["chr11"] * 10
     adata.var["chromosome"] = chromosomes
-    adata.var["tss"] = [i * 10000 for i in range(n_genes)]
+
+    # tss column with pd.NA mixed with integers (common case from add_gene_annotation)
+    tss_values: list = [i * 10000 for i in range(25)] + [pd.NA] * 5 + [i * 10000 for i in range(25, 45)]
+    adata.var["tss"] = tss_values
+
     adata.var["split"] = pd.Categorical(["train"] * 30 + ["test"] * 20, categories=["train", "test"])
 
     return adata
@@ -80,6 +83,9 @@ def sample_atac():
         f"chr7:{i * 1000}-{i * 1000 + 640}" for i in range(10)
     ]
     adata.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+    adata.obs["celltype"] = ["Astrocytes" for _ in range(n_cells - 10)] + [
+        "Oligo" for _ in range(10)
+    ]  # 90 Astros, 10 Oligos
 
     adata.var["chromosome"] = ["chr1"] * 20 + ["chr7"] * 10
     adata.var["start"] = [i * 1000 for i in range(20)] + [i * 1000 for i in range(10)]
@@ -96,15 +102,16 @@ def sample_mdata(sample_rna, sample_atac):
 
     mdata.obs["split"] = pd.Categorical(["train"] * 80 + ["test"] * 20, categories=["train", "test"])
 
+    mdata["rna"].uns["log1p"] = {"base": None}
+    mdata["rna"].uns["tf_order"] = [f"TF_{i}" for i in range(len(sample_rna.var_names))]
+    mdata["rna"].layers["log_norm"] = np.random.rand(sample_rna.n_obs, len(sample_rna.var)).astype(np.float32)  # type: ignore
+
     mdata.uns["deepscenic_version"] = "0.1.0"
     mdata.uns["r2g"] = {
-        "train": csr_matrix(np.random.rand(20, 30).astype(np.float32)),
-        "test": csr_matrix(np.random.rand(10, 20).astype(np.float32)),
+        "matrix": csr_matrix(np.random.rand(30, 50).astype(np.float32)),
         "config": {"max_distance": 1000000, "sigma": 100000, "method": "gaussian"},
-        "region_order_train": sample_atac.var_names[:20].tolist(),
-        "region_order_test": sample_atac.var_names[20:].tolist(),
-        "gene_order_train": sample_rna.var_names[:30].tolist(),
-        "gene_order_test": sample_rna.var_names[30:].tolist(),
+        "region_names": sample_atac.var_names.tolist(),
+        "gene_names": sample_rna.var_names.tolist(),
     }
 
     return mdata
@@ -131,12 +138,14 @@ def mock_vae():
 
     d = MINIMAL_DIMS
 
-    r2g_indices = torch.stack([
-        torch.randint(0, d["n_regions"], (d["n_links"],)),
-        torch.randint(0, d["n_genes"], (d["n_links"],)),
-    ])
+    r2g_indices = torch.stack(
+        [
+            torch.randint(0, d["n_regions"], (d["n_links"],)),
+            torch.randint(0, d["n_genes"], (d["n_links"],)),
+        ]
+    )
     r2g_distances = torch.rand(d["n_links"])
-    tf_indices = torch.randperm(d["n_genes"])[:d["n_tfs"]]
+    tf_indices = torch.randperm(d["n_genes"])[: d["n_tfs"]]
     gene_indices = torch.arange(d["n_genes"])
 
     return DeepSCENICVAE(
@@ -190,7 +199,7 @@ def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
         config=config,
         tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
         gene_names=[f"GENE{i}" for i in range(d["n_genes"])],
-        region_names=[f"chr1:{i*100}-{i*100+100}" for i in range(d["n_regions"])],
+        region_names=[f"chr1:{i * 100}-{i * 100 + 100}" for i in range(d["n_regions"])],
     )
 
 
@@ -207,7 +216,7 @@ def mock_mdata_for_model():
     rna.obs_names = [f"Cell_{i}" for i in range(n_cells)]
 
     atac = ad.AnnData(X=np.random.rand(n_cells, d["n_regions"]).astype(np.float32))
-    atac.var_names = [f"chr1:{i*100}-{i*100+100}" for i in range(d["n_regions"])]
+    atac.var_names = [f"chr1:{i * 100}-{i * 100 + 100}" for i in range(d["n_regions"])]
     atac.obs_names = [f"Cell_{i}" for i in range(n_cells)]
 
     mdata = md.MuData({"rna": rna, "atac": atac})

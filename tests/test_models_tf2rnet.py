@@ -1,6 +1,5 @@
 """Tests for TF2rNet (MotifNet)."""
 
-import pytest
 import torch
 
 from deepscenic.models._tf2rnet import MotifNet

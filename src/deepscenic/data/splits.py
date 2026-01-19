@@ -19,19 +19,18 @@ def get_split(
 
     Parameters
     ----------
-    mdata : MuData
+    mdata
         Input multimodal data
-    modality : {'rna', 'atac'}
+    modality
         Which modality to extract
-    cells : {'train', 'test', 'all'}
+    cells
         Which cell split to use
-    features : {'train', 'test', 'all'}
+    features
         Which feature split to use
 
     Returns
     -------
-    AnnData
-        Subset of the requested modality
+    Subset of the requested modality
 
     Examples
     --------
@@ -66,30 +65,30 @@ class TrainingView:
 
     Parameters
     ----------
-    mdata : MuData
+    mdata
         Input multimodal data (must have valid deepSCENIC schema)
 
     Attributes
     ----------
-    rna_train : AnnData
+    rna_train
         Train cells × train genes (main training data)
-    rna_test : AnnData
+    rna_test
         Test cells × test genes (held-out evaluation)
-    rna_e2 : AnnData
+    rna_e2
         Train cells × test genes (E2 matrix learning)
-    rna_eval : AnnData
+    rna_eval
         Test cells × train genes (reconstruction evaluation)
-    atac_train : AnnData
+    atac_train
         Train cells × train regions
-    atac_test : AnnData
+    atac_test
         Test cells × test regions
-    atac_e2 : AnnData
+    atac_e2
         Train cells × test regions
-    atac_eval : AnnData
+    atac_eval
         Test cells × train regions
-    r2g_train : sparse matrix
+    r2g_train
         R2G penalty matrix for train regions × train genes
-    r2g_test : sparse matrix
+    r2g_test
         R2G penalty matrix for test regions × test genes
 
     Examples
@@ -170,16 +169,34 @@ class TrainingView:
             self._cache["atac_eval"] = get_split(self._mdata, "atac", cells="test", features="train")
         return self._cache["atac_eval"]
 
-    # R2G matrices
+    # R2G matrices (computed on-demand from feature splits)
     @property
     def r2g_train(self):
-        """R2G penalty matrix for train split."""
-        return self._mdata.uns["r2g"]["train"]
+        """R2G penalty matrix for train split (computed on-demand)."""
+        if "r2g_train" not in self._cache:
+            full_r2g = self._mdata.uns["r2g"]["matrix"]
+
+            # Get boolean masks from feature splits
+            train_region_mask = self._mdata["atac"].var["split"] == "train"
+            train_gene_mask = self._mdata["rna"].var["split"] == "train"
+
+            # Subset the sparse matrix
+            self._cache["r2g_train"] = full_r2g[train_region_mask.values][:, train_gene_mask.values]
+        return self._cache["r2g_train"]
 
     @property
     def r2g_test(self):
-        """R2G penalty matrix for test split."""
-        return self._mdata.uns["r2g"]["test"]
+        """R2G penalty matrix for test split (computed on-demand)."""
+        if "r2g_test" not in self._cache:
+            full_r2g = self._mdata.uns["r2g"]["matrix"]
+
+            # Get boolean masks from feature splits
+            test_region_mask = self._mdata["atac"].var["split"] == "test"
+            test_gene_mask = self._mdata["rna"].var["split"] == "test"
+
+            # Subset the sparse matrix
+            self._cache["r2g_test"] = full_r2g[test_region_mask.values][:, test_gene_mask.values]
+        return self._cache["r2g_test"]
 
     # TF information
     @property

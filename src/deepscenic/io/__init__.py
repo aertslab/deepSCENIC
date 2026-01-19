@@ -1,6 +1,7 @@
 """I/O functions for deepSCENIC."""
 
-from .read import read, read_legacy
+from .bed import read_bed
+from .read import read
 from .write import write
 
-__all__ = ["read", "read_legacy", "write"]
+__all__ = ["read", "read_bed", "read_legacy", "write"]

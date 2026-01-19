@@ -27,19 +27,18 @@ def validate_schema(
 
     Parameters
     ----------
-    mdata : MuData
+    mdata
         Data to validate
-    mode : {'training', 'inference'}
+    mode
         Validation mode:
         - 'training': require rna + atac + r2g (strict)
         - 'inference': require rna only (flexible)
-    strict : bool
+    strict
         If True, raise errors. If False, collect warnings.
 
     Returns
     -------
-    list[str]
-        List of validation issues (empty if valid)
+    List of validation issues (empty if valid)
 
     Raises
     ------
@@ -67,7 +66,6 @@ def validate_schema(
     if "atac" not in mdata.mod:
         if mode == "training":
             issues.append("Missing 'atac' modality (required for training)")
-        # For inference mode, this is OK
 
     if issues and strict:
         raise SchemaError(f"Schema validation failed: {issues}")
@@ -106,27 +104,9 @@ def validate_schema(
         else:
             r2g = mdata.uns["r2g"]
             # Check required keys
-            for key in ["train", "test", "config"]:
+            for key in ["config"]:
                 if key not in r2g:
                     issues.append(f"mdata.uns['r2g'] missing '{key}'")
-
-            # Check ordering arrays (critical for alignment)
-            ordering_keys = [
-                "region_order_train",
-                "region_order_test",
-                "gene_order_train",
-                "gene_order_test",
-            ]
-            for key in ordering_keys:
-                if key not in r2g:
-                    issues.append(f"mdata.uns['r2g'] missing '{key}' (required for alignment)")
-
-    # Check PPI (optional, only warn if missing)
-    # PPI is used during training but not strictly required
-
-    # Check version
-    if "deepscenic_version" not in mdata.uns:
-        issues.append("mdata.uns missing 'deepscenic_version'")
 
     if issues:
         if strict:

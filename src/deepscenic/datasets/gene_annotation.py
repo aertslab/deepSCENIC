@@ -63,26 +63,26 @@ def fetch_gene_annotation(
 
     Parameters
     ----------
-    species : str, default="hsapiens"
+    species
         Species name for Ensembl (e.g., "hsapiens", "mmusculus", "dmelanogaster").
-    biomart_host : str
+    biomart_host
         Biomart host URL. Use archived hosts for reproducibility:
         - "http://nov2020.archive.ensembl.org/" for GRCm38
         - "http://www.ensembl.org" for latest
     use_ucsc_chromosome_style : bool, default=True
         Convert chromosome names to UCSC style (chr1, chr2, etc.).
-    transcript_type : str, default="protein_coding"
+    transcript_type
         Filter for transcript type. Set to None to include all types.
-    force_download : bool, default=False
+    force_download
         Force re-download even if cached data exists.
 
     Returns
     -------
-    gene_annotation : DataFrame
+    gene_annotation
         Gene annotation with columns:
         - Chromosome, Start, End, Strand, Transcription_Start_Site, Transcript_type
         Index is Gene name.
-    chromsizes : DataFrame or None
+    chromsizes
         Chromosome sizes (if available from NCBI):
         - Chromosome, Start (0), End
 
@@ -182,7 +182,7 @@ def _fetch_from_biomart(
     )
 
     log.info(f"Querying gene annotation for {species}...")
-    annot = dataset.query(
+    annot = pd.DataFrame(dataset.query(
         attributes=[
             "chromosome_name",
             "start_position",
@@ -192,6 +192,7 @@ def _fetch_from_biomart(
             tss_query,
             "transcript_biotype",
         ]
+        )
     )
     annot.columns = [
         "Chromosome",
@@ -205,7 +206,7 @@ def _fetch_from_biomart(
 
     # Filter for transcript type
     if transcript_type:
-        annot = annot[annot.Transcript_type == transcript_type].copy()
+        annot = pd.DataFrame(annot[annot.Transcript_type == transcript_type].copy())
 
     # Convert strand from numeric to +/-
     annot["Strand"] = ["+" if strand == 1 else "-" for strand in annot["Strand"]]
@@ -313,7 +314,7 @@ def _fetch_chromsizes_and_filter(
     log.info(f"Found {len(assembled_molecules)} assembled chromosomes")
 
     # Filter annotation to assembled chromosomes
-    annot = annot[annot["Chromosome"].isin(assembled_molecules)].copy()
+    annot = pd.DataFrame(annot[annot["Chromosome"].isin(assembled_molecules)].copy())
 
     # Build chromsizes DataFrame
     chromsizes = pd.DataFrame(

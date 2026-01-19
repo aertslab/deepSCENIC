@@ -14,11 +14,8 @@ def test_write_read_roundtrip(sample_mdata):
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "test.h5mu"
 
-        # Write without validation (sample_mdata may not pass strict validation)
-        ds.write(sample_mdata, path, validate=False)
-
-        # Read back
-        loaded = ds.read(path, validate=False)
+        ds.write(sample_mdata, path, validate=True)
+        loaded = ds.read(path, validate=True)
 
         # Check shapes
         assert loaded.n_obs == sample_mdata.n_obs
@@ -36,6 +33,50 @@ def test_write_read_roundtrip(sample_mdata):
             loaded.mod["atac"].X,
             sample_mdata.mod["atac"].X,
         )
+
+
+def test_write_read_sparse_r2g_matrix(sample_mdata):
+    """Test that sparse r2g matrix is correctly serialized and restored."""
+    from scipy.sparse import issparse
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = Path(tmpdir) / "test.h5mu"
+
+        # Verify original has sparse matrix
+        assert "r2g" in sample_mdata.uns
+        assert "matrix" in sample_mdata.uns["r2g"]
+        original_matrix = sample_mdata.uns["r2g"]["matrix"]
+        assert issparse(original_matrix)
+
+        # Write and read
+        ds.write(sample_mdata, path, validate=True)
+        loaded = ds.read(path, validate=True)
+
+        # Verify restored has sparse matrix
+        assert "r2g" in loaded.uns
+        assert "matrix" in loaded.uns["r2g"]
+        loaded_matrix = loaded.uns["r2g"]["matrix"]
+        assert issparse(loaded_matrix)
+
+        # Verify data is identical
+        assert loaded_matrix.shape == original_matrix.shape
+        np.testing.assert_array_almost_equal(
+            loaded_matrix.toarray(),
+            original_matrix.toarray(),
+        )
+
+        # Verify config dict is restored
+        assert "config" in loaded.uns["r2g"]
+        assert loaded.uns["r2g"]["config"]["max_distance"] == 1000000
+        assert loaded.uns["r2g"]["config"]["method"] == "gaussian"
+
+        # Verify region/gene names are restored as lists
+        assert "region_names" in loaded.uns["r2g"]
+        assert "gene_names" in loaded.uns["r2g"]
+        assert isinstance(loaded.uns["r2g"]["region_names"], list)
+        assert isinstance(loaded.uns["r2g"]["gene_names"], list)
+        assert loaded.uns["r2g"]["region_names"] == sample_mdata.uns["r2g"]["region_names"]
+        assert loaded.uns["r2g"]["gene_names"] == sample_mdata.uns["r2g"]["gene_names"]
 
 
 def test_read_nonexistent_file():
@@ -70,8 +111,209 @@ def test_read_with_validation_warnings(minimal_mdata):
         # Write minimal data
         minimal_mdata.write(path)
 
-        # Read with validation - should warn but not raise
+        # Read with validation - should warn but not raise with strict False
         with pytest.warns(ds.data.SchemaWarning):
-            loaded = ds.read(path, validate=True)
+            loaded = ds.read(path, validate=True, strict=False)
 
         assert loaded is not None
+
+
+class TestReadBed:
+    """Tests for read_bed function."""
+
+    def test_basic_reading(self, tmp_path):
+        """Test basic BED file reading without validation."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text("chr1\t1000\t2000\nchr1\t3000\t4000\nchr2\t5000\t6000\n")
+
+        regions = ds.io.read_bed(bed_file)
+
+        assert len(regions) == 3
+        assert list(regions.columns) == ["chromosome", "start", "end", "region"]
+
+        # Check first region
+        assert regions.iloc[0]["chromosome"] == "chr1"
+        assert regions.iloc[0]["start"] == 1000
+        assert regions.iloc[0]["end"] == 2000
+        assert regions.iloc[0]["region"] == "chr1:1000-2000"
+
+        # Check last region
+        assert regions.iloc[2]["chromosome"] == "chr2"
+        assert regions.iloc[2]["region"] == "chr2:5000-6000"
+
+    def test_extra_columns_ignored(self, tmp_path):
+        """Test that extra BED columns are ignored."""
+        bed_file = tmp_path / "regions.bed"
+        # Standard BED6 format: chrom, start, end, name, score, strand
+        bed_file.write_text("chr1\t1000\t2000\tpeak_1\t500\t+\nchr1\t3000\t4000\tpeak_2\t300\t-\n")
+
+        regions = ds.io.read_bed(bed_file)
+
+        # Should only use first 3 columns
+        assert len(regions) == 2
+        assert regions.iloc[0]["region"] == "chr1:1000-2000"
+        assert regions.iloc[1]["region"] == "chr1:3000-4000"
+
+    def test_region_string_format(self, tmp_path):
+        """Test region string format."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text("chr10\t12345\t67890\n")
+
+        regions = ds.io.read_bed(bed_file)
+
+        assert regions.iloc[0]["region"] == "chr10:12345-67890"
+
+    def test_file_not_found(self, tmp_path):
+        """Test error when BED file doesn't exist."""
+        nonexistent = tmp_path / "nonexistent.bed"
+
+        with pytest.raises(FileNotFoundError, match="BED file not found"):
+            ds.io.read_bed(nonexistent)
+
+    def test_empty_bed_file(self, tmp_path):
+        """Test error on empty BED file."""
+        bed_file = tmp_path / "empty.bed"
+        bed_file.write_text("")
+
+        with pytest.raises(ValueError, match="BED file is empty"):
+            ds.io.read_bed(bed_file)
+
+    def test_basic_coordinate_validation_negative_start(self, tmp_path):
+        """Test filtering regions with negative start position."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text(
+            "chr1\t1000\t2000\n"
+            "chr1\t-100\t500\n"  # Invalid: negative start
+            "chr2\t3000\t4000\n"
+        )
+
+        regions = ds.io.read_bed(bed_file)
+
+        # Invalid region should be filtered
+        assert len(regions) == 2
+        assert "chr1:1000-2000" in regions["region"].values
+        assert "chr2:3000-4000" in regions["region"].values
+        assert "chr1:-100-500" not in regions["region"].values
+
+    def test_basic_coordinate_validation_start_after_end(self, tmp_path):
+        """Test filtering regions where start >= end."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text(
+            "chr1\t1000\t2000\n"
+            "chr1\t5000\t5000\n"  # Invalid: start == end
+            "chr1\t6000\t5000\n"  # Invalid: start > end
+            "chr2\t3000\t4000\n"
+        )
+
+        regions = ds.io.read_bed(bed_file)
+
+        # Only valid regions should remain
+        assert len(regions) == 2
+        assert "chr1:1000-2000" in regions["region"].values
+        assert "chr2:3000-4000" in regions["region"].values
+
+    def test_validate_with_chromsizes_dataframe(self, tmp_path):
+        """Test validation with chromsizes DataFrame."""
+        import pandas as pd
+
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text(
+            "chr1\t1000\t2000\n"
+            "chr2\t3000\t4000\n"
+            "chrZ\t5000\t6000\n"  # Invalid: unknown chromosome
+            "chr1\t100000\t200000\n"  # Invalid: end > chr length
+        )
+
+        # Create chromsizes DataFrame
+        chromsizes = pd.DataFrame(
+            {
+                "Chromosome": ["chr1", "chr2"],
+                "Start": [0, 0],
+                "End": [50000, 100000],
+            }
+        )
+
+        regions = ds.io.read_bed(bed_file, chromsizes=chromsizes)
+
+        # Only regions on chr1 and chr2 within bounds should remain
+        assert len(regions) == 2
+        assert "chr1:1000-2000" in regions["region"].values
+        assert "chr2:3000-4000" in regions["region"].values
+        assert "chrZ:5000-6000" not in regions["region"].values
+        assert "chr1:100000-200000" not in regions["region"].values
+
+    def test_validate_with_chromsizes_file(self, tmp_path):
+        """Test validation with chromsizes file path."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text(
+            "chr1\t1000\t2000\nchr2\t3000\t4000\nchr3\t5000\t6000\n"  # Invalid: not in chromsizes
+        )
+
+        # Create chromsizes file
+        chromsizes_file = tmp_path / "chromsizes.txt"
+        chromsizes_file.write_text("chr1\t50000\nchr2\t100000\n")
+
+        regions = ds.io.read_bed(bed_file, chromsizes=chromsizes_file)
+
+        # Only chr1 and chr2 regions should remain
+        assert len(regions) == 2
+        assert "chr1:1000-2000" in regions["region"].values
+        assert "chr2:3000-4000" in regions["region"].values
+        assert "chr3:5000-6000" not in regions["region"].values
+
+    def test_no_validation_without_chromsizes(self, tmp_path):
+        """Test that validation is skipped when chromsizes not provided."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text(
+            "chr1\t1000\t2000\nchrZ\t5000\t6000\n"  # Would be invalid if chromsizes provided
+        )
+
+        # No chromsizes provided, so no chromosome validation
+        regions = ds.io.read_bed(bed_file)
+
+        # Both regions should be present (validation skipped)
+        assert len(regions) == 2
+        assert "chrZ:5000-6000" in regions["region"].values
+
+    def test_all_regions_filtered_raises_error(self, tmp_path):
+        """Test error when all regions are filtered out."""
+        import pandas as pd
+
+        bed_file = tmp_path / "regions.bed"
+        # BED with Ensembl-style chromosomes (1, 2, 3)
+        bed_file.write_text("1\t1000\t2000\n2\t3000\t4000\n3\t5000\t6000\n")
+
+        # Chromsizes with UCSC-style chromosomes (chr1, chr2, chr3)
+        chromsizes = pd.DataFrame(
+            {
+                "Chromosome": ["chr1", "chr2", "chr3"],
+                "Start": [0, 0, 0],
+                "End": [100000, 100000, 100000],
+            }
+        )
+
+        with pytest.raises(ValueError, match="All regions.*filtered out"):
+            ds.io.read_bed(bed_file, chromsizes=chromsizes)
+
+    def test_chromsizes_file_not_found(self, tmp_path):
+        """Test error when chromsizes file doesn't exist."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text("chr1\t1000\t2000\n")
+
+        nonexistent = tmp_path / "nonexistent_chromsizes.txt"
+
+        with pytest.raises(FileNotFoundError, match="Chromsizes file not found"):
+            ds.io.read_bed(bed_file, chromsizes=nonexistent)
+
+    def test_get_region_list(self, tmp_path):
+        """Test converting DataFrame to list of region strings."""
+        bed_file = tmp_path / "regions.bed"
+        bed_file.write_text("chr1\t1000\t2000\nchr1\t3000\t4000\n")
+
+        regions_df = ds.io.read_bed(bed_file)
+        regions_list = regions_df["region"].tolist()
+
+        assert isinstance(regions_list, list)
+        assert len(regions_list) == 2
+        assert regions_list[0] == "chr1:1000-2000"
+        assert regions_list[1] == "chr1:3000-4000"

@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-from scipy.sparse import issparse
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
+
+from ..pp.basic import _to_dense
 
 if TYPE_CHECKING:
     import mudata as md
@@ -31,17 +32,12 @@ class CellDataset(Dataset):
         self,
         rna: NDArray,
         atac: NDArray,
-        batch_ids: NDArray | None = None,
     ) -> None:
-        # Convert sparse to dense
-        if issparse(rna):
-            rna = rna.toarray()
-        if issparse(atac):
-            atac = atac.toarray()
+        rna = _to_dense(rna)
+        atac = _to_dense(atac)
 
-        self.rna = torch.FloatTensor(rna)
-        self.atac = torch.FloatTensor(atac)
-        self.batch_ids = torch.FloatTensor(batch_ids) if batch_ids is not None else None
+        self.rna = torch.Tensor(rna)
+        self.atac = torch.Tensor(atac)
         self.n_cells = rna.shape[0]
 
     def __len__(self) -> int:
@@ -53,8 +49,6 @@ class CellDataset(Dataset):
             "atac": self.atac[idx],
             "idx": torch.tensor(idx),
         }
-        if self.batch_ids is not None:
-            item["batch_id"] = self.batch_ids[idx]
         return item
 
 
@@ -85,7 +79,6 @@ def build_cell_dataloader(
     shuffle: bool = True,
     balance_class: bool = False,
     class_key: str | None = None,
-    batch_key: str | None = None,
     num_workers: int = 0,
 ) -> DataLoader:
     """
@@ -105,8 +98,6 @@ def build_cell_dataloader(
         Whether to use weighted sampling for class balance
     class_key
         Column in obs for class balancing
-    batch_key
-        Column in obs for batch correction
     num_workers
         Number of data loading workers
 
@@ -122,14 +113,7 @@ def build_cell_dataloader(
     rna = mdata.mod["rna"][mask].X
     atac = mdata.mod["atac"][mask].X
 
-    # Batch correction
-    batch_ids = None
-    if batch_key is not None:
-        import pandas as pd
-
-        batch_ids = pd.get_dummies(mdata.obs.loc[mask, batch_key]).values
-
-    dataset = CellDataset(rna, atac, batch_ids)
+    dataset = CellDataset(rna, atac)
 
     # Weighted sampling for class balance
     sampler = None
@@ -139,16 +123,14 @@ def build_cell_dataloader(
         classes = mdata.obs.loc[mask, class_key].values
         unique_classes = np.unique(classes)
         weights = compute_class_weight("balanced", classes=unique_classes, y=classes)
-        sample_weights = np.array(
-            [weights[np.where(unique_classes == c)[0][0]] for c in classes]
-        )
-        sampler = WeightedRandomSampler(sample_weights, len(dataset))
+        sample_weights = [weights[np.where(unique_classes == c)[0][0]] for c in classes]
+        sampler = WeightedRandomSampler(sample_weights, len(dataset))  # type: ignore
         shuffle = False  # Sampler handles shuffling
 
     return DataLoader(
         dataset,
         batch_size=batch_size,
-        shuffle=shuffle if sampler is None else False,
+        shuffle=shuffle,
         sampler=sampler,
         num_workers=num_workers,
         pin_memory=True,

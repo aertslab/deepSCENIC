@@ -6,8 +6,6 @@ from pathlib import Path
 import pytest
 import torch
 
-from deepscenic.tl._model import DeepSCENICModel, load_model
-
 
 class TestDeepSCENICModel:
     """Tests for DeepSCENICModel class."""

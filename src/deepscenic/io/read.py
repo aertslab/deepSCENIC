@@ -3,29 +3,36 @@
 from pathlib import Path
 
 import mudata as md
-from scipy.sparse import csr_matrix, load_npz
+import numpy as np
+from scipy.sparse import csr_matrix
 
 from ..data.schema import validate_schema
 
-md.set_options(pull_on_update=False)
+md.set_options(pull_on_update=False)  # adopt new mudata behaviour
 
 
 def read(
     path: str | Path,
     validate: bool = True,
-    backed: str | None = None,
+    strict: bool = False,
+    backed: str | bool | None = None,
 ) -> md.MuData:
     """
     Read a deepSCENIC MuData file.
 
+    Simple wrapper around `mudata.read(...)` with schema validation for required DeepSCENIC fields.
+
     Parameters
     ----------
-    path : str or Path
+    path
         Path to .h5mu file
-    validate : bool, default=True
+    validate
         Whether to validate schema after loading
-    backed : {'r', 'r+'}, optional
+    strict
+        Whether to log warnings (strict: False) or raise Exception when not following schema.
+    backed
         Load in backed mode for memory efficiency
+        See anndata/mudata official documentation for more info.
 
     Returns
     -------
@@ -46,76 +53,69 @@ def read(
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
 
-    if path.suffix not in [".h5mu", ".h5ad"]:
+    if path.suffix not in [".h5mu"]:
         raise ValueError(f"Expected .h5mu file, got: {path.suffix}")
 
     mdata = md.read(path, backed=backed)
+    if isinstance(mdata, md.AnnData):
+        mdata = md.MuData(mdata)
+
+    # Restore sparse matrices and other data types
+    _restore_after_read(mdata)
 
     if validate:
-        validate_schema(mdata, strict=False)
+        validate_schema(mdata, strict=strict)
 
     return mdata
 
 
-def read_legacy(
-    rna_path: str | Path,
-    atac_path: str | Path,
-    r2g_path: str | Path,
-    tf_list_path: str | Path | None = None,
-) -> md.MuData:
+def _restore_after_read(mdata: md.MuData) -> None:
     """
-    Read legacy deepSCENIC format (separate files) into MuData.
+    Restore data types after reading from h5mu.
 
-    This is a convenience function for migrating from the old format.
-    For new projects, use `ds.pp.create_mudata()` instead.
-
-    Parameters
-    ----------
-    rna_path : str or Path
-        Path to RNA h5ad file (e.g., raw_exprMat.h5ad)
-    atac_path : str or Path
-        Path to ATAC h5ad file (e.g., fragment_matrix.h5ad)
-    r2g_path : str or Path
-        Path to r2g penalty matrix (e.g., r2gpenalty_train.npz)
-    tf_list_path : str or Path, optional
-        Path to TF list file
-
-    Returns
-    -------
-    MuData
-        Combined MuData (note: may need further preprocessing)
-
-    Notes
-    -----
-    This loads data but does NOT apply the full schema.
-    Use preprocessing functions like `ds.pp.mark_tfs()`, `ds.pp.parse_region_coordinates()`,
-    and `ds.pp.compute_r2g_penalty()` to complete preprocessing.
+    Reconstructs sparse matrices and nested dicts from serialized components.
+    Modifies mdata in-place.
     """
-    import scanpy as sc
 
-    # Load AnnData objects
-    adata_rna = sc.read_h5ad(rna_path)
-    adata_atac = sc.read_h5ad(atac_path)
+    def _restore_uns_value(value):
+        """Recursively restore uns values after reading."""
+        if isinstance(value, dict):
+            # Check if this is a serialized sparse matrix
+            if value.get("_sparse_matrix") is True:
+                shape = tuple(value["shape"])
+                return csr_matrix(
+                    (value["data"], (value["row"], value["col"])),
+                    shape=shape,
+                )
+            # Otherwise recursively restore dict values
+            return {k: _restore_uns_value(v) for k, v in value.items()}
+        elif isinstance(value, np.ndarray) and value.dtype == object:
+            # Convert object arrays back to lists (for region_names, gene_names, etc.)
+            return value.tolist()
+        elif isinstance(value, str) and value == "None":
+            # Restore None values
+            return None
+        else:
+            return value
 
-    # Load r2g matrix
-    r2g_sparse = load_npz(r2g_path)
+    # Restore all uns dictionaries (top-level and per-modality)
+    mdata.uns = {k: _restore_uns_value(v) for k, v in mdata.uns.items()}
+    for mod in mdata.mod.values():
+        mod.uns = {k: _restore_uns_value(v) for k, v in mod.uns.items()}
 
-    # Create MuData
-    mdata = md.MuData({"rna": adata_rna, "atac": adata_atac})
-
-    # Store r2g in uns (partial - just train for now)
-    mdata.uns["r2g"] = {
-        "train": csr_matrix(r2g_sparse),
-        "config": {"source": "legacy_import"},
-    }
-
-    # Load TF list if provided
-    if tf_list_path is not None:
-        with open(tf_list_path) as f:
-            tf_names = [line.strip() for line in f if line.strip()]
-
-        # Mark TFs in var
-        mdata.mod["rna"].var["is_tf"] = mdata.mod["rna"].var_names.isin(tf_names)
-        mdata.mod["rna"].uns["tf_order"] = [tf for tf in tf_names if tf in mdata.mod["rna"].var_names]
-
-    return mdata
+    # Special handling: reconstruct r2g config from flattened keys
+    if "r2g" in mdata.uns:
+        r2g = mdata.uns["r2g"]
+        if "config_max_distance" in r2g:
+            r2g["config"] = {
+                "max_distance": int(r2g["config_max_distance"]),
+                "sigma": int(r2g["config_sigma"]),
+                "method": str(r2g["config_method"]),
+                "n_links": int(r2g["config_n_links"]),
+                "density": float(r2g["config_density"]),
+            }
+            del r2g["config_max_distance"]
+            del r2g["config_sigma"]
+            del r2g["config_method"]
+            del r2g["config_n_links"]
+            del r2g["config_density"]

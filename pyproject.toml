@@ -7,8 +7,8 @@ name = "deepscenic"
 version = "0.1.0"
 description = "Deep learning for single-cell Gene Regulatory Networks"
 readme = "README.md"
-requires-python = ">=3.10"
-license = "MIT"
+requires-python = ">=3.11"
+license-files = ["LICENSE"]
 authors = [
     {name = "deepSCENIC Team"}
 ]
@@ -17,21 +17,20 @@ maintainers = [
 ]
 keywords = ["single-cell", "GRN", "deep-learning", "scverse", "multiomics", "gene-regulation"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
 dependencies = [
     # Core scientific
+    "numba >=0.61.2",
     "numpy>=1.23",
     "pandas>=2.0",
     "scipy>=1.10",
@@ -52,7 +51,7 @@ dependencies = [
     "requests>=2.28",
     "pyarrow>=14.0",  # For parquet caching
 
-    # Visualization (required)
+    # Visualization
     "matplotlib>=3.7",
     "seaborn>=0.12",
 
@@ -66,7 +65,7 @@ dependencies = [
 enformer = ["enformer-pytorch>=0.8"]
 sequence = [
     "logomaker>=0.8",
-    "tangermeme>=0.2.0",
+    "tangermeme>=1.0.0",
 ]
 dev = [
     "pre-commit>=3.0",
@@ -77,6 +76,7 @@ doc = [
     "docutils>=0.8,!=0.18.*,!=0.19.*",
     "ipykernel",
     "ipython",
+    "ipywidgets",
     "myst-nb>=1.1",
     "pandas",
     "setuptools",  # for pybtex
@@ -92,6 +92,7 @@ test = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "coverage>=7.0",
+    "debugpy",
 ]
 
 [project.urls]
@@ -184,6 +185,9 @@ exclude_lines = [
     "raise NotImplementedError",
     "if TYPE_CHECKING:",
 ]
+
+[tool.hatch.envs.hatch-static-analysis]
+config-path = "pyproject.toml"
 
 # MyPy configuration
 [tool.mypy]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 import pooch
 
 from .gene_annotation import fetch_gene_annotation
@@ -24,7 +26,7 @@ TF_COLLECTION_CHECKSUMS = {
 
 
 def fetch_tf_collection(
-    species: str = "human",
+    species: Literal["human", "mouse", "fly"],
 ) -> list[str]:
     """
     Fetch SCENIC+ transcription factor collection.
@@ -34,13 +36,12 @@ def fetch_tf_collection(
 
     Parameters
     ----------
-    species : {'human', 'mouse', 'fly'}
+    species
         Species to fetch TF list for.
 
     Returns
     -------
-    list[str]
-        List of transcription factor gene names.
+    List of transcription factor gene names.
 
     Examples
     --------
@@ -57,7 +58,6 @@ def fetch_tf_collection(
     url = TF_COLLECTION_URLS[species]
     known_hash = TF_COLLECTION_CHECKSUMS[species]
 
-    # Use pooch to download/cache
     cache_dir = pooch.os_cache("deepscenic")
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -82,14 +82,13 @@ def clear_cache(pattern: str | None = None) -> list[str]:
 
     Parameters
     ----------
-    pattern : str, optional
+    pattern
         Glob pattern to match. If None, clears all cache.
         Example: "gene_annot_*" to clear only gene annotations.
 
     Returns
     -------
-    list[str]
-        List of deleted file paths.
+    List of deleted file paths.
 
     Examples
     --------
@@ -143,13 +142,11 @@ def get_cache_info() -> dict:
     if cache_dir.exists():
         for f in cache_dir.iterdir():
             if f.is_file():
-                files.append({
-                    "name": f.name,
-                    "size_mb": f.stat().st_size / (1024 * 1024),
-                })
+                files.append(
+                    {
+                        "name": f.name,
+                        "size_mb": f.stat().st_size / (1024 * 1024),
+                    }
+                )
 
-    return {
-        "cache_dir": str(cache_dir),
-        "files": files,
-        "total_size_mb": sum(f["size_mb"] for f in files),
-    }
+    return {"cache_dir": str(cache_dir), "files": files, "total_size_mb": sum(f["size_mb"] for f in files)}

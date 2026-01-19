@@ -143,9 +143,10 @@ class TestBuildCellDataloader:
         """Create mock MuData for testing."""
         pytest.importorskip("mudata")
         pytest.importorskip("anndata")
+        import warnings
+
         import anndata as ad
         import mudata as md
-        import warnings
 
         n_cells = 100
         n_genes = 50

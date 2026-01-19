@@ -65,15 +65,6 @@ def test_validate_missing_r2g_training(minimal_mdata):
     assert any("r2g" in issue for issue in issues)
 
 
-def test_validate_r2g_missing_ordering(sample_mdata):
-    """Test error when r2g ordering arrays are missing."""
-    # Remove ordering arrays
-    del sample_mdata.uns["r2g"]["region_order_train"]
-
-    issues = validate_schema(sample_mdata, mode="training", strict=False)
-    assert any("region_order_train" in issue for issue in issues)
-
-
 def test_validate_strict_raises(minimal_mdata):
     """Test that strict mode raises SchemaError."""
     with pytest.raises(SchemaError):

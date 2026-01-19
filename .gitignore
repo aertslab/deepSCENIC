@@ -1,7 +1,6 @@
 .claude
-hack/
 thoughts/
 *.slurm
-notebooks/
 CLAUDE.md
 *__pycache__*
+pyrightconfig.json

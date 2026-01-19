@@ -7,12 +7,12 @@ These tutorials demonstrate the complete deepSCENIC workflow from data loading t
 ```{toctree}
 :maxdepth: 1
 
-notebooks/01_data_loading
-notebooks/02_preprocessing
-notebooks/03_training
-notebooks/04_grn_analysis
-notebooks/05_perturbation_simulation
-notebooks/06_visualization
+notebooks/01_data_preparation
+notebooks/02_training
+notebooks/03_grn_analysis
+notebooks/04_perturbation_simulation
+notebooks/05_visualization
+notebooks/06_legacy_migration
 ```
 
 ## Prerequisites

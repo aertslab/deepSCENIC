@@ -1,7 +1,6 @@
 """Tests for inference functions (_inference.py)."""
 
 import numpy as np
-import pytest
 from scipy.sparse import csr_matrix
 
 from deepscenic.tl._inference import to_latent

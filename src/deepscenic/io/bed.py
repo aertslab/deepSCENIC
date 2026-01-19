@@ -1,0 +1,197 @@
+"""BED file reading utilities."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pandas as pd
+
+if TYPE_CHECKING:
+    pass
+
+log = logging.getLogger("deepscenic.io")
+
+
+def read_bed(
+    bed_file: str | Path,
+    chromsizes: pd.DataFrame | str | Path | None = None,
+) -> pd.DataFrame:
+    """
+    Read genomic regions from BED file.
+
+    Reads a BED format file (tab-separated) and returns a DataFrame with
+    parsed genomic coordinates. Optionally validates regions against
+    chromosome sizes to filter invalid regions.
+
+    Parameters
+    ----------
+    bed_file
+        Path to BED file (tab-separated: chrom, start, end).
+        Additional columns beyond the first 3 are ignored.
+    chromsizes
+        Chromosome sizes for validation. Can be:
+
+        - pd.DataFrame with columns: 'Chromosome', 'Start', 'End'
+          (e.g., from ``ds.datasets.fetch_gene_annotation()``)
+        - Path to chromsizes file (tab-separated: chrom, size)
+        - None to skip validation (default)
+
+        When provided, regions are validated and filtered if:
+
+        - Chromosome not in chromsizes
+        - Start position < 0
+        - End position > chromosome length
+
+    Returns
+    -------
+    pd.DataFrame
+        Regions with columns:
+
+        - chromosome (str): Chromosome name
+        - start (int): Start position (0-based)
+        - end (int): End position (exclusive)
+        - region (str): Formatted as "chr:start-end"
+
+    Raises
+    ------
+    FileNotFoundError
+        If BED file doesn't exist.
+    ValueError
+        If BED file has fewer than 3 columns or all regions are filtered.
+
+    Examples
+    --------
+    Basic usage without validation:
+
+    >>> import deepscenic as ds
+    >>> regions = ds.io.read_bed("peaks.bed")
+    >>> regions.head()
+       chromosome  start    end          region
+    0        chr1   1000   2000  chr1:1000-2000
+    1        chr1   3000   4000  chr1:3000-4000
+
+    With chromosome validation:
+
+    >>> annot, chromsizes = ds.datasets.fetch_gene_annotation("mmusculus")
+    >>> regions = ds.io.read_bed("peaks.bed", chromsizes=chromsizes)
+    # Regions on unknown chromosomes or out of bounds are filtered
+
+    Get list of region strings:
+
+    >>> regions_list = regions["region"].tolist()
+    >>> len(regions_list)
+    1234
+    """
+    bed_file = Path(bed_file)
+
+    # Check file exists
+    if not bed_file.is_file():
+        raise FileNotFoundError(f"BED file not found: {bed_file}")
+
+    # Read BED file (first 3 columns only)
+    try:
+        regions = pd.read_csv(
+            bed_file,
+            sep="\t",
+            header=None,
+            usecols=(0, 1, 2),  # type: ignore[arg-type]
+            dtype={0: str, 1: "Int32", 2: "Int32"},
+            names=["chromosome", "start", "end"],
+        )
+    except Exception as e:
+        raise ValueError(f"Error reading BED file {bed_file}: {e}") from e
+
+    if regions.empty:
+        raise ValueError(f"BED file is empty: {bed_file}")
+
+    # Create region string column
+    regions["region"] = (
+        regions["chromosome"].astype(str) + ":" + regions["start"].astype(str) + "-" + regions["end"].astype(str)
+    )
+
+    n_total = len(regions)
+
+    # Basic coordinate validation (always performed)
+    valid_coords = (regions["start"] >= 0) & (regions["start"] < regions["end"])
+    n_invalid_coords = (~valid_coords).sum()
+
+    if n_invalid_coords > 0:
+        log.warning(f"Filtered {n_invalid_coords} regions with invalid coordinates (start < 0 or start >= end)")
+        regions = regions[valid_coords].copy()
+
+    # Chromsizes validation (optional)
+    if chromsizes is not None:
+        # Load chromsizes if it's a file path
+        if isinstance(chromsizes, str | Path):
+            chromsizes = _load_chromsizes_file(Path(chromsizes))
+
+        # Build chromosome size dict
+        chromsizes_dict = dict(zip(chromsizes["Chromosome"], chromsizes["End"], strict=False))
+
+        # Filter regions: chromosome must exist in chromsizes
+        valid_mask = regions.apply(
+            lambda row: (
+                row["chromosome"] in chromsizes_dict
+                and row["start"] >= 0
+                and row["end"] <= chromsizes_dict[row["chromosome"]]
+            ),
+            axis=1,
+        )
+
+        n_filtered = (~valid_mask).sum()
+        regions = regions[valid_mask].copy()
+
+        if n_filtered > 0:
+            log.warning(f"Filtered {n_filtered} regions (out of {n_total}) that are not within known chromosome bounds")
+
+    # Check if all regions were filtered
+    if len(regions) == 0:
+        raise ValueError(
+            f"All regions in {bed_file} were filtered out. "
+            f"This likely indicates a chromosome name mismatch between your BED file "
+            f"and chromsizes (e.g., 'chr1' vs '1'). Check your BED file format."
+        )
+
+    # Reset index for clean output
+    regions = regions.reset_index(drop=True)
+
+    return regions
+
+
+def _load_chromsizes_file(chromsizes_file: Path) -> pd.DataFrame:
+    """
+    Load chromosome sizes from file.
+
+    Parameters
+    ----------
+    chromsizes_file
+        Path to chromsizes file (tab-separated: chrom, size).
+
+    Returns
+    -------
+    pd.DataFrame
+        Chromosome sizes with columns: Chromosome, Start (0), End.
+    """
+    if not chromsizes_file.is_file():
+        raise FileNotFoundError(f"Chromsizes file not found: {chromsizes_file}")
+
+    try:
+        # Read chromsizes file (2 columns: chrom, size)
+        df = pd.read_csv(
+            chromsizes_file,
+            sep="\t",
+            header=None,
+            names=["Chromosome", "End"],
+            dtype={"Chromosome": str, "End": "Int32"},
+        )
+        df["Start"] = 0
+
+        # Reorder columns to match fetch_gene_annotation format
+        chromsizes = pd.DataFrame(df[["Chromosome", "Start", "End"]])
+
+    except Exception as e:
+        raise ValueError(f"Error reading chromsizes file {chromsizes_file}: {e}") from e
+
+    return chromsizes

@@ -1,6 +1,4 @@
-"""Preprocessing functions for deepSCENIC."""
-
-from pathlib import Path
+"""Preprocessing functions for deepSCENIC. Functions in the __init__ operate on mudatas."""
 
 import mudata as md
 import numpy as np
@@ -13,29 +11,31 @@ from .._constants import (
     DEFAULT_CELL_TEST_FRACTION,
     DEFAULT_TEST_CHROMOSOMES,
 )
-from .basic import filter_regions_by_celltype, remove_zero_variance_genes
-from .dars import load_dars_from_bed, mark_dars
+from .basic import add_gene_annotation, filter_regions_by_celltype, mark_dars, mark_tfs, remove_zero_variance_genes
 from .ppi import build_ppi_network, load_string_ppi
-from .search_space import compute_r2g_penalty, split_r2g_by_chromosome
+from .search_space import compute_r2g_penalty
 
 
 def create_mudata(
-    adata_rna: AnnData,
-    adata_atac: AnnData,
+    *,
+    rna: AnnData,
+    atac: AnnData,
     copy: bool = True,
 ) -> md.MuData:
     """
     Create MuData from RNA and ATAC AnnData objects.
 
+    Simple wrapper around `mudata.MuData` with extra region coordinates parsing.
+    This function requires all keyword arguments for safekeeping.
+
     Parameters
     ----------
-    adata_rna : AnnData
+    rna
         RNA expression data (log-normalized recommended).
-    adata_atac : AnnData
+    atac
         ATAC accessibility data.
 
-        **IMPORTANT**: ATAC data should be imputed accessibility from
-        pyCisTopic, NOT raw fragment counts. pyCisTopic performs:
+        **IMPORTANT**: It is strongly advised that ATAC data should be imputed accessibility from pyCisTopic, NOT raw fragment counts. pyCisTopic performs:
 
         - Topic modeling on the accessibility matrix
         - Imputation of accessibility scores per cell per region
@@ -46,13 +46,12 @@ def create_mudata(
         binary fragment counts.
 
         See: https://pycistopic.readthedocs.io/
-    copy : bool, default=True
+    copy
         Whether to copy the input data.
 
     Returns
     -------
-    MuData
-        Combined multimodal data.
+    Combined multimodal data.
 
     Examples
     --------
@@ -60,130 +59,42 @@ def create_mudata(
     >>> mdata = ds.pp.create_mudata(adata_rna, adata_atac)
     """
     if copy:
-        adata_rna = adata_rna.copy()
-        adata_atac = adata_atac.copy()
+        rna = rna.copy()
+        atac = atac.copy()
 
     # Verify cell alignment
-    if not (adata_rna.obs_names == adata_atac.obs_names).all():
-        raise ValueError("Cell names must match between RNA and ATAC. Consider using `mudata.intersect_obs()` first.")
+    if not (rna.obs_names == atac.obs_names).all():
+        raise ValueError("Observation names must match exactly between RNA and ATAC.")
 
-    mdata = md.MuData({"rna": adata_rna, "atac": adata_atac})
+    # Parse region coordinates from ATAC var_names
+    _parse_region_coordinates(atac)
+
+    mdata = md.MuData({"rna": rna, "atac": atac})
 
     return mdata
 
 
-def mark_tfs(
-    mdata: md.MuData,
-    tf_list: list[str] | str | Path,
-    case_sensitive: bool = False,
-    inplace: bool = True,
-) -> md.MuData | None:
+def _parse_region_coordinates(adata: AnnData) -> None:
     """
-    Mark transcription factors in RNA modality.
+    Parse region names to extract chromosome, start, end coordinates.
+
+    Expects region names in var_names with format: 'chr1:1000-2000'
 
     Parameters
     ----------
-    mdata : MuData
-        Input multimodal data
-    tf_list : list or path
-        List of TF names or path to file with one TF per line
-    case_sensitive : bool, default=False
-        Whether to match TF names case-sensitively.
-        If False (default), matches genes case-insensitively.
-        This handles cases where gene names have different capitalization
-        (e.g., 'SOX10' vs 'Sox10').
-    inplace : bool, default=True
-        Whether to modify in-place
-
-    Returns
-    -------
-    MuData or None
-        If inplace=False, returns modified MuData
-
-    Examples
-    --------
-    >>> import deepscenic as ds
-    >>> tfs = ds.datasets.fetch_tf_collection(species="mouse")
-    >>> ds.pp.mark_tfs(mdata, tfs)
-    >>> print(f"Marked {mdata['rna'].var['is_tf'].sum()} TFs")
+    adata
+        AnnData with region names in var_names. Modified in-place.
     """
-    if not inplace:
-        mdata = mdata.copy()
-
-    # Load TF list if path
-    if isinstance(tf_list, str | Path):
-        with open(tf_list) as f:
-            tf_names = [line.strip() for line in f if line.strip()]
-    else:
-        tf_names = list(tf_list)
-
-    rna = mdata.mod["rna"]
-
-    if case_sensitive:
-        # Direct matching
-        tf_names_in_data = [tf for tf in tf_names if tf in rna.var_names]
-    else:
-        # Case-insensitive matching
-        # Build lookup: lowercase -> original gene name in data
-        gene_name_lookup = {g.lower(): g for g in rna.var_names}
-        tf_names_in_data = []
-        for tf in tf_names:
-            tf_lower = tf.lower()
-            if tf_lower in gene_name_lookup:
-                # Use the gene name as it appears in the data
-                tf_names_in_data.append(gene_name_lookup[tf_lower])
-
-    # Mark TFs
-    rna.var["is_tf"] = rna.var_names.isin(tf_names_in_data)
-    rna.var["tf_index"] = -1
-    for i, tf in enumerate(tf_names_in_data):
-        rna.var.loc[tf, "tf_index"] = i
-    rna.uns["tf_order"] = tf_names_in_data
-
-    if not inplace:
-        return mdata
-    return None
-
-
-def parse_region_coordinates(
-    mdata: md.MuData,
-    inplace: bool = True,
-) -> md.MuData | None:
-    """
-    Parse ATAC region names to extract chromosome, start, end coordinates.
-
-    Expects region names in format: 'chr1:1000-2000'
-
-    Parameters
-    ----------
-    mdata : MuData
-        Input multimodal data
-    inplace : bool, default=True
-        Whether to modify in-place
-
-    Returns
-    -------
-    MuData or None
-        If inplace=False, returns modified MuData
-    """
-    if not inplace:
-        mdata = mdata.copy()
-
-    atac = mdata.mod["atac"]
 
     def parse_region(region_str: str) -> tuple[str, int, int]:
         chrom, coords = region_str.split(":")
         start, end = map(int, coords.split("-"))
         return chrom, start, end
 
-    coords = [parse_region(r) for r in atac.var_names]
-    atac.var["chromosome"] = [c[0] for c in coords]
-    atac.var["start"] = [c[1] for c in coords]
-    atac.var["end"] = [c[2] for c in coords]
-
-    if not inplace:
-        return mdata
-    return None
+    coords = [parse_region(r) for r in adata.var_names]
+    adata.var["chromosome"] = [c[0] for c in coords]
+    adata.var["start"] = [c[1] for c in coords]
+    adata.var["end"] = [c[2] for c in coords]
 
 
 def split_cells(
@@ -194,32 +105,32 @@ def split_cells(
     inplace: bool = True,
 ) -> md.MuData | None:
     """
-    Split cells into train/test sets.
+    Split cells into train/test sets. Adds a 'split' column to `mdata.obs`.
 
     Parameters
     ----------
-    mdata : MuData
+    mdata
         Input multimodal data
-    test_fraction : float, default=0.2
+    test_fraction
         Fraction of cells for test set
-    seed : int, default=42
-        Random seed
-    stratify_key : str, optional
+    seed
+        Random seed passed to `sklearn.model_selection.train_test_split`
+    stratify_key
         Key in obs for stratified splitting (e.g., 'cell_type')
-    inplace : bool, default=True
+        If None, will not stratify.
+    inplace
         Whether to modify in-place
 
     Returns
     -------
-    MuData or None
-        If inplace=False, returns modified MuData
+    If inplace=False, returns modified MuData
     """
     if not inplace:
         mdata = mdata.copy()
 
     stratify = mdata.obs[stratify_key] if stratify_key else None
 
-    train_idx, test_idx = train_test_split(
+    _, test_idx = train_test_split(
         np.arange(mdata.n_obs),
         test_size=test_fraction,
         random_state=seed,
@@ -242,43 +153,55 @@ def split_features_by_chromosome(
     inplace: bool = True,
 ) -> md.MuData | None:
     """
-    Split features (genes/regions) by chromosome.
+    Split features (genes/regions) by chromosome. Adds a 'split' column to both `atac.var` and `rna.var` inside `mdata` object.
+
+    Expects `mdata["rna"].var` to contain "chromosome" column.
+    Run `ds.pp.add_gene_annotation` first to asign gene positions based on TSS.
 
     Parameters
     ----------
-    mdata : MuData
+    mdata
         Input multimodal data
-    test_chromosomes : list, default=['chr7', 'chr11', 'chr18', 'chr19']
+    test_chromosomes
         Chromosomes for test set
-    inplace : bool, default=True
+    inplace
         Whether to modify in-place
 
     Returns
     -------
-    MuData or None
-        If inplace=False, returns modified MuData
+    If inplace=False, returns modified MuData
     """
     if not inplace:
         mdata = mdata.copy()
 
-    # ATAC regions: use parsed chromosome
+    # Helper to handle NA chromosome values (genes without annotation)
+    def _assign_split(chrom: str) -> str:
+        if pd.isna(chrom):
+            return "train"  # Unannotated features go to train (matches legacy behavior)
+        return "test" if chrom in test_chromosomes else "train"
+
     atac = mdata.mod["atac"]
     atac.var["split"] = pd.Categorical(
-        ["test" if c in test_chromosomes else "train" for c in atac.var["chromosome"]],
+        [_assign_split(c) for c in atac.var["chromosome"]],
         categories=["train", "test"],
     )
 
-    # RNA genes: need gene annotation with TSS chromosome
-    # For now, mark all as 'train' - user should add chromosome info to rna.var
     rna = mdata.mod["rna"]
     if "chromosome" in rna.var.columns:
         rna.var["split"] = pd.Categorical(
-            ["test" if c in test_chromosomes else "train" for c in rna.var["chromosome"]],
+            [_assign_split(c) for c in rna.var["chromosome"]],
             categories=["train", "test"],
         )
+        # Warn about unannotated genes
+        n_unannotated = rna.var["chromosome"].isna().sum()
+        if n_unannotated > 0:
+            print(
+                f"Note: {n_unannotated} genes without chromosome annotation assigned to 'train' split"
+            )
     else:
-        # Default: all train (user should add chromosome info to rna.var for proper splitting)
-        rna.var["split"] = pd.Categorical(["train"] * rna.n_vars, categories=["train", "test"])
+        raise ValueError(
+            "Expects 'chromosome' column in rna.var. Run `ds.pp.add_gene_annotation` first to annotate gene positions based on TSS."
+        )
 
     if not inplace:
         return mdata
@@ -291,17 +214,15 @@ __all__ = [
     "remove_zero_variance_genes",
     # Search space
     "compute_r2g_penalty",
-    "split_r2g_by_chromosome",
     # TF handling
     "mark_tfs",
+    # Gene annotation
+    "add_gene_annotation",
     # DAR handling
     "mark_dars",
-    "load_dars_from_bed",
     # PPI network
     "build_ppi_network",
     "load_string_ppi",
-    # Region parsing
-    "parse_region_coordinates",
     # Splits
     "split_cells",
     "split_features_by_chromosome",

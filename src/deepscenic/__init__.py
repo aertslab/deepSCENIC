@@ -8,12 +8,12 @@ except Exception:
     __version__ = "0.1.0"  # Fallback for development
 
 from . import data, datasets, models, pl, pp, tl
-from .io import read, read_legacy, write
+from .io import read, read_bed, write
 
 __all__ = [
     "__version__",
     "read",
-    "read_legacy",
+    "read_bed",
     "write",
     "pp",
     "tl",
