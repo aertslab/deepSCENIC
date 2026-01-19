@@ -1,9 +1,12 @@
 """Tests for dataloaders."""
 
+import random
+
 import numpy as np
 import pytest
 import torch
 
+from deepscenic.genome import clear_genome, register_genome
 from deepscenic.tl._dataloaders import CellDataset, SequenceDatasetWithIndex, collate_cell_batch
 
 
@@ -203,3 +206,121 @@ class TestBuildCellDataloader:
         batch = next(iter(loader))
         assert "batch_id" in batch
         assert batch["batch_id"].shape[1] == 2  # Two batches
+
+
+class TestBuildSequenceDataloader:
+    """Tests for build_sequence_dataloader function."""
+
+    @pytest.fixture
+    def tmp_fasta(self, tmp_path):
+        """Create a temporary FASTA file for testing."""
+        fasta_path = tmp_path / "test.fa"
+
+        # Generate a deterministic sequence for reproducible tests
+        random.seed(42)
+        bases = "ACGT"
+        seq = "".join(random.choice(bases) for _ in range(10000))
+
+        with open(fasta_path, "w") as f:
+            f.write(">chr1\n")
+            for i in range(0, len(seq), 80):
+                f.write(seq[i : i + 80] + "\n")
+
+        # Create the index file using pyfaidx
+        import pyfaidx
+
+        pyfaidx.Fasta(str(fasta_path))
+
+        return fasta_path
+
+    @pytest.fixture(autouse=True)
+    def reset_genome(self):
+        """Reset global genome state before each test."""
+        clear_genome()
+        yield
+        clear_genome()
+
+    def test_builds_with_regions(self, tmp_fasta):
+        """Test building dataloader from region list."""
+        from deepscenic.tl._dataloaders import build_sequence_dataloader
+
+        register_genome(tmp_fasta)
+
+        regions = ["chr1:0-640", "chr1:100-740", "chr1:200-840"]
+        loader = build_sequence_dataloader(
+            regions=regions,
+            batch_size=2,
+            shuffle=False,
+        )
+
+        batch = next(iter(loader))
+        (seqs,), indices = batch
+        # Shape is (batch, 1, 4, length) - batch=2, extra_dim=1, channels=4, length=640
+        assert seqs.shape[0] == 2
+        assert seqs.shape[-1] == 640
+
+    def test_respects_context_length(self, tmp_fasta):
+        """Should use specified context_length."""
+        from deepscenic.tl._dataloaders import build_sequence_dataloader
+
+        register_genome(tmp_fasta)
+
+        regions = ["chr1:0-320"]
+        loader = build_sequence_dataloader(
+            regions=regions,
+            batch_size=1,
+            context_length=320,
+            shuffle=False,
+        )
+
+        batch = next(iter(loader))
+        (seqs,), indices = batch
+        # Shape is (batch, 1, 4, length)
+        assert seqs.shape[-1] == 320
+
+    def test_returns_indices(self, tmp_fasta):
+        """Should return region indices with sequences."""
+        from deepscenic.tl._dataloaders import build_sequence_dataloader
+
+        register_genome(tmp_fasta)
+
+        regions = ["chr1:0-640", "chr1:100-740", "chr1:200-840"]
+        loader = build_sequence_dataloader(
+            regions=regions,
+            batch_size=3,
+            shuffle=False,
+        )
+
+        batch = next(iter(loader))
+        (seqs,), indices = batch
+        assert len(indices) == 3
+        assert set(indices.tolist()) == {0, 1, 2}
+
+    def test_dar_upweighting(self, tmp_fasta):
+        """Should apply DAR upweighting when specified."""
+        from deepscenic.tl._dataloaders import build_sequence_dataloader
+
+        register_genome(tmp_fasta)
+
+        regions = ["chr1:0-640", "chr1:100-740", "chr1:200-840"]
+        dar_indices = np.array([0, 2])  # First and third regions are DARs
+
+        loader = build_sequence_dataloader(
+            regions=regions,
+            batch_size=1,
+            balance_dars=True,
+            dar_indices=dar_indices,
+        )
+
+        # Just verify it builds and runs
+        batch = next(iter(loader))
+        assert batch is not None
+
+    def test_raises_without_genome(self):
+        """Should raise error when no genome registered."""
+        from deepscenic.tl._dataloaders import build_sequence_dataloader
+
+        regions = ["chr1:0-640"]
+
+        with pytest.raises(RuntimeError, match="No genome registered"):
+            build_sequence_dataloader(regions=regions)

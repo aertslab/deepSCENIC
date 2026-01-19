@@ -90,59 +90,65 @@ def train(
     early_stopping_patience: int | None = None,
     balance_dars: bool = False,
     num_workers: int = 0,
-    bed_file: str | None = None,
-    fasta_file: str | None = None,
     **kwargs: Any,
 ) -> DeepSCENICModel:
-    """
-    Train deepSCENIC model on multiome data.
+    """Train deepSCENIC model on multiome data.
 
     Parameters
     ----------
     mdata
-        MuData with preprocessed RNA + ATAC data
+        MuData with preprocessed RNA + ATAC data.
     epochs
-        Total training epochs
+        Total training epochs.
     warmup_vae
-        Epochs before enabling TF2rNet
+        Epochs before enabling TF2rNet.
     warmup_grn
-        Epochs before enabling PPI
+        Epochs before enabling PPI.
     batch_size
-        Cells per batch
+        Cells per batch.
     seq_batch_size
-        Sequences per batch
+        Sequences per batch.
     lr
-        Base learning rate
+        Base learning rate.
     device
-        Training device
+        Training device.
     logger
-        Logging backend: 'dict', 'tensorboard', 'wandb'
+        Logging backend: 'dict', 'tensorboard', 'wandb'.
     log_dir
-        Directory for tensorboard/wandb logs
+        Directory for tensorboard/wandb logs.
     checkpoint_dir
-        Directory for checkpoints (None = no checkpoints)
+        Directory for checkpoints (None = no checkpoints).
     checkpoint_every
-        Save checkpoint every N epochs
+        Save checkpoint every N epochs.
     resume_from
-        Path to checkpoint to resume from
+        Path to checkpoint to resume from.
     early_stopping_patience
-        Stop if no improvement for N epochs (None = disabled)
+        Stop if no improvement for N epochs (None = disabled).
     balance_dars
         Whether to upweight DAR regions during sequence sampling (1.5x weight).
-        Requires DARs to be marked via ds.pp.mark_dars() first.
+        Requires DARs to be marked via ``ds.pp.mark_dars()`` first.
     num_workers
-        Number of workers for parallel data loading (0 = main process only)
-    bed_file
-        Path to BED file with region coordinates
-    fasta_file
-        Path to genome FASTA file
+        Number of workers for parallel data loading (0 = main process only).
     **kwargs
-        Additional config options (ppi_device, etc.)
+        Additional config options (ppi_device, etc.).
 
     Returns
     -------
     DeepSCENICModel
-        Trained model (self-contained, ready for inference)
+        Trained model (self-contained, ready for inference).
+
+    Notes
+    -----
+    A genome must be registered before training using
+    ``ds.genome.register_genome(fasta_file)``. The regions for sequence
+    extraction are derived from ``mdata.mod["atac"].var_names``.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> ds.genome.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
+    >>> mdata = ds.read("preprocessed.h5mu")  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, epochs=100, device="cuda")  # doctest: +SKIP
     """
     # Build config
     config = TrainingConfig(
@@ -247,10 +253,8 @@ def train(
     )
 
     # Sequence dataloader (for TF2rNet training)
-    if bed_file is None:
-        bed_file = mdata.uns.get("bed_file", "regions.bed")
-    if fasta_file is None:
-        fasta_file = mdata.uns.get("fasta_file")
+    # Regions are derived from ATAC var_names (chr:start-end format)
+    region_names = list(mdata.mod["atac"].var_names)
 
     # Get DAR indices if balance_dars is enabled
     dar_indices = None
@@ -260,8 +264,7 @@ def train(
             dar_indices = np.where(atac_var["is_dar"].values)[0]
 
     train_seq_loader = build_sequence_dataloader(
-        bed_file=bed_file,
-        fasta_file=fasta_file,
+        regions=region_names,
         batch_size=seq_batch_size,
         shuffle=True,
         shift_augs=(-3, 3),

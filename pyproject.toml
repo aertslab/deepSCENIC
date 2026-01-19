@@ -59,6 +59,9 @@ dependencies = [
     "tqdm>=4.65",
     "h5py>=3.8",
     "networkx>=3.0",
+
+    # Genome sequence handling
+    "pyfaidx>=0.7",
 ]
 
 [project.optional-dependencies]

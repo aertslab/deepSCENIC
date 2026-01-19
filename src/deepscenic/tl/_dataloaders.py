@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     import mudata as md
     from numpy.typing import NDArray
 
+    from ..genome import Genome
+
 
 class CellDataset(Dataset):
     """Dataset for cell batches (RNA + ATAC).
@@ -24,8 +26,6 @@ class CellDataset(Dataset):
         RNA expression matrix (n_cells, n_genes)
     atac
         ATAC accessibility matrix (n_cells, n_regions)
-    batch_ids
-        Optional one-hot batch IDs (n_cells, n_batches)
     """
 
     def __init__(
@@ -53,12 +53,12 @@ class CellDataset(Dataset):
 
 
 class SequenceDatasetWithIndex(Dataset):
-    """Wrapper that adds index to enformer-pytorch GenomeIntervalDataset.
+    """Wrapper that adds index to GenomeIntervalDataset.
 
     Parameters
     ----------
     genome_dataset
-        GenomeIntervalDataset from enformer-pytorch
+        GenomeIntervalDataset instance.
     """
 
     def __init__(self, genome_dataset: Dataset) -> None:
@@ -81,30 +81,29 @@ def build_cell_dataloader(
     class_key: str | None = None,
     num_workers: int = 0,
 ) -> DataLoader:
-    """
-    Build dataloader for cell batches.
+    """Build dataloader for cell batches.
 
     Parameters
     ----------
     mdata
-        MuData with rna and atac modalities
+        MuData with rna and atac modalities.
     split
-        'train' or 'test'
+        'train' or 'test'.
     batch_size
-        Cells per batch
+        Cells per batch.
     shuffle
-        Whether to shuffle
+        Whether to shuffle.
     balance_class
-        Whether to use weighted sampling for class balance
+        Whether to use weighted sampling for class balance.
     class_key
-        Column in obs for class balancing
+        Column in obs for class balancing.
     num_workers
-        Number of data loading workers
+        Number of data loading workers.
 
     Returns
     -------
     DataLoader
-        Cell dataloader
+        Cell dataloader.
     """
     # Get split mask
     mask = mdata.obs["split"] == split
@@ -138,8 +137,8 @@ def build_cell_dataloader(
 
 
 def build_sequence_dataloader(
-    bed_file: str,
-    fasta_file: str,
+    regions: list[str],
+    genome: Genome | None = None,
     batch_size: int = 1000,
     shuffle: bool = True,
     shift_augs: tuple[int, int] = (-3, 3),
@@ -149,45 +148,59 @@ def build_sequence_dataloader(
     balance_dars: bool = False,
     dar_indices: NDArray | None = None,
 ) -> DataLoader:
-    """
-    Build dataloader for DNA sequences.
+    """Build dataloader for DNA sequences.
 
     Parameters
     ----------
-    bed_file
-        Path to BED file with region coordinates
-    fasta_file
-        Path to genome FASTA file
+    regions
+        List of region strings in "chr:start-end" format.
+        Typically from ``mdata.mod["atac"].var_names``.
+    genome
+        Genome instance for sequence extraction. If None, uses the
+        globally registered genome from ``ds.genome.register_genome()``.
     batch_size
-        Sequences per batch
+        Sequences per batch.
     shuffle
-        Whether to shuffle
+        Whether to shuffle.
     shift_augs
-        Random shift range for augmentation (training only)
+        Random shift range for augmentation (training only).
     rc_aug
-        Whether to use reverse complement augmentation
+        Whether to use reverse complement augmentation.
     context_length
-        Sequence length (bp)
+        Sequence length (bp).
     num_workers
-        Number of data loading workers
+        Number of data loading workers.
     balance_dars
-        Whether to upweight DARs
+        Whether to upweight DARs.
     dar_indices
-        Indices of DAR regions for upweighting
+        Indices of DAR regions for upweighting.
 
     Returns
     -------
     DataLoader
-        Sequence dataloader
+        Sequence dataloader.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> ds.genome.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
+    >>> regions = mdata.mod["atac"].var_names.tolist()  # doctest: +SKIP
+    >>> loader = ds.tl._dataloaders.build_sequence_dataloader(
+    ...     regions=regions,
+    ...     batch_size=1000,
+    ... )  # doctest: +SKIP
     """
-    from enformer_pytorch import GenomeIntervalDataset
+    from ..genome import GenomeIntervalDataset, get_genome
+
+    if genome is None:
+        genome = get_genome()
 
     ds = GenomeIntervalDataset(
-        bed_file=bed_file,
-        fasta_file=fasta_file,
+        regions=regions,
+        genome=genome,
+        context_length=context_length,
         shift_augs=shift_augs,
         rc_aug=rc_aug,
-        context_length=context_length,
     )
 
     dataset = SequenceDatasetWithIndex(ds)
@@ -216,12 +229,12 @@ def collate_cell_batch(batch: list[dict]) -> dict[str, torch.Tensor]:
     Parameters
     ----------
     batch
-        List of dictionaries from CellDataset
+        List of dictionaries from CellDataset.
 
     Returns
     -------
     dict[str, torch.Tensor]
-        Batched tensors
+        Batched tensors.
     """
     result = {
         "rna": torch.stack([item["rna"] for item in batch]),
