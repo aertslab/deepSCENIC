@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +28,8 @@ from ._training_state import (
 
 if TYPE_CHECKING:
     import mudata as md
+
+log = logging.getLogger("deepscenic.tl")
 
 
 def _init_enformer(device: str, emb_len: int) -> torch.nn.Module:
@@ -357,6 +360,12 @@ def train(
     else:
         adj_E1_cache = _init_e1_cache(enformer, tf2rnet, train_seq_loader, device, config)
 
+    n_cells = mdata.n_obs
+    log.info(
+        f"Starting training: {epochs} epochs, {n_cells} cells, "
+        f"{n_genes} genes, {n_tfs} TFs, {n_regions} regions"
+    )
+
     # Optimizers
     optimizer_vae = Adam(vae.parameters(), lr=config.lr_vae, weight_decay=config.weight_decay)
     optimizer_tf2rnet = Adam(
@@ -572,7 +581,7 @@ def train(
         # Early stopping
         if early_stopping is not None:
             if early_stopping(val_loss):
-                print(f"Early stopping at epoch {epoch + 1}")
+                log.info(f"Early stopping at epoch {epoch + 1}")
                 break
 
         # Checkpointing
@@ -600,6 +609,8 @@ def train(
     vae.eval()
     tf2rnet.eval()
     enformer.eval()
+
+    log.info("Training completed")
 
     return DeepSCENICModel(
         vae=vae,
@@ -743,6 +754,8 @@ def finetune(
     best_loss = float("inf")
     best_e2 = vae.adj_E2.data.clone()
 
+    log.info(f"Starting finetuning: {epochs} epochs")
+
     # Training loop
     for epoch in range(finetune_config.epochs):
         vae.train()
@@ -862,6 +875,8 @@ def finetune(
     # Restore best E2
     vae.adj_E2.data = best_e2
     vae.eval()
+
+    log.info("Finetuning completed")
 
     # Return updated model
     return DeepSCENICModel(
@@ -991,6 +1006,9 @@ def pretrain(
     # History tracking
     history = TrainingHistory()
 
+    n_regions = len(region_names)
+    log.info(f"Starting pretraining: {epochs} epochs, {n_regions} regions, {n_tfs} TFs")
+
     # Training loop
     for epoch in range(pretrain_config.epochs):
         tf2rnet.train()
@@ -1049,6 +1067,8 @@ def pretrain(
     tf2rnet.eval()
     enformer.eval()
     adj_E1 = _init_e1_cache(enformer, tf2rnet, seq_loader, device, pretrain_config)
+
+    log.info("Pretraining completed")
 
     return PretrainedModel(
         tf2rnet=tf2rnet,

@@ -202,6 +202,36 @@ def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
 
 
 @pytest.fixture
+def tmp_fasta(tmp_path):
+    """Create a temporary FASTA file for testing."""
+    import random
+
+    import pyfaidx
+
+    fasta_path = tmp_path / "test.fa"
+
+    # Generate a deterministic sequence for reproducible tests
+    random.seed(42)
+    bases = "ACGT"
+    seq = "".join(random.choice(bases) for _ in range(10000))
+
+    with open(fasta_path, "w") as f:
+        f.write(">chr1\n")
+        for i in range(0, len(seq), 80):
+            f.write(seq[i : i + 80] + "\n")
+        # Add a second chromosome
+        f.write(">chr2\n")
+        seq2 = "".join(random.choice(bases) for _ in range(5000))
+        for i in range(0, len(seq2), 80):
+            f.write(seq2[i : i + 80] + "\n")
+
+    # Create the index file using pyfaidx
+    pyfaidx.Fasta(str(fasta_path))
+
+    return fasta_path
+
+
+@pytest.fixture
 def mock_mdata_for_model():
     """Create MuData compatible with mock_deepscenic_model dimensions."""
     import anndata as ad

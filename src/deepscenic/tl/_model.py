@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +13,8 @@ import torch
 from torch import nn
 
 from ._training_state import PretrainConfig, TrainingConfig
+
+log = logging.getLogger("deepscenic.tl")
 
 if TYPE_CHECKING:
     from ..models import DeepSCENICVAE, MotifNet
@@ -103,6 +106,8 @@ class DeepSCENICModel:
             path,
         )
 
+        log.info(f"Saved model to {path}")
+
     @classmethod
     def load(cls, path: str | Path, device: str = "cpu") -> DeepSCENICModel:
         """
@@ -168,6 +173,11 @@ class DeepSCENICModel:
         enformer.load_state_dict(data["enformer_state_dict"])
         enformer.to(device)
         enformer.eval()
+
+        log.info(
+            f"Loaded model from {path}: {data['n_genes']} genes, "
+            f"{data['n_tfs']} TFs, {data['n_regions']} regions"
+        )
 
         return cls(
             vae=vae,
@@ -264,6 +274,8 @@ class PretrainedModel:
             path,
         )
 
+        log.info(f"Saved pretrained model to {path}")
+
     @classmethod
     def load(cls, path: str | Path, device: str = "cpu") -> PretrainedModel:
         """Load pretrained model from file.
@@ -305,6 +317,8 @@ class PretrainedModel:
         enformer.load_state_dict(data["enformer_state_dict"])
         enformer.to(device)
         enformer.eval()
+
+        log.info(f"Loaded pretrained model from {path}")
 
         return cls(
             tf2rnet=tf2rnet,
@@ -485,7 +499,7 @@ def load_legacy_model(
     # =========================================================================
     # Step 1: Load data to extract dimensions and indices
     # =========================================================================
-    print("Loading data files...")
+    log.info("Loading data files...")
 
     # Load RNA data
     adata_rna = sc.read_h5ad(rna_path)
@@ -507,7 +521,7 @@ def load_legacy_model(
     tf_names = adata_rna.var_names[tf_mask].tolist()
     n_tfs = len(tf_names)
 
-    print(f"  RNA: {n_genes} genes, ATAC: {n_regions} regions, TFs: {n_tfs}")
+    log.info(f"  RNA: {n_genes} genes, ATAC: {n_regions} regions, TFs: {n_tfs}")
 
     # Gene indices (which genes to reconstruct) - use all genes
     gene_indices = torch.arange(n_genes, dtype=torch.long)
@@ -520,7 +534,7 @@ def load_legacy_model(
     )
     r2g_distances = torch.tensor(r2g_coo.data, dtype=torch.float32)
 
-    print(f"  R2G links: {r2g_indices.shape[1]}")
+    log.info(f"  R2G links: {r2g_indices.shape[1]}")
 
     # =========================================================================
     # Step 2: Build PPI network (if data provided)
@@ -532,7 +546,7 @@ def load_legacy_model(
     ppi_tfs_idx_values = None
 
     if use_ppi:
-        print("Building PPI network...")
+        log.info("Building PPI network...")
         ppi_edge_index, ppi_genes_idx, ppi_tfs_idx_keys, ppi_tfs_idx_values = (
             _build_ppi_indices(
                 adata_rna,
@@ -542,12 +556,12 @@ def load_legacy_model(
                 species,
             )
         )
-        print(f"  PPI: {ppi_edge_index.shape[1]} edges, {len(ppi_genes_idx)} genes")
+        log.info(f"  PPI: {ppi_edge_index.shape[1]} edges, {len(ppi_genes_idx)} genes")
 
     # =========================================================================
     # Step 3: Construct VAE and load state dict
     # =========================================================================
-    print("Loading VAE...")
+    log.info("Loading VAE...")
 
     vae = DeepSCENICVAE(
         n_tfs=n_tfs,
@@ -577,7 +591,7 @@ def load_legacy_model(
         # Need to reinitialize VAE with batch layers
         # Infer n_batches from weight shape
         n_batches = vae_state["batch_layer_rna.0.weight"].shape[1] - n_genes
-        print(f"  Detected batch correction with {n_batches} batches")
+        log.info(f"  Detected batch correction with {n_batches} batches")
         vae = DeepSCENICVAE(
             n_tfs=n_tfs,
             n_genes=n_genes,
@@ -608,12 +622,12 @@ def load_legacy_model(
     vae.to(device)
     vae.eval()
 
-    print(f"  VAE loaded (epoch {vae_ckpt.get('epoch', 'unknown')})")
+    log.info(f"  VAE loaded (epoch {vae_ckpt.get('epoch', 'unknown')})")
 
     # =========================================================================
     # Step 4: Construct MotifNet and load state dict
     # =========================================================================
-    print("Loading MotifNet...")
+    log.info("Loading MotifNet...")
 
     tf2rnet = MotifNet(
         n_tfs=n_tfs,
@@ -626,12 +640,12 @@ def load_legacy_model(
     tf2rnet.to(device)
     tf2rnet.eval()
 
-    print(f"  MotifNet loaded (epoch {tf2r_ckpt.get('epoch', 'unknown')})")
+    log.info(f"  MotifNet loaded (epoch {tf2r_ckpt.get('epoch', 'unknown')})")
 
     # =========================================================================
     # Step 5: Construct Enformer and load state dict
     # =========================================================================
-    print("Loading Enformer...")
+    log.info("Loading Enformer...")
 
     from enformer_pytorch import Enformer
 
@@ -645,7 +659,7 @@ def load_legacy_model(
     enformer.to(device)
     enformer.eval()
 
-    print(f"  Enformer loaded (epoch {enf_ckpt.get('epoch', 'unknown')})")
+    log.info(f"  Enformer loaded (epoch {enf_ckpt.get('epoch', 'unknown')})")
 
     # =========================================================================
     # Step 6: Load E1 matrix from pickle
@@ -654,11 +668,11 @@ def load_legacy_model(
     if not e1_path.exists():
         raise FileNotFoundError(f"E1 file not found: {e1_path}")
 
-    print(f"Loading E1 from {e1_path}...")
+    log.info(f"Loading E1 from {e1_path}...")
     e1_df = pd.read_pickle(e1_path)
     # E1.pkl is (n_tfs, n_regions), we need (n_regions, n_tfs)
     adj_E1 = torch.tensor(e1_df.values.T, dtype=torch.float32, device=device)
-    print(f"  E1 shape: {adj_E1.shape}")
+    log.info(f"  E1 shape: {adj_E1.shape}")
 
     # =========================================================================
     # Step 7: Package into DeepSCENICModel
@@ -681,7 +695,7 @@ def load_legacy_model(
         region_names=region_names,
     )
 
-    print("Legacy model loaded successfully!")
+    log.info("Legacy model loaded successfully!")
     return model
 
 

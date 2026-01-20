@@ -1,5 +1,6 @@
 """Write functions for deepSCENIC data."""
 
+import logging
 from pathlib import Path
 
 import anndata as ad
@@ -8,6 +9,8 @@ import numpy as np
 import pandas as pd
 
 from ..data.schema import validate_schema
+
+log = logging.getLogger("deepscenic.io")
 
 # Enable nullable string serialization (supported in anndata >= 0.11)
 ad.settings.allow_write_nullable_strings = True
@@ -101,3 +104,5 @@ def write(
         mod.obs = _convert_nullable_columns(mod.obs)
 
     mdata.write(str(path), compression=compression)
+
+    log.info(f"Wrote {path}: {mdata.n_obs} cells")

@@ -1,5 +1,6 @@
 """Basic preprocessing functions for deepSCENIC. Functions in basic.py operate on anndatas."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,8 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 from scipy import sparse
+
+log = logging.getLogger("deepscenic.pp")
 
 
 def _to_dense(X: Any) -> np.ndarray:
@@ -73,7 +76,7 @@ def remove_zero_variance_genes(
     if not keep.all():
         n_removed = (~keep).sum()
         adata._inplace_subset_var(keep)
-        print(f"Removed {n_removed} zero-variance genes")
+        log.info(f"Removed {n_removed} zero-variance genes")
 
     if not inplace:
         return adata
@@ -156,9 +159,9 @@ def mark_dars(
     n_provided = len(all_dars)
     n_missing = n_provided - len(dars_in_data)
 
-    print(f"Marked {n_marked} / {len(adata.var)} regions as DARs")
+    log.info(f"Marked {n_marked} / {len(adata.var)} regions as DARs")
     if n_missing > 0:
-        print(f"  ({n_missing} DAR regions not found in data)")
+        log.info(f"  ({n_missing} DAR regions not found in data)")
 
     if not inplace:
         return adata
@@ -315,7 +318,7 @@ def filter_regions_by_celltype(
     keep_mask = adata.var_names.isin(keep_regions)
     adata._inplace_subset_var(keep_mask)
 
-    print(f"Kept {keep_mask.sum()} / {len(keep_mask)} regions")
+    log.info(f"Kept {keep_mask.sum()} / {len(keep_mask)} regions")
 
     if not inplace:
         return adata
@@ -416,9 +419,9 @@ def add_gene_annotation(
             adata.var[col] = pd.array([pd.NA] * len(adata.var), dtype="Int64")
             adata.var.loc[genes_in_data, col] = values.astype("Int64").values
 
-    print(f"Added {columns} to {len(genes_in_data)} / {len(adata.var)} genes")
+    log.info(f"Added {columns} to {len(genes_in_data)} / {len(adata.var)} genes")
     if n_missing > 0:
-        print(f"  ({n_missing} genes not found in annotation)")
+        log.info(f"  ({n_missing} genes not found in annotation)")
 
     if not inplace:
         return adata

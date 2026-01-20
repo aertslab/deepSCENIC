@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
+
+log = logging.getLogger("deepscenic.genome")
 
 if TYPE_CHECKING:
     pass
@@ -224,6 +227,8 @@ def register_genome(fasta_file: str | Path | Genome) -> None:
         _genome = fasta_file
     else:
         _genome = Genome(fasta_file)
+
+    log.info(f"Registered genome: {_genome.name} ({_genome.fasta_file})")
 
 
 def get_genome() -> Genome:

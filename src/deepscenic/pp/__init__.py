@@ -1,10 +1,14 @@
 """Preprocessing functions for deepSCENIC. Functions in the __init__ operate on mudatas."""
 
+import logging
+
 import mudata as md
 import numpy as np
 import pandas as pd
 from anndata import AnnData
 from sklearn.model_selection import train_test_split
+
+log = logging.getLogger("deepscenic.pp")
 
 from .._constants import (
     DEFAULT_CELL_SPLIT_SEED,
@@ -142,6 +146,10 @@ def split_cells(
 
     mdata.obs["split"] = pd.Categorical(split_labels, categories=["train", "test"])
 
+    n_train = (split_labels == "train").sum()
+    n_test = (split_labels == "test").sum()
+    log.info(f"Split cells: {n_train} train, {n_test} test")
+
     if not inplace:
         return mdata
     return None
@@ -195,13 +203,17 @@ def split_features_by_chromosome(
         # Warn about unannotated genes
         n_unannotated = rna.var["chromosome"].isna().sum()
         if n_unannotated > 0:
-            print(
-                f"Note: {n_unannotated} genes without chromosome annotation assigned to 'train' split"
+            log.info(
+                f"{n_unannotated} genes without chromosome annotation assigned to 'train' split"
             )
     else:
         raise ValueError(
             "Expects 'chromosome' column in rna.var. Run `ds.pp.add_gene_annotation` first to annotate gene positions based on TSS."
         )
+
+    n_atac_test = (atac.var["split"] == "test").sum()
+    n_rna_test = (rna.var["split"] == "test").sum()
+    log.info(f"Split features by chromosome: {n_atac_test} ATAC regions, {n_rna_test} genes in test set")
 
     if not inplace:
         return mdata

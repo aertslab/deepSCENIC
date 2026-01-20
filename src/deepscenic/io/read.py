@@ -1,11 +1,14 @@
 """Read functions for deepSCENIC data."""
 
+import logging
 from pathlib import Path
 
 import anndata as ad
 import mudata as md
 
 from ..data.schema import validate_schema
+
+log = logging.getLogger("deepscenic.io")
 
 md.set_options(pull_on_update=False)  # adopt new mudata behaviour
 
@@ -60,5 +63,10 @@ def read(
 
     if validate:
         validate_schema(mdata, strict=strict)
+
+    log.info(
+        f"Loaded {path}: {mdata.n_obs} cells, "
+        f"{mdata['rna'].n_vars} genes, {mdata['atac'].n_vars} regions"
+    )
 
     return mdata
