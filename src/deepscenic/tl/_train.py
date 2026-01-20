@@ -255,7 +255,7 @@ def train(
     # Batch correction
     n_batches = 0
     if config.batch_key is not None:
-        n_batches = mdata.obs[config.batch_key].nunique()
+        n_batches = int(mdata.obs[config.batch_key].nunique())
 
     # Initialize models
     vae = DeepSCENICVAE(
@@ -389,9 +389,6 @@ def train(
         for batch in pbar:
             x_rna = batch["rna"].to(device)
             x_atac = batch["atac"].to(device)
-            batch_id = batch.get("batch_id")
-            if batch_id is not None:
-                batch_id = batch_id.to(device)
 
             # Clone E1 cache
             adj_E1 = adj_E1_cache.clone()
@@ -426,7 +423,6 @@ def train(
                 x_rna,
                 x_atac,
                 adj_E1,
-                batch_id=batch_id,
                 use_ppi=use_ppi_this_batch,
                 use_mean=False,
                 ppi_device=config.ppi_device,
@@ -721,9 +717,6 @@ def finetune(
         for batch in pbar:
             x_rna = batch["rna"].to(device)
             x_atac = batch["atac"].to(device)
-            batch_id = batch.get("batch_id")
-            if batch_id is not None:
-                batch_id = batch_id.to(device)
 
             optimizer.zero_grad()
 
@@ -732,7 +725,6 @@ def finetune(
                 x_rna,
                 x_atac,
                 adj_E1,
-                batch_id=batch_id,
                 use_ppi=False,
                 use_mean=False,
             )
@@ -778,15 +770,11 @@ def finetune(
             for batch in test_cell_loader:
                 x_rna = batch["rna"].to(device)
                 x_atac = batch["atac"].to(device)
-                batch_id = batch.get("batch_id")
-                if batch_id is not None:
-                    batch_id = batch_id.to(device)
 
                 output = vae(
                     x_rna,
                     x_atac,
                     adj_E1,
-                    batch_id=batch_id,
                     use_ppi=False,
                     use_mean=True,
                 )
