@@ -159,6 +159,7 @@ def compute_total_loss(
     rna_tau: float = 1.0,
     atac_tau: float = 1.0,
     use_ppi: bool = True,
+    include_e1_sparsity: bool = True,
 ) -> dict[str, Tensor]:
     """
     Compute all loss components for training.
@@ -207,6 +208,10 @@ def compute_total_loss(
         ATAC reconstruction weight
     use_ppi
         Whether PPI is being used
+    include_e1_sparsity
+        Whether to include E1 sparsity in the total loss. Set to False
+        before warmup_grn to match legacy behavior where E1 sparsity is
+        only applied after the GRN warmup phase.
 
     Returns
     -------
@@ -214,13 +219,8 @@ def compute_total_loss(
         Dictionary with all loss components and total
     """
     # Reconstruction losses
-    loss_rec_rna = (
-        reconstruction_loss(x_rna_rec, x_rna[:, gene_indices], loss_rna, dropout_mask_rna)
-        * rna_tau
-    )
-    loss_rec_atac = (
-        reconstruction_loss(x_atac_rec, x_atac, loss_atac, dropout_mask_atac) * atac_tau
-    )
+    loss_rec_rna = reconstruction_loss(x_rna_rec, x_rna[:, gene_indices], loss_rna, dropout_mask_rna) * rna_tau
+    loss_rec_atac = reconstruction_loss(x_atac_rec, x_atac, loss_atac, dropout_mask_atac) * atac_tau
 
     # KL divergence
     loss_kl = kl_divergence(mu, logvar) * beta
@@ -235,10 +235,10 @@ def compute_total_loss(
     else:
         loss_ppi = torch.tensor(0.0, device=x_rna.device)
 
-    # Total loss
-    total = (
-        loss_rec_rna + loss_rec_atac + loss_kl + loss_e1_sparse + loss_e2_sparse + loss_ppi
-    )
+    # Total loss (E1 sparsity only included after warmup_grn)
+    total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse + loss_ppi
+    if include_e1_sparsity:
+        total = total + loss_e1_sparse
 
     return {
         "total": total,

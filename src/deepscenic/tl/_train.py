@@ -468,7 +468,8 @@ def train(
                 ppi_device=config.ppi_device,
             )
 
-            # Compute losses
+            # Compute losses (E1 sparsity only included after warmup_grn, matching legacy)
+            include_e1 = epoch >= warmup_grn and epoch >= warmup_vae
             losses = compute_total_loss(
                 x_rna=x_rna,
                 x_atac=x_atac,
@@ -491,14 +492,9 @@ def train(
                 rna_tau=config.rna_tau,
                 atac_tau=config.atac_tau,
                 use_ppi=use_ppi_this_batch,
+                include_e1_sparsity=include_e1,
             )
-
-            # Add E1 sparsity loss only after warmup_grn (legacy behavior)
-            if epoch >= warmup_grn and epoch >= warmup_vae:
-                e1_loss = e1_sparsity_loss(tf_pred) * config.alpha
-                total_loss = losses["total"] + e1_loss
-            else:
-                total_loss = losses["total"]
+            total_loss = losses["total"]
 
             # Backward
             total_loss.backward()
