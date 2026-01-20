@@ -218,12 +218,12 @@ class TestGenomeIntervalDataset:
         assert len(result) == 1
 
     def test_getitem_shape(self, tmp_fasta):
-        """Output should have shape (1, 4, context_length)."""
+        """Output should have shape (context_length, 4)."""
         genome = Genome(tmp_fasta)
         regions = ["chr1:0-640"]
         dataset = GenomeIntervalDataset(regions, genome, context_length=640)
         (seq,) = dataset[0]
-        assert seq.shape == (1, 4, 640)
+        assert seq.shape == (640, 4)
 
     def test_different_context_length(self, tmp_fasta):
         """Should respect custom context_length."""
@@ -231,7 +231,7 @@ class TestGenomeIntervalDataset:
         regions = ["chr1:0-640"]
         dataset = GenomeIntervalDataset(regions, genome, context_length=320)
         (seq,) = dataset[0]
-        assert seq.shape == (1, 4, 320)
+        assert seq.shape == (320, 4)
 
     def test_shift_augmentation(self, tmp_fasta):
         """Shift augmentation should produce different sequences."""

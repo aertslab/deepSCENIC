@@ -49,7 +49,7 @@ class GenomeIntervalDataset(Dataset):
     3
     >>> (seq,) = dataset[0]  # doctest: +SKIP
     >>> seq.shape  # doctest: +SKIP
-    torch.Size([1, 4, 640])
+    torch.Size([640, 4])
     """
 
     def __init__(
@@ -103,8 +103,7 @@ class GenomeIntervalDataset(Dataset):
         -------
         tuple[torch.Tensor]
             Tuple containing one-hot encoded sequence with shape
-            (1, 4, context_length). The extra dimension at index 0
-            is for compatibility with enformer-pytorch's output format.
+            (context_length, 4), matching Enformer's expected input format.
         """
         chrom, start, end = self._parsed_regions[idx]
 
@@ -124,8 +123,8 @@ class GenomeIntervalDataset(Dataset):
         # Apply reverse complement augmentation
         rc = self.rc_aug and random.random() < 0.5
 
-        # Fetch one-hot encoded sequence
+        # Fetch one-hot encoded sequence: (4, context_length)
         onehot = self.genome.fetch_onehot(chrom, seq_start, seq_end, rc=rc)
 
-        # Add batch dimension for compatibility with existing code
-        return (onehot.unsqueeze(0),)
+        # Transpose to (context_length, 4) for Enformer compatibility
+        return (onehot.T,)
