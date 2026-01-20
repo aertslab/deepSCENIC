@@ -90,8 +90,10 @@ doc = [
     "sphinx-tabs",
     "sphinxcontrib-bibtex>=1",
     "sphinxext-opengraph",
+    "enformer-pytorch>=0.8",
 ]
 test = [
+    "enformer-pytorch>=0.8",
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "coverage>=7.0",
@@ -135,7 +137,7 @@ linkcheck = "sphinx-build -b linkcheck docs docs/_build/linkcheck {args}"
 # Ruff configuration
 [tool.ruff]
 line-length = 120
-target-version = "py310"
+target-version = "py313"
 src = ["src"]
 exclude = ["src/legacy", "main.py"]
 
@@ -194,7 +196,7 @@ config-path = "pyproject.toml"
 
 # MyPy configuration
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.13"
 ignore_missing_imports = true
 strict = false
 warn_return_any = true

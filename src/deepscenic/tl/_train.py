@@ -29,13 +29,14 @@ if TYPE_CHECKING:
     import mudata as md
 
 
-def _init_enformer(device: str) -> torch.nn.Module:
+def _init_enformer(device: str, emb_len: int) -> torch.nn.Module:
     """Initialize Enformer model."""
     from enformer_pytorch import Enformer
 
     enformer = Enformer.from_pretrained(
         "EleutherAI/enformer-official-rough",
-        target_length=-1,
+        dropout_rate=0.1,
+        target_length=emb_len,  # default TF2rNet embedding
     )
     enformer.to(device)
     return enformer
@@ -44,14 +45,9 @@ def _init_enformer(device: str) -> torch.nn.Module:
 def _get_enformer_embeddings(
     enformer: torch.nn.Module,
     sequences: torch.Tensor,
-    bottleneck_size: int,
-    emb_len: int,
 ) -> torch.Tensor:
     """Get Enformer embeddings for sequences."""
-    with torch.cuda.amp.autocast(enabled=True):
-        output = enformer(sequences, return_only_embeddings=True)
-    # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
-    return output.reshape(-1, bottleneck_size * emb_len)
+    return enformer(sequences, return_only_embeddings=True)
 
 
 def _init_e1_cache(
@@ -71,7 +67,7 @@ def _init_e1_cache(
     with torch.no_grad():
         for (sequences,), seq_idx in tqdm(seq_dataloader, desc="Initializing E1"):
             sequences = sequences.to(device)
-            emb = _get_enformer_embeddings(enformer, sequences, config.bottleneck_size, config.emb_len)
+            emb = _get_enformer_embeddings(enformer, sequences)
             tf_pred = tf2rnet(emb)
             adj_E1[seq_idx] = tf_pred
 
@@ -288,7 +284,7 @@ def train(
             bottleneck_size=config.bottleneck_size,
             emb_len=config.emb_len,
         ).to(device)
-        enformer = _init_enformer(device)
+        enformer = _init_enformer(device, config.emb_len)
 
     # Build dataloaders
     train_cell_loader = build_cell_dataloader(
@@ -421,7 +417,7 @@ def train(
 
                 # Forward through Enformer + TF2rNet
                 optimizer_tf2rnet.zero_grad()
-                emb = _get_enformer_embeddings(enformer, sequences, config.bottleneck_size, config.emb_len)
+                emb = _get_enformer_embeddings(enformer, sequences)
                 tf_pred = tf2rnet(emb)
 
                 # Update E1 for this batch
@@ -949,7 +945,7 @@ def pretrain(
         emb_len=pretrain_config.emb_len,
     ).to(device)
 
-    enformer = _init_enformer(device)
+    enformer = _init_enformer(device, pretrain_config.emb_len)
 
     # Build sequence dataloader
     seq_loader = build_sequence_dataloader(
@@ -987,9 +983,7 @@ def pretrain(
             optimizer.zero_grad()
 
             # Forward through Enformer + TF2rNet
-            emb = _get_enformer_embeddings(
-                enformer, sequences, pretrain_config.bottleneck_size, pretrain_config.emb_len
-            )
+            emb = _get_enformer_embeddings(enformer, sequences)
             tf_pred = tf2rnet(emb)
 
             # Loss: L1 sparsity on TF predictions

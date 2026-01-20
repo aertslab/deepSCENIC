@@ -73,7 +73,7 @@ class MotifNet(nn.Module):
         Returns
         -------
         Tensor
-            TF binding predictions (batch, n_tfs)
+            TF binding predictios (batch, n_tfs)
         """
         batch_size = emb.shape[0]
 

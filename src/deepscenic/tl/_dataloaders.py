@@ -210,7 +210,7 @@ def build_sequence_dataloader(
     if balance_dars and dar_indices is not None:
         weights = np.ones(len(dataset))
         weights[dar_indices] = 1.5
-        sampler = WeightedRandomSampler(weights, len(dataset))
+        sampler = WeightedRandomSampler(weights, len(dataset))  # type: ignore
         shuffle = False
 
     return DataLoader(
@@ -241,6 +241,4 @@ def collate_cell_batch(batch: list[dict]) -> dict[str, torch.Tensor]:
         "atac": torch.stack([item["atac"] for item in batch]),
         "idx": torch.stack([item["idx"] for item in batch]),
     }
-    if "batch_id" in batch[0]:
-        result["batch_id"] = torch.stack([item["batch_id"] for item in batch])
     return result
