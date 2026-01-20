@@ -222,22 +222,24 @@ def train(
     training_logger.log_hyperparams(config.to_dict())
 
     # Extract metadata from MuData
-    tf_names = list(mdata.uns["tfs"])
-    gene_names = list(mdata.mod["rna"].var_names)
+    rna = mdata.mod["rna"]
+    tf_mask = rna.var["is_tf"]
+    tf_names = rna.var_names[tf_mask].tolist()
+    gene_names = list(rna.var_names)
     region_names = list(mdata.mod["atac"].var_names)
 
     n_tfs = len(tf_names)
     n_genes = len(gene_names)
     n_regions = len(region_names)
 
-    # Get indices from MuData
-    tf_indices = torch.tensor(mdata.uns["tf_indices"])
+    # Compute TF indices from is_tf mask
+    tf_indices = torch.tensor(np.where(tf_mask)[0])
     gene_indices = torch.arange(n_genes)
 
-    # Get r2g sparse matrix info
-    r2g_mask = mdata.uns["r2g_mask"]
-    r2g_indices = torch.tensor(np.array([r2g_mask.row, r2g_mask.col]))
-    r2g_distances = torch.tensor(r2g_mask.data).float()
+    # Get r2g sparse matrix info (convert CSR to COO for indices)
+    r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
+    r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]))
+    r2g_distances = torch.tensor(r2g_coo.data).float()
 
     # Get PPI info if present
     ppi_edge_index = None
@@ -918,7 +920,9 @@ def pretrain(
     training_logger.log_hyperparams(pretrain_config.to_dict())
 
     # Extract metadata from MuData
-    tf_names = list(mdata.uns["tfs"])
+    rna = mdata.mod["rna"]
+    tf_mask = rna.var["is_tf"]
+    tf_names = rna.var_names[tf_mask].tolist()
     region_names = list(mdata.mod["atac"].var_names)
     n_tfs = len(tf_names)
 

@@ -31,7 +31,6 @@ def test_validate_missing_atac_inference_ok():
     """Test that missing ATAC is OK in inference mode."""
     rna = sc.AnnData(np.random.randn(10, 20))
     rna.var["is_tf"] = True
-    rna.uns["tf_order"] = []
     mdata = md.MuData({"rna": rna})
     mdata.obs["split"] = pd.Categorical(["train"] * 10)
     mdata.uns["deepscenic_version"] = "0.1.0"

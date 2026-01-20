@@ -79,9 +79,6 @@ def validate_schema(
         elif rna.var["is_tf"].dtype != bool:
             issues.append("rna.var['is_tf'] should be bool")
 
-        if "tf_order" not in rna.uns:
-            issues.append("rna.uns missing 'tf_order'")
-
     # Check ATAC modality
     if "atac" in mdata.mod:
         atac = mdata.mod["atac"]

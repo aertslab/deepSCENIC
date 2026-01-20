@@ -201,8 +201,9 @@ class TrainingView:
     # TF information
     @property
     def tf_names(self) -> list[str]:
-        """Ordered list of TF names."""
-        return self._mdata.mod["rna"].uns["tf_order"]
+        """List of TF names (in var_names order)."""
+        rna = self._mdata.mod["rna"]
+        return rna.var_names[rna.var["is_tf"]].tolist()
 
     @property
     def tf_mask(self) -> pd.Series:

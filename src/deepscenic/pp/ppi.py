@@ -98,12 +98,8 @@ def build_ppi_network(
     # Format gene names based on species
     if species == "mouse":
         # Capitalize first letter only: SOX2 -> Sox2
-        ppi["Source"] = ppi["Source"].apply(
-            lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper()
-        )
-        ppi["Target"] = ppi["Target"].apply(
-            lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper()
-        )
+        ppi["Source"] = ppi["Source"].apply(lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper())
+        ppi["Target"] = ppi["Target"].apply(lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper())
     # human: keep as-is (uppercase)
 
     # Get all genes in dataset
@@ -131,30 +127,24 @@ def build_ppi_network(
     edge_index = _nx_to_pyg_edge_index(G, node_to_idx)
 
     # Get indices of PPI genes in the RNA var
-    ppi_genes_idx = np.array([
-        rna.var_names.get_loc(gene) for gene in node_list
-        if gene in rna.var_names
-    ])
+    ppi_genes_idx = np.array([rna.var_names.get_loc(gene) for gene in node_list if gene in rna.var_names])
 
     # Get TF information
     if "is_tf" not in rna.var.columns:
-        raise ValueError(
-            "TFs must be marked first. Run ds.pp.mark_tfs() before build_ppi_network()"
-        )
+        raise ValueError("TFs must be marked first. Run ds.pp.mark_tfs() before build_ppi_network()")
 
     tf_names = rna.var_names[rna.var["is_tf"]].tolist()
 
-    # Map TFs to their positions in PPI node list and original TF order
+    # Map TFs to their positions in PPI node list
     ppi_tfs_idx_keys = []  # Index in PPI node list
-    ppi_tfs_idx_values = []  # Index in TF order
+    ppi_tfs_idx_values = []  # Index in TF list (var_names order)
 
-    tf_order = rna.uns.get("tf_order", tf_names)
-    tf_to_order_idx = {tf: i for i, tf in enumerate(tf_order)}
+    tf_to_idx = {tf: i for i, tf in enumerate(tf_names)}
 
     for ppi_node_idx, gene in enumerate(node_list):
-        if gene in tf_to_order_idx:
+        if gene in tf_to_idx:
             ppi_tfs_idx_keys.append(ppi_node_idx)
-            ppi_tfs_idx_values.append(tf_to_order_idx[gene])
+            ppi_tfs_idx_values.append(tf_to_idx[gene])
 
     # Store in mdata.uns
     mdata.uns["ppi_edge_index"] = edge_index.numpy()
@@ -168,7 +158,7 @@ def build_ppi_network(
     n_tfs_in_ppi = len(ppi_tfs_idx_keys)
 
     print(f"Built PPI network: {n_nodes} nodes, {n_edges} edges")
-    print(f"  {n_tfs_in_ppi} / {len(tf_order)} TFs found in PPI network")
+    print(f"  {n_tfs_in_ppi} / {len(tf_names)} TFs found in PPI network")
 
     if not inplace:
         return mdata
@@ -234,11 +224,13 @@ def load_string_ppi(
     df = pd.read_csv(filepath, sep=" ")
 
     # Rename columns
-    df = df.rename(columns={
-        "protein1": "Source",
-        "protein2": "Target",
-        "combined_score": "Conn",
-    })
+    df = df.rename(
+        columns={
+            "protein1": "Source",
+            "protein2": "Target",
+            "combined_score": "Conn",
+        }
+    )
 
     # Filter by score
     df = df[df["Conn"] >= score_threshold]

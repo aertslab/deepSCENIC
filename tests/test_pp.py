@@ -390,15 +390,18 @@ class TestMarkTFs:
         """Test marking TFs from a list."""
         # Remove existing TF marks
         del sample_rna.var["is_tf"]
-        del sample_rna.uns["tf_order"]
 
         tf_list = ["Gene_0", "Gene_1", "Gene_2", "NonExistent"]
         ds.pp.mark_tfs(sample_rna, tf_list)
 
         # Check TFs are marked
         assert sample_rna.var["is_tf"].sum() == 3
-        assert len(sample_rna.uns["tf_order"]) == 3
-        assert "NonExistent" not in sample_rna.uns["tf_order"]
+        # Verify the correct genes are marked
+        tf_names = sample_rna.var_names[sample_rna.var["is_tf"]].tolist()
+        assert "Gene_0" in tf_names
+        assert "Gene_1" in tf_names
+        assert "Gene_2" in tf_names
+        assert "NonExistent" not in tf_names
 
 
 class TestSplitCells:
@@ -520,9 +523,7 @@ class TestSplitFeaturesByChromosome:
         assert (mdata.mod["rna"].var.loc[na_genes, "split"] == "train").all()
 
         # Other chromosomes should still be split correctly
-        chr7_genes = mdata.mod["rna"].var[
-            mdata.mod["rna"].var["chromosome"] == "chr7"
-        ].index
+        chr7_genes = mdata.mod["rna"].var[mdata.mod["rna"].var["chromosome"] == "chr7"].index
         assert (mdata.mod["rna"].var.loc[chr7_genes, "split"] == "test").all()
 
 

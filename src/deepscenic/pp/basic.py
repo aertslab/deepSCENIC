@@ -260,7 +260,6 @@ def mark_tfs(
 
     # Mark TFs
     adata.var["is_tf"] = adata.var_names.isin(tf_names_in_data)
-    adata.uns["tf_order"] = tf_names_in_data
 
     if not inplace:
         return adata

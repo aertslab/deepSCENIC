@@ -111,14 +111,14 @@ class TestTrainingView:
         view = TrainingView(sample_mdata)
 
         tf_names = view.tf_names
-        assert len(tf_names) == 50
+        assert len(tf_names) == 10
         assert tf_names[0] == "Gene_0"
 
     def test_training_view_n_tfs(self, sample_mdata):
         """Test TrainingView.n_tfs property."""
         view = TrainingView(sample_mdata)
 
-        assert view.n_tfs == 50
+        assert view.n_tfs == 10
 
     def test_training_view_caching(self, sample_mdata):
         """Test that TrainingView caches results."""

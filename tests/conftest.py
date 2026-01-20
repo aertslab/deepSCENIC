@@ -56,7 +56,6 @@ def sample_rna():
     adata.obs_names = [f"Cell_{i}" for i in range(n_cells)]
 
     adata.var["is_tf"] = [i < 10 for i in range(n_genes)]
-    adata.uns["tf_order"] = [f"Gene_{i}" for i in range(10)]
 
     # Simulate add_gene_annotation behavior: some genes have pd.NA for chromosome/tss
     # Use nullable dtypes for h5mu compatibility
@@ -103,7 +102,6 @@ def sample_mdata(sample_rna, sample_atac):
     mdata.obs["split"] = pd.Categorical(["train"] * 80 + ["test"] * 20, categories=["train", "test"])
 
     mdata["rna"].uns["log1p"] = {"base": None}
-    mdata["rna"].uns["tf_order"] = [f"TF_{i}" for i in range(len(sample_rna.var_names))]
     mdata["rna"].layers["log_norm"] = np.random.rand(sample_rna.n_obs, len(sample_rna.var)).astype(np.float32)  # type: ignore
 
     mdata.uns["deepscenic_version"] = "0.1.0"
