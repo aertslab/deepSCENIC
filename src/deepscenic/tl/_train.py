@@ -376,6 +376,19 @@ def train(
         tf2rnet.train()
         enformer.train()
 
+        # Parameter freezing based on warmup_grn (legacy behavior)
+        # After warmup_grn: freeze TF2rNet/Enformer to stop gradient computation
+        if epoch >= warmup_grn:
+            for param in tf2rnet.parameters():
+                param.requires_grad = False
+            for param in enformer.parameters():
+                param.requires_grad = False
+        else:
+            for param in tf2rnet.parameters():
+                param.requires_grad = True
+            for param in enformer.parameters():
+                param.requires_grad = True
+
         epoch_metrics = {
             "loss": 0.0,
             "rec_rna": 0.0,
@@ -455,8 +468,8 @@ def train(
                 use_ppi=use_ppi_this_batch,
             )
 
-            # Add E1 sparsity loss (only for updated batch)
-            if epoch >= warmup_vae:
+            # Add E1 sparsity loss only after warmup_grn (legacy behavior)
+            if epoch >= warmup_grn and epoch >= warmup_vae:
                 e1_loss = e1_sparsity_loss(tf_pred) * config.alpha
                 total_loss = losses["total"] + e1_loss
             else:
@@ -465,7 +478,8 @@ def train(
             # Backward
             total_loss.backward()
             optimizer_vae.step()
-            if epoch >= warmup_vae:
+            # Step TF2rNet optimizer only during training window (before freeze)
+            if epoch >= warmup_vae and epoch < warmup_grn:
                 optimizer_tf2rnet.step()
 
             # Accumulate metrics
@@ -490,6 +504,8 @@ def train(
 
         # Validation
         vae.eval()
+        tf2rnet.eval()
+        enformer.eval()
         val_loss = 0.0
         n_val_batches = 0
 
