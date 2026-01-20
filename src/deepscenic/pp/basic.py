@@ -169,19 +169,7 @@ def mark_dars(
 
 
 def _load_dars_from_dir(dar_dir: Path) -> dict[str, list[str]]:
-    """
-    Load DARs from directory of BED files.
-
-    Parameters
-    ----------
-    dar_dir : Path
-        Directory containing .bed files.
-
-    Returns
-    -------
-    dict[str, list[str]]
-        Dictionary mapping celltype name to list of region names.
-    """
+    """Load DARs from directory of BED files."""
     from ..io.bed import read_bed
 
     dar_dict = {}

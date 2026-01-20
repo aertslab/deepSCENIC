@@ -69,7 +69,7 @@ def fetch_gene_annotation(
         Biomart host URL. Use archived hosts for reproducibility:
         - "http://nov2020.archive.ensembl.org/" for GRCm38
         - "http://www.ensembl.org" for latest
-    use_ucsc_chromosome_style : bool, default=True
+    use_ucsc_chromosome_style
         Convert chromosome names to UCSC style (chr1, chr2, etc.).
     transcript_type
         Filter for transcript type. Set to None to include all types.
@@ -182,16 +182,17 @@ def _fetch_from_biomart(
     )
 
     log.info(f"Querying gene annotation for {species}...")
-    annot = pd.DataFrame(dataset.query(
-        attributes=[
-            "chromosome_name",
-            "start_position",
-            "end_position",
-            "strand",
-            external_gene_name_query,
-            tss_query,
-            "transcript_biotype",
-        ]
+    annot = pd.DataFrame(
+        dataset.query(
+            attributes=[
+                "chromosome_name",
+                "start_position",
+                "end_position",
+                "strand",
+                external_gene_name_query,
+                tss_query,
+                "transcript_biotype",
+            ]
         )
     )
     annot.columns = [

@@ -77,7 +77,7 @@ class DeepSCENICVAE(nn.Module):
 
     Attributes
     ----------
-    adj_E2 : nn.Parameter
+    adj_E2
         Learnable region→gene weights (n_links,)
     """
 

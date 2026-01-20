@@ -151,7 +151,12 @@ def sparsity_histogram(
 
     Returns
     -------
-    Axes, Figure, or None
+    Axes, Figure, or None depending on parameters.
+
+    Examples
+    --------
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.sparsity_histogram(model)  # doctest: +SKIP
     """
     import torch
 
@@ -244,7 +249,12 @@ def latent_umap(
 
     Returns
     -------
-    Axes, Figure, or None
+    Axes, Figure, or None depending on parameters.
+
+    Examples
+    --------
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.latent_umap(model, mdata, color="celltype")  # doctest: +SKIP
     """
     import torch
     from sklearn.preprocessing import StandardScaler

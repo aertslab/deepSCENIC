@@ -31,25 +31,25 @@ def build_ppi_network(
 
     Parameters
     ----------
-    mdata : MuData
+    mdata
         Input multimodal data with 'rna' modality.
-    ppi_data : DataFrame
+    ppi_data
         Protein-protein interaction data with source/target columns.
         If confidence_col is provided, interactions below threshold are filtered.
-    confidence_threshold : float, default=0.5
+    confidence_threshold
         Minimum confidence score for interactions (if confidence_col provided).
-    species : {'mouse', 'human'}
-        Species for gene name formatting.
-        - 'mouse': Capitalizes first letter only (e.g., 'SOX2' -> 'Sox2')
-        - 'human': Keeps uppercase (e.g., 'SOX2' -> 'SOX2')
-    source_col : str, default='Source'
+    species
+        Species for gene name formatting: 'mouse' or 'human'.
+        'mouse' capitalizes first letter only (e.g., 'SOX2' -> 'Sox2').
+        'human' keeps uppercase (e.g., 'SOX2' -> 'SOX2').
+    source_col
         Column name for source gene in ppi_data.
-    target_col : str, default='Target'
+    target_col
         Column name for target gene in ppi_data.
-    confidence_col : str or None, default='Conn'
+    confidence_col
         Column name for confidence score. If None, no filtering is applied
         (useful for BioGRID data which has no confidence scores).
-    inplace : bool, default=True
+    inplace
         Whether to modify mdata in-place.
 
     Returns
@@ -169,21 +169,7 @@ def _nx_to_pyg_edge_index(
     G: nx.Graph,
     node_mapping: dict[str, int],
 ) -> torch.Tensor:
-    """
-    Convert networkx graph to PyTorch Geometric edge index.
-
-    Parameters
-    ----------
-    G : nx.Graph
-        NetworkX graph (will be converted to directed)
-    node_mapping : dict
-        Mapping from node names to indices
-
-    Returns
-    -------
-    torch.Tensor
-        Edge index tensor of shape (2, n_edges)
-    """
+    """Convert networkx graph to PyTorch Geometric edge index."""
     # Convert to directed graph (PyG expects directed)
     G_directed = G.to_directed() if not nx.is_directed(G) else G
 
@@ -206,20 +192,23 @@ def load_string_ppi(
 
     Parameters
     ----------
-    filepath : str
+    filepath
         Path to STRING protein links file.
-    score_threshold : int, default=400
+    score_threshold
         Minimum combined score (STRING scores are 0-1000).
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame with Source, Target, Conn columns.
+    DataFrame with Source, Target, Conn columns.
 
     Notes
     -----
     STRING files typically have columns: protein1, protein2, combined_score.
     Gene names may need species prefix removed (e.g., '9606.ENSP...' for human).
+
+    Examples
+    --------
+    >>> ppi_df = ds.pp.load_string_ppi("string_links.txt", score_threshold=500)
     """
     df = pd.read_csv(filepath, sep=" ")
 

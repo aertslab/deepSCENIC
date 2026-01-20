@@ -59,7 +59,12 @@ def heatmap_e1(
 
     Returns
     -------
-    Axes, Figure, or None
+    Axes, Figure, or None depending on parameters.
+
+    Examples
+    --------
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.heatmap_e1(model, top_k=30)  # doctest: +SKIP
     """
     from deepscenic.tl import extract_e1_matrix
 
@@ -139,7 +144,12 @@ def heatmap_e2(
 
     Returns
     -------
-    Axes, Figure, or None
+    Axes, Figure, or None depending on parameters.
+
+    Examples
+    --------
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.heatmap_e2(model, top_k=30)  # doctest: +SKIP
     """
     from deepscenic.tl import extract_e2_matrix
 
@@ -226,7 +236,12 @@ def heatmap_grn(
 
     Returns
     -------
-    Axes, Figure, or None
+    Axes, Figure, or None depending on parameters.
+
+    Examples
+    --------
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.heatmap_grn(model, top_k=20)  # doctest: +SKIP
     """
     from deepscenic.tl import extract_e1_matrix, extract_e2_matrix
 

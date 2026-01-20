@@ -29,23 +29,23 @@ class DeepSCENICModel:
 
     Attributes
     ----------
-    vae : DeepSCENICVAE
+    vae
         Trained VAE model.
-    tf2rnet : MotifNet
+    tf2rnet
         Trained TF2rNet context head.
-    enformer : nn.Module
+    enformer
         Fine-tuned Enformer model.
-    adj_E1 : Tensor
+    adj_E1
         Cached E1 matrix (n_regions, n_tfs).
-    config : TrainingConfig
+    config
         Training configuration used.
-    tf_names : list[str]
+    tf_names
         TF names in order.
-    gene_names : list[str]
+    gene_names
         Gene names in order.
-    region_names : list[str]
+    region_names
         Region names in order.
-    history : TrainingHistory | None
+    history
         Training history with loss metrics per epoch. Available when model was
         just trained or loaded from a file that includes history.
 
@@ -232,17 +232,17 @@ class PretrainedModel:
 
     Attributes
     ----------
-    tf2rnet : MotifNet
+    tf2rnet
         Pretrained MotifNet model.
-    enformer : nn.Module
+    enformer
         Pretrained Enformer model.
-    adj_E1 : Tensor
+    adj_E1
         Cached E1 matrix (n_regions, n_tfs).
-    config : PretrainConfig
+    config
         Pretraining configuration used.
-    tf_names : list[str]
+    tf_names
         TF names in order.
-    region_names : list[str]
+    region_names
         Region names in order.
 
     Examples

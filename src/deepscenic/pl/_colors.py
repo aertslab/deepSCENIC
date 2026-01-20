@@ -39,6 +39,12 @@ def set_colors(
         If key not found in mdata.obs or any modality's obs.
     ValueError
         If number of colors doesn't match number of categories.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> ds.pl.set_colors(mdata, "celltype")  # doctest: +SKIP
+    >>> ds.pl.set_colors(mdata, "celltype", colors=["red", "blue"])  # doctest: +SKIP
     """
     # Get categories
     if key in mdata.obs.columns:
@@ -82,13 +88,17 @@ def get_colors(
 
     Returns
     -------
-    dict[str, str]
-        Mapping from category to color.
+    Mapping from category to color.
 
     Raises
     ------
     KeyError
         If key not found in mdata.obs or any modality's obs.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> colors = ds.pl.get_colors(mdata, "celltype")  # doctest: +SKIP
     """
     # Get categories
     if key in mdata.obs.columns:

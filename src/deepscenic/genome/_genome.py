@@ -31,9 +31,9 @@ class Genome:
 
     Attributes
     ----------
-    fasta_file : Path
+    fasta_file
         Path to the FASTA file.
-    name : str
+    name
         Genome name derived from filename.
 
     Examples
@@ -253,9 +253,7 @@ def get_genome() -> Genome:
     ['chr1', 'chr2', 'chr3']
     """
     if _genome is None:
-        raise RuntimeError(
-            "No genome registered. Call ds.genome.register_genome(fasta_file) first."
-        )
+        raise RuntimeError("No genome registered. Call ds.genome.register_genome(fasta_file) first.")
     return _genome
 
 
