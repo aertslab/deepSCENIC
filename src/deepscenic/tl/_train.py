@@ -71,9 +71,7 @@ def _init_e1_cache(
     with torch.no_grad():
         for (sequences,), seq_idx in tqdm(seq_dataloader, desc="Initializing E1"):
             sequences = sequences.to(device)
-            emb = _get_enformer_embeddings(
-                enformer, sequences, config.bottleneck_size, config.emb_len
-            )
+            emb = _get_enformer_embeddings(enformer, sequences, config.bottleneck_size, config.emb_len)
             tf_pred = tf2rnet(emb)
             adj_E1[seq_idx] = tf_pred
 
@@ -411,9 +409,7 @@ def train(
 
                 # Forward through Enformer + TF2rNet
                 optimizer_tf2rnet.zero_grad()
-                emb = _get_enformer_embeddings(
-                    enformer, sequences, config.bottleneck_size, config.emb_len
-                )
+                emb = _get_enformer_embeddings(enformer, sequences, config.bottleneck_size, config.emb_len)
                 tf_pred = tf2rnet(emb)
 
                 # Update E1 for this batch
@@ -492,9 +488,7 @@ def train(
 
         # Log metrics
         history.log("train", epoch_metrics)
-        training_logger.log_metrics(
-            {f"train/{k}": v for k, v in epoch_metrics.items()}, step=epoch
-        )
+        training_logger.log_metrics({f"train/{k}": v for k, v in epoch_metrics.items()}, step=epoch)
 
         # Validation
         vae.eval()
@@ -505,15 +499,11 @@ def train(
             for batch in test_cell_loader:
                 x_rna = batch["rna"].to(device)
                 x_atac = batch["atac"].to(device)
-                batch_id = batch.get("batch_id")
-                if batch_id is not None:
-                    batch_id = batch_id.to(device)
 
                 output = vae(
                     x_rna,
                     x_atac,
                     adj_E1_cache,
-                    batch_id=batch_id,
                     use_ppi=use_ppi and epoch >= warmup_grn,
                     use_mean=True,
                     ppi_device=config.ppi_device,
@@ -713,9 +703,7 @@ def finetune(
 
     # Single optimizer for E2 only
     optimizer = Adam([vae.adj_E2], lr=finetune_config.lr)
-    scheduler = ReduceLROnPlateau(
-        optimizer, mode="min", patience=finetune_config.lr_patience, factor=0.5
-    )
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=finetune_config.lr_patience, factor=0.5)
 
     # History tracking
     history = TrainingHistory()
@@ -779,9 +767,7 @@ def finetune(
 
         # Log metrics
         history.log("train", epoch_metrics)
-        training_logger.log_metrics(
-            {f"train/{k}": v for k, v in epoch_metrics.items()}, step=epoch
-        )
+        training_logger.log_metrics({f"train/{k}": v for k, v in epoch_metrics.items()}, step=epoch)
 
         # Validation
         vae.eval()

@@ -171,7 +171,6 @@ class DeepSCENICVAE(nn.Module):
         x_rna: Tensor,
         x_atac: Tensor,
         adj_E1: Tensor,
-        batch_id: Tensor | None = None,
         use_ppi: bool = True,
         use_mean: bool = False,
         ppi_device: torch.device | None = None,
@@ -187,8 +186,6 @@ class DeepSCENICVAE(nn.Module):
             ATAC accessibility (n_cells, n_regions)
         adj_E1
             TF→region matrix from TF2rNet (n_regions, n_tfs)
-        batch_id
-            One-hot batch IDs (n_cells, n_batches), optional
         use_ppi
             Whether to apply PPI modulation this forward pass
         use_mean
@@ -210,9 +207,7 @@ class DeepSCENICVAE(nn.Module):
         # PPI modulation (optional)
         if self.use_ppi and use_ppi and self.ppi is not None:
             ppi_dev = ppi_device or device
-            batch = build_ppi_batch(
-                x_rna, self.ppi_genes_idx, self.ppi_edge_index, ppi_dev
-            )
+            batch = build_ppi_batch(x_rna, self.ppi_genes_idx, self.ppi_edge_index, ppi_dev)
             ppi_out = self.ppi(batch.x, batch.edge_index)
             x_rna_ppi = extract_tf_weights(
                 ppi_out,
@@ -235,11 +230,6 @@ class DeepSCENICVAE(nn.Module):
         # Region activity → gene signal via E2
         E2 = self._build_e2_dense()
         z_rna = enh_act @ E2
-
-        # Batch correction
-        if self.n_batches > 0 and batch_id is not None:
-            enh_act = enh_act + self.batch_layer_atac(torch.cat([batch_id, enh_act], dim=1))
-            z_rna = z_rna + self.batch_layer_rna(torch.cat([batch_id, z_rna], dim=1))
 
         # Decoders
         x_rna_rec = self.decoder_rna(z_rna)
