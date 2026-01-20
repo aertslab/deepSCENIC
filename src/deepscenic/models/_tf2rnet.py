@@ -77,6 +77,9 @@ class MotifNet(nn.Module):
         """
         batch_size = emb.shape[0]
 
+        # Ensure float32 dtype for compatibility with model weights
+        emb = emb.float()
+
         # Reshape to process each position separately
         # (batch, bottleneck * emb_len) → (batch * emb_len, 1, bottleneck)
         emb = emb.reshape(-1, 1, self.bottleneck_size)

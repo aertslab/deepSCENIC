@@ -66,10 +66,11 @@ def _get_enformer_embeddings(
     torch.Tensor
         Flattened embeddings with shape (batch, bottleneck_size * emb_len).
     """
-    with torch.cuda.amp.autocast(enabled=True):
+    with torch.amp.autocast("cuda", enabled=True):
         output = enformer(sequences, return_only_embeddings=True)
     # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
-    return output.reshape(-1, bottleneck_size * emb_len)
+    # Convert to float32 since autocast may produce float16 output
+    return output.reshape(-1, bottleneck_size * emb_len).float()
 
 
 def _init_e1_cache(
