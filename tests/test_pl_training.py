@@ -82,6 +82,49 @@ class TestLossCurves:
         assert ax.get_yscale() == "linear"
         plt.close("all")
 
+    def test_creates_loss_curves_from_model(self, mock_deepscenic_model):
+        """Should create loss curves from DeepSCENICModel with history."""
+        from deepscenic.pl import loss_curves
+
+        ax = loss_curves(mock_deepscenic_model, show=False)
+
+        assert ax is not None
+        plt.close("all")
+
+    def test_raises_error_for_model_without_history(self, mock_vae, mock_tf2rnet, mock_adj_E1, minimal_dims):
+        """Should raise ValueError when model has no history."""
+        import torch
+
+        from deepscenic.pl import loss_curves
+        from deepscenic.tl._model import DeepSCENICModel
+        from deepscenic.tl._training_state import TrainingConfig
+
+        d = minimal_dims
+
+        # Create a simple mock enformer
+        class MockEnformer(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(10, 10)
+
+            def forward(self, x):
+                return x
+
+        model = DeepSCENICModel(
+            vae=mock_vae,
+            tf2rnet=mock_tf2rnet,
+            enformer=MockEnformer(),
+            adj_E1=mock_adj_E1,
+            config=TrainingConfig(),
+            tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
+            gene_names=[f"GENE{i}" for i in range(d["n_genes"])],
+            region_names=[f"chr1:{i * 100}-{i * 100 + 100}" for i in range(d["n_regions"])],
+            history=None,
+        )
+
+        with pytest.raises(ValueError, match="Model has no training history"):
+            loss_curves(model, show=False)
+
 
 class TestSparsityHistogram:
     """Tests for sparsity_histogram function."""

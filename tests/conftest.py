@@ -184,10 +184,17 @@ def mock_adj_E1():
 def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
     """Create a complete DeepSCENICModel for testing."""
     from deepscenic.tl._model import DeepSCENICModel
-    from deepscenic.tl._training_state import TrainingConfig
+    from deepscenic.tl._training_state import TrainingConfig, TrainingHistory
 
     d = MINIMAL_DIMS
     config = TrainingConfig(epochs=10, batch_size=d["n_cells"])
+
+    # Create sample history
+    history = TrainingHistory()
+    history.log("train", {"loss": 1.0, "rec_rna": 0.5})
+    history.log("train", {"loss": 0.8, "rec_rna": 0.4})
+    history.log("test", {"loss": 1.1})
+    history.log("test", {"loss": 0.9})
 
     return DeepSCENICModel(
         vae=mock_vae,
@@ -198,6 +205,7 @@ def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
         tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
         gene_names=[f"GENE{i}" for i in range(d["n_genes"])],
         region_names=[f"chr1:{i * 100}-{i * 100 + 100}" for i in range(d["n_regions"])],
+        history=history,
     )
 
 

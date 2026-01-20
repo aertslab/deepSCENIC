@@ -19,7 +19,7 @@ from .._utils import savefig_or_show, setup_axes
 
 
 def loss_curves(
-    history: pd.DataFrame | dict,
+    history: pd.DataFrame | dict | DeepSCENICModel,
     *,
     metrics: list[str] | None = None,
     ax: Axes | None = None,
@@ -35,28 +35,54 @@ def loss_curves(
     Parameters
     ----------
     history
-        Training history DataFrame or dict with columns/keys
-        like 'loss', 'val_loss', 'loss_rec_rna', etc.
+        Training history as DataFrame, dict, or DeepSCENICModel containing history.
     metrics
-        Specific metrics to plot. If None, plot all.
+        Specific metrics to plot. If None, plot all available.
     ax
-        Pre-existing axes.
+        Pre-existing axes for the plot.
     show
-        Display figure.
+        Whether to display the figure.
     save
-        Save figure.
+        Path to save figure, or True for default path.
     return_fig
-        Return Figure.
+        Whether to return the Figure object.
     figsize
-        Figure size.
+        Figure dimensions as (width, height).
     log_scale
-        Use log scale for y-axis.
+        Whether to use logarithmic scale for y-axis.
 
     Returns
     -------
-    Axes, Figure, or None
+    Axes, Figure, or None depending on show and return_fig parameters.
+
+    Examples
+    --------
+    >>> model = ds.tl.train(mdata, epochs=100)
+    >>> ds.pl.loss_curves(model)
+    >>> ds.pl.loss_curves(model.history.to_dict())
     """
     import pandas as pd
+
+    from deepscenic.tl._model import DeepSCENICModel
+
+    # Handle model input
+    if isinstance(history, DeepSCENICModel):
+        if history.history is None:
+            raise ValueError(
+                "Model has no training history. "
+                "History is only available for models that were just trained "
+                "or loaded from files that include history."
+            )
+        history = history.history.to_dict()
+
+    # Flatten nested dict structure if needed (train/test split)
+    if isinstance(history, dict) and "train" in history:
+        flat: dict[str, list[float]] = {}
+        for key, values in history.get("train", {}).items():
+            flat[f"train_{key}"] = values
+        for key, values in history.get("test", {}).items():
+            flat[f"test_{key}"] = values
+        history = flat
 
     if isinstance(history, dict):
         history = pd.DataFrame(history)
@@ -226,7 +252,7 @@ def latent_umap(
     try:
         from umap import UMAP
     except ImportError as e:
-        raise ImportError("umap-learn is required for latent_umap. " "Install with: pip install umap-learn") from e
+        raise ImportError("umap-learn is required for latent_umap. Install with: pip install umap-learn") from e
 
     # Get latent representations
     with torch.no_grad():
@@ -276,7 +302,9 @@ def latent_umap(
             ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
         else:
             # Continuous
-            scatter = ax.scatter(embedding[:, 0], embedding[:, 1], c=categories, cmap="viridis", alpha=0.7, s=10, **kwargs)
+            scatter = ax.scatter(
+                embedding[:, 0], embedding[:, 1], c=categories, cmap="viridis", alpha=0.7, s=10, **kwargs
+            )
             plt.colorbar(scatter, ax=ax, label=color)
     else:
         ax.scatter(embedding[:, 0], embedding[:, 1], alpha=0.7, s=10, **kwargs)

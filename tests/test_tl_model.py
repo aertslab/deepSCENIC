@@ -20,6 +20,7 @@ class TestDeepSCENICModel:
         assert hasattr(mock_deepscenic_model, "tf_names")
         assert hasattr(mock_deepscenic_model, "gene_names")
         assert hasattr(mock_deepscenic_model, "region_names")
+        assert hasattr(mock_deepscenic_model, "history")
 
     def test_to_device(self, mock_deepscenic_model):
         """Model should move to device correctly."""
@@ -86,6 +87,93 @@ class TestModelSaveLoad:
             assert "gene_indices" in data
             assert "r2g_indices" in data
             assert "r2g_distances" in data
+
+
+class TestModelHistory:
+    """Tests for training history on DeepSCENICModel."""
+
+    def test_model_has_history_attribute(self, mock_deepscenic_model):
+        """Model should have history attribute."""
+        assert hasattr(mock_deepscenic_model, "history")
+        assert mock_deepscenic_model.history is not None
+
+    def test_history_default_is_none(self, mock_vae, mock_tf2rnet, mock_adj_E1, minimal_dims):
+        """Model should accept None history by default."""
+        from deepscenic.tl._model import DeepSCENICModel
+        from deepscenic.tl._training_state import TrainingConfig
+
+        d = minimal_dims
+
+        # Create a simple mock enformer
+        class MockEnformer(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(10, 10)
+
+            def forward(self, x):
+                return x
+
+        model = DeepSCENICModel(
+            vae=mock_vae,
+            tf2rnet=mock_tf2rnet,
+            enformer=MockEnformer(),
+            adj_E1=mock_adj_E1,
+            config=TrainingConfig(),
+            tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
+            gene_names=[f"GENE{i}" for i in range(d["n_genes"])],
+            region_names=[f"chr1:{i * 100}-{i * 100 + 100}" for i in range(d["n_regions"])],
+        )
+        assert model.history is None
+
+
+class TestHistorySaveLoad:
+    """Tests for history persistence in save/load."""
+
+    def test_save_includes_history_when_present(self, mock_deepscenic_model):
+        """Save should include history when model has it."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "model.pt"
+            mock_deepscenic_model.save(path)
+            data = torch.load(path)
+
+            assert "history" in data
+            assert data["history"]["train"]["loss"] == [1.0, 0.8]
+            assert data["history"]["test"]["loss"] == [1.1, 0.9]
+
+    def test_save_omits_history_when_none(self, mock_vae, mock_tf2rnet, mock_adj_E1, minimal_dims):
+        """Save should not include history key when None."""
+        from deepscenic.tl._model import DeepSCENICModel
+        from deepscenic.tl._training_state import TrainingConfig
+
+        d = minimal_dims
+
+        # Create a simple mock enformer
+        class MockEnformer(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.linear = torch.nn.Linear(10, 10)
+
+            def forward(self, x):
+                return x
+
+        model = DeepSCENICModel(
+            vae=mock_vae,
+            tf2rnet=mock_tf2rnet,
+            enformer=MockEnformer(),
+            adj_E1=mock_adj_E1,
+            config=TrainingConfig(),
+            tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
+            gene_names=[f"GENE{i}" for i in range(d["n_genes"])],
+            region_names=[f"chr1:{i * 100}-{i * 100 + 100}" for i in range(d["n_regions"])],
+            history=None,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "model.pt"
+            model.save(path)
+            data = torch.load(path)
+
+            assert "history" not in data
 
 
 class TestLoadModel:

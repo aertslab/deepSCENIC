@@ -12,7 +12,7 @@ import pandas as pd
 import torch
 from torch import nn
 
-from ._training_state import PretrainConfig, TrainingConfig
+from ._training_state import PretrainConfig, TrainingConfig, TrainingHistory
 
 log = logging.getLogger("deepscenic.tl")
 
@@ -30,21 +30,24 @@ class DeepSCENICModel:
     Attributes
     ----------
     vae : DeepSCENICVAE
-        Trained VAE model
+        Trained VAE model.
     tf2rnet : MotifNet
-        Trained TF2rNet context head
+        Trained TF2rNet context head.
     enformer : nn.Module
-        Fine-tuned Enformer model
+        Fine-tuned Enformer model.
     adj_E1 : Tensor
-        Cached E1 matrix (n_regions, n_tfs)
+        Cached E1 matrix (n_regions, n_tfs).
     config : TrainingConfig
-        Training configuration used
+        Training configuration used.
     tf_names : list[str]
-        TF names in order
+        TF names in order.
     gene_names : list[str]
-        Gene names in order
+        Gene names in order.
     region_names : list[str]
-        Region names in order
+        Region names in order.
+    history : TrainingHistory | None
+        Training history with loss metrics per epoch. Available when model was
+        just trained or loaded from a file that includes history.
 
     Examples
     --------
@@ -62,49 +65,52 @@ class DeepSCENICModel:
     tf_names: list[str]
     gene_names: list[str]
     region_names: list[str]
+    history: TrainingHistory | None = None
 
     def save(self, path: str | Path) -> None:
         """
         Save model to file.
 
-        Includes all components (VAE, TF2rNet, Enformer) and metadata.
-        File size will be ~1GB+ due to Enformer weights.
+        Includes all components (VAE, TF2rNet, Enformer), metadata, and training
+        history if available. File size will be ~1GB+ due to Enformer weights.
 
         Parameters
         ----------
         path
             Output file path (.pt)
         """
-        torch.save(
-            {
-                "vae_state_dict": self.vae.state_dict(),
-                "tf2rnet_state_dict": self.tf2rnet.state_dict(),
-                "enformer_state_dict": self.enformer.state_dict(),
-                "adj_E1": self.adj_E1,
-                "config": self.config.to_dict(),
-                "tf_names": self.tf_names,
-                "gene_names": self.gene_names,
-                "region_names": self.region_names,
-                # Store model architecture params for reconstruction
-                "n_tfs": self.vae.n_tfs,
-                "n_genes": self.vae.n_genes,
-                "n_regions": self.vae.n_regions,
-                "n_hidden": self.vae.n_hidden,
-                "n_batches": self.vae.n_batches,
-                # Store buffer tensors for VAE reconstruction
-                "tf_indices": self.vae.tf_indices,
-                "gene_indices": self.vae.gene_indices,
-                "r2g_indices": self.vae.r2g_indices,
-                "r2g_distances": self.vae.r2g_distances,
-                # PPI buffers (if present)
-                "use_ppi": self.vae.use_ppi,
-                "ppi_edge_index": getattr(self.vae, "ppi_edge_index", None),
-                "ppi_genes_idx": getattr(self.vae, "ppi_genes_idx", None),
-                "ppi_tfs_idx_keys": getattr(self.vae, "ppi_tfs_idx_keys", None),
-                "ppi_tfs_idx_values": getattr(self.vae, "ppi_tfs_idx_values", None),
-            },
-            path,
-        )
+        data = {
+            "vae_state_dict": self.vae.state_dict(),
+            "tf2rnet_state_dict": self.tf2rnet.state_dict(),
+            "enformer_state_dict": self.enformer.state_dict(),
+            "adj_E1": self.adj_E1,
+            "config": self.config.to_dict(),
+            "tf_names": self.tf_names,
+            "gene_names": self.gene_names,
+            "region_names": self.region_names,
+            # Store model architecture params for reconstruction
+            "n_tfs": self.vae.n_tfs,
+            "n_genes": self.vae.n_genes,
+            "n_regions": self.vae.n_regions,
+            "n_hidden": self.vae.n_hidden,
+            "n_batches": self.vae.n_batches,
+            # Store buffer tensors for VAE reconstruction
+            "tf_indices": self.vae.tf_indices,
+            "gene_indices": self.vae.gene_indices,
+            "r2g_indices": self.vae.r2g_indices,
+            "r2g_distances": self.vae.r2g_distances,
+            # PPI buffers (if present)
+            "use_ppi": self.vae.use_ppi,
+            "ppi_edge_index": getattr(self.vae, "ppi_edge_index", None),
+            "ppi_genes_idx": getattr(self.vae, "ppi_genes_idx", None),
+            "ppi_tfs_idx_keys": getattr(self.vae, "ppi_tfs_idx_keys", None),
+            "ppi_tfs_idx_values": getattr(self.vae, "ppi_tfs_idx_values", None),
+        }
+
+        if self.history is not None:
+            data["history"] = self.history.to_dict()
+
+        torch.save(data, path)
 
         log.info(f"Saved model to {path}")
 
@@ -174,10 +180,12 @@ class DeepSCENICModel:
         enformer.to(device)
         enformer.eval()
 
-        log.info(
-            f"Loaded model from {path}: {data['n_genes']} genes, "
-            f"{data['n_tfs']} TFs, {data['n_regions']} regions"
-        )
+        log.info(f"Loaded model from {path}: {data['n_genes']} genes, {data['n_tfs']} TFs, {data['n_regions']} regions")
+
+        # Restore history if present
+        history = None
+        if "history" in data:
+            history = TrainingHistory.from_dict(data["history"])
 
         return cls(
             vae=vae,
@@ -188,6 +196,7 @@ class DeepSCENICModel:
             tf_names=data["tf_names"],
             gene_names=data["gene_names"],
             region_names=data["region_names"],
+            history=history,
         )
 
     def to(self, device: str | torch.device) -> DeepSCENICModel:
@@ -529,9 +538,7 @@ def load_legacy_model(
     # Load r2g sparse matrix
     r2g_sparse = load_npz(r2g_path)
     r2g_coo = r2g_sparse.tocoo()
-    r2g_indices = torch.tensor(
-        np.vstack([r2g_coo.row, r2g_coo.col]), dtype=torch.long
-    )
+    r2g_indices = torch.tensor(np.vstack([r2g_coo.row, r2g_coo.col]), dtype=torch.long)
     r2g_distances = torch.tensor(r2g_coo.data, dtype=torch.float32)
 
     log.info(f"  R2G links: {r2g_indices.shape[1]}")
@@ -547,14 +554,12 @@ def load_legacy_model(
 
     if use_ppi:
         log.info("Building PPI network...")
-        ppi_edge_index, ppi_genes_idx, ppi_tfs_idx_keys, ppi_tfs_idx_values = (
-            _build_ppi_indices(
-                adata_rna,
-                ppi_data,
-                tf_names,
-                ppi_confidence,
-                species,
-            )
+        ppi_edge_index, ppi_genes_idx, ppi_tfs_idx_keys, ppi_tfs_idx_values = _build_ppi_indices(
+            adata_rna,
+            ppi_data,
+            tf_names,
+            ppi_confidence,
+            species,
         )
         log.info(f"  PPI: {ppi_edge_index.shape[1]} edges, {len(ppi_genes_idx)} genes")
 
@@ -779,12 +784,8 @@ def _build_ppi_indices(
 
     # Format gene names based on species
     if species == "mouse":
-        ppi["Source"] = ppi["Source"].apply(
-            lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper()
-        )
-        ppi["Target"] = ppi["Target"].apply(
-            lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper()
-        )
+        ppi["Source"] = ppi["Source"].apply(lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper())
+        ppi["Target"] = ppi["Target"].apply(lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper())
 
     # Filter to genes in data
     all_genes = set(adata_rna.var_names)

@@ -361,10 +361,7 @@ def train(
         adj_E1_cache = _init_e1_cache(enformer, tf2rnet, train_seq_loader, device, config)
 
     n_cells = mdata.n_obs
-    log.info(
-        f"Starting training: {epochs} epochs, {n_cells} cells, "
-        f"{n_genes} genes, {n_tfs} TFs, {n_regions} regions"
-    )
+    log.info(f"Starting training: {epochs} epochs, {n_cells} cells, {n_genes} genes, {n_tfs} TFs, {n_regions} regions")
 
     # Optimizers
     optimizer_vae = Adam(vae.parameters(), lr=config.lr_vae, weight_decay=config.weight_decay)
@@ -621,6 +618,7 @@ def train(
         tf_names=tf_names,
         gene_names=gene_names,
         region_names=region_names,
+        history=history,
     )
 
 
