@@ -477,7 +477,7 @@ def train(
                 x_atac_rec=output.x_atac_rec,
                 mu=output.mu,
                 logvar=output.logvar,
-                adj_E1_batch=adj_E1[seq_idx] if epoch >= warmup_vae else adj_E1,
+                adj_E1_batch=adj_E1[seq_idx] if epoch >= warmup_vae else adj_E1,  # type: ignore
                 adj_E2=vae.adj_E2,
                 r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                 x_rna_ppi=output.x_rna_ppi,
@@ -1012,7 +1012,7 @@ def pretrain(
         n_batches = 0
 
         pbar = tqdm(seq_loader, desc=f"Pretrain {epoch + 1}/{epochs}")
-        for (sequences,), _seq_idx in pbar:
+        for (sequences,), _ in pbar:
             sequences = sequences.to(device)
 
             optimizer.zero_grad()
