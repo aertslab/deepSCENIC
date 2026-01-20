@@ -23,3 +23,14 @@ __all__ = [
     "models",
     "genome",
 ]
+
+# Configure package-level logging to show INFO messages by default
+import logging
+
+_logger = logging.getLogger("deepscenic")
+_logger.setLevel(logging.INFO)
+
+if not _logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(name)s - %(levelname)s - %(message)s"))
+    _logger.addHandler(_handler)
