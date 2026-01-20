@@ -174,7 +174,7 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
     "ignore:From 0.4 .update:FutureWarning",
-    "ignore::deepscenic.data.schema.SchemaWarning",
+    "ignore::deepscenic._data.SchemaWarning",
     "ignore:'pin_memory' argument is set as true:UserWarning",
     "ignore:Cannot join columns with the same name:UserWarning",
 ]

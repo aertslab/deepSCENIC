@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 import scanpy as sc
 
-from deepscenic.data.schema import SchemaError, is_valid_schema, validate_schema
+from deepscenic._data import SchemaError, is_valid_schema, validate_schema
 
 
 def test_validate_missing_rna():

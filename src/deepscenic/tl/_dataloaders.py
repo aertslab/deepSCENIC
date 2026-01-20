@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import mudata as md
     from numpy.typing import NDArray
 
-    from ..genome import Genome
+    from .._genome import Genome
 
 
 class CellDataset(Dataset):
@@ -190,7 +190,7 @@ def build_sequence_dataloader(
     ...     batch_size=1000,
     ... )  # doctest: +SKIP
     """
-    from ..genome import GenomeIntervalDataset, get_genome
+    from .._genome import GenomeIntervalDataset, get_genome
 
     if genome is None:
         genome = get_genome()

@@ -5,7 +5,7 @@ import random
 import pytest
 import torch
 
-from deepscenic.genome import (
+from deepscenic._genome import (
     Genome,
     GenomeIntervalDataset,
     clear_genome,

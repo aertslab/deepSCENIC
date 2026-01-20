@@ -7,7 +7,7 @@ import pooch
 import pytest
 
 import deepscenic as ds
-from deepscenic.datasets import TF_COLLECTION_CHECKSUMS, TF_COLLECTION_URLS
+from deepscenic._datasets import TF_COLLECTION_CHECKSUMS, TF_COLLECTION_URLS
 
 
 class TestFetchTFCollection:
@@ -16,7 +16,7 @@ class TestFetchTFCollection:
     def test_invalid_species(self):
         """Test error on invalid species."""
         with pytest.raises(ValueError, match="Unknown species"):
-            ds.datasets.fetch_tf_collection(species="invalid") # type: ignore[arg-type]
+            ds.fetch_tf_collection(species="invalid") # type: ignore[arg-type]
 
     def test_species_urls_have_hash(self):
         """Test that all expected species have URLs defined."""
@@ -32,7 +32,7 @@ class TestFetchTFCollection:
 
         mock_retrieve.return_value = str(tf_file)
 
-        tfs = ds.datasets.fetch_tf_collection(species="mouse")
+        tfs = ds.fetch_tf_collection(species="mouse")
 
         assert isinstance(tfs, list)
         assert len(tfs) == 4
@@ -43,16 +43,16 @@ class TestFetchTFCollection:
 class TestFetchGeneAnnotation:
     """Tests for fetch_gene_annotation function."""
 
-    @patch("deepscenic.datasets.gene_annotation._fetch_from_biomart")
+    @patch("deepscenic._datasets._fetch_from_biomart")
     def test_invalid_species_raises(self, mock_fetch):
         """Test error on invalid species."""
         # Setup mock to return empty dataset list
         mock_fetch.side_effect = ValueError("Dataset 'invalid_species_xyz_gene_ensembl' not found.")
 
         with pytest.raises(ValueError, match="not found"):
-            ds.datasets.fetch_gene_annotation(species="invalid_species_xyz", force_download=True)
+            ds.fetch_gene_annotation(species="invalid_species_xyz", force_download=True)
 
-    @patch("deepscenic.datasets.gene_annotation._fetch_from_biomart")
+    @patch("deepscenic._datasets._fetch_from_biomart")
     def test_fetch_returns_dataframe(self, mock_fetch, tmp_path, monkeypatch):
         """Test that fetch returns properly formatted DataFrame."""
         # Redirect cache to temp directory
@@ -72,7 +72,7 @@ class TestFetchGeneAnnotation:
         )
         mock_fetch.return_value = (mock_annot, None)
 
-        annot, _ = ds.datasets.fetch_gene_annotation(species="mmusculus")
+        annot, _ = ds.fetch_gene_annotation(species="mmusculus")
 
         # Verify result structure
         assert isinstance(annot, pd.DataFrame)
@@ -95,14 +95,14 @@ class TestGeneAnnotationCaching:
         monkeypatch.setattr(pooch, "os_cache", lambda _: tmp_path)
 
         # Mock the biomart fetch to avoid network
-        with patch("deepscenic.datasets.gene_annotation._fetch_from_biomart") as mock:
+        with patch("deepscenic._datasets._fetch_from_biomart") as mock:
             mock_annot = pd.DataFrame(
                 {"col": [1, 2]},
                 index=pd.Index(["A", "B"], name="Gene"),
             )
             mock.return_value = (mock_annot, None)
 
-            ds.datasets.fetch_gene_annotation()
+            ds.fetch_gene_annotation()
 
         # Check cache file exists
         cache_files = list(tmp_path.glob("gene_annot_*.parquet"))
@@ -113,18 +113,18 @@ class TestGeneAnnotationCaching:
         monkeypatch.setattr(pooch, "os_cache", lambda _: tmp_path)
 
         # First call - creates cache
-        with patch("deepscenic.datasets.gene_annotation._fetch_from_biomart") as mock:
+        with patch("deepscenic._datasets._fetch_from_biomart") as mock:
             mock_annot = pd.DataFrame(
                 {"col": [1, 2]},
                 index=pd.Index(["A", "B"], name="Gene"),
             )
             mock.return_value = (mock_annot, None)
-            ds.datasets.fetch_gene_annotation()
+            ds.fetch_gene_annotation()
             assert mock.call_count == 1
 
         # Second call - should use cache, not fetch
-        with patch("deepscenic.datasets.gene_annotation._fetch_from_biomart") as mock:
-            annot, _ = ds.datasets.fetch_gene_annotation()
+        with patch("deepscenic._datasets._fetch_from_biomart") as mock:
+            annot, _ = ds.fetch_gene_annotation()
             assert mock.call_count == 0  # Not called!
             assert len(annot) == 2
 
@@ -132,7 +132,7 @@ class TestGeneAnnotationCaching:
         """Test that force_download=True bypasses cache."""
         monkeypatch.setattr(pooch, "os_cache", lambda _: tmp_path)
 
-        with patch("deepscenic.datasets.gene_annotation._fetch_from_biomart") as mock:
+        with patch("deepscenic._datasets._fetch_from_biomart") as mock:
             mock_annot = pd.DataFrame(
                 {"col": [1]},
                 index=pd.Index(["A"], name="Gene"),
@@ -140,10 +140,10 @@ class TestGeneAnnotationCaching:
             mock.return_value = (mock_annot, None)
 
             # First call
-            ds.datasets.fetch_gene_annotation()
+            ds.fetch_gene_annotation()
 
             # Second call with force_download
-            ds.datasets.fetch_gene_annotation(force_download=True)
+            ds.fetch_gene_annotation(force_download=True)
 
             assert mock.call_count == 2  # Called both times
 
@@ -151,7 +151,7 @@ class TestGeneAnnotationCaching:
         """Test that different parameters create separate cache files."""
         monkeypatch.setattr(pooch, "os_cache", lambda _: tmp_path)
 
-        with patch("deepscenic.datasets.gene_annotation._fetch_from_biomart") as mock:
+        with patch("deepscenic._datasets._fetch_from_biomart") as mock:
             mock_annot = pd.DataFrame(
                 {"col": [1]},
                 index=pd.Index(["A"], name="Gene"),
@@ -159,8 +159,8 @@ class TestGeneAnnotationCaching:
             mock.return_value = (mock_annot, None)
 
             # Call with different species
-            ds.datasets.fetch_gene_annotation(species="hsapiens")
-            ds.datasets.fetch_gene_annotation(species="mmusculus")
+            ds.fetch_gene_annotation(species="hsapiens")
+            ds.fetch_gene_annotation(species="mmusculus")
 
         # Should have 2 different cache files
         cache_files = list(tmp_path.glob("gene_annot_*.parquet"))
@@ -178,7 +178,7 @@ class TestCacheManagement:
         (tmp_path / "gene_annot_test.parquet").write_bytes(b"x" * 1000)
         (tmp_path / "allTFs_mouse.txt").write_text("TF1\nTF2\n")
 
-        info = ds.datasets.get_cache_info()
+        info = ds.get_cache_info()
 
         assert info["cache_dir"] == str(tmp_path)
         assert len(info["files"]) == 2
@@ -188,7 +188,7 @@ class TestCacheManagement:
         """Test cache info with empty cache."""
         monkeypatch.setattr(pooch, "os_cache", lambda _: tmp_path)
 
-        info = ds.datasets.get_cache_info()
+        info = ds.get_cache_info()
 
         assert info["cache_dir"] == str(tmp_path)
         assert len(info["files"]) == 0
@@ -202,7 +202,7 @@ class TestCacheManagement:
         (tmp_path / "file1.parquet").write_bytes(b"x")
         (tmp_path / "file2.txt").write_text("y")
 
-        deleted = ds.datasets.clear_cache()
+        deleted = ds.clear_cache()
 
         assert len(deleted) == 2
         assert not (tmp_path / "file1.parquet").exists()
@@ -216,7 +216,7 @@ class TestCacheManagement:
         (tmp_path / "gene_annot_test.parquet").write_bytes(b"x")
         (tmp_path / "allTFs_mouse.txt").write_text("y")
 
-        deleted = ds.datasets.clear_cache("gene_annot_*")
+        deleted = ds.clear_cache("gene_annot_*")
 
         assert len(deleted) == 1
         assert not (tmp_path / "gene_annot_test.parquet").exists()
@@ -227,6 +227,6 @@ class TestCacheManagement:
         nonexistent = tmp_path / "nonexistent"
         monkeypatch.setattr(pooch, "os_cache", lambda _: nonexistent)
 
-        deleted = ds.datasets.clear_cache()
+        deleted = ds.clear_cache()
 
         assert deleted == []

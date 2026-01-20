@@ -1,4 +1,4 @@
-"""BED file reading utilities."""
+"""I/O functions for deepSCENIC data."""
 
 from __future__ import annotations
 
@@ -6,12 +6,172 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import anndata as ad
+import mudata as md
+import numpy as np
 import pandas as pd
+
+from ._data import validate_schema
 
 if TYPE_CHECKING:
     pass
 
+__all__ = ["read", "read_bed", "write"]
+
 log = logging.getLogger("deepscenic.io")
+
+md.set_options(pull_on_update=False)  # adopt new mudata behaviour
+
+# Enable nullable string serialization (supported in anndata >= 0.11)
+ad.settings.allow_write_nullable_strings = True
+
+
+def read(
+    path: str | Path,
+    validate: bool = True,
+    strict: bool = False,
+    backed: str | bool | None = None,
+) -> md.MuData:
+    """
+    Read a deepSCENIC MuData file.
+
+    Wrapper around mudata.read() with schema validation for required deepSCENIC fields.
+
+    Parameters
+    ----------
+    path
+        Path to .h5mu file.
+    validate
+        Whether to validate schema after loading.
+    strict
+        Whether to log warnings (strict: False) or raise Exception when not following schema.
+    backed
+        Load in backed mode for memory efficiency.
+        See anndata/mudata official documentation for more info.
+
+    Returns
+    -------
+    Loaded and optionally validated MuData.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> mdata = ds.read("my_dataset.h5mu")  # doctest: +SKIP
+    >>> mdata  # doctest: +SKIP
+    MuData object with n_obs x n_vars = 39470 x 455165
+      rna: 39470 x 16437
+      atac: 39470 x 438728
+    """
+    path = Path(path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    if path.suffix != ".h5mu":
+        raise ValueError(f"Expected .h5mu file, got: {path.suffix}")
+
+    mdata = md.read(path, backed=backed)
+    if isinstance(mdata, ad.AnnData):
+        raise ValueError("Expected MuData format, got Anndata")
+
+    if validate:
+        validate_schema(mdata, strict=strict)
+
+    log.info(f"Loaded {path}: {mdata.n_obs} cells, {mdata['rna'].n_vars} genes, {mdata['atac'].n_vars} regions")
+
+    return mdata
+
+
+def _convert_nullable_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Convert object-dtype columns with NA to proper nullable pandas dtypes.
+
+    h5py cannot serialize object-dtype columns containing pd.NA. This function
+    converts them to proper nullable dtypes (string, Int64, Float64) which
+    AnnData can serialize correctly.
+
+    Parameters
+    ----------
+    df
+        DataFrame to convert.
+
+    Returns
+    -------
+    DataFrame with converted columns.
+    """
+    df = df.copy()
+    for col in df.columns:
+        if df[col].dtype != object:
+            continue
+        if not df[col].isna().any():  # type: ignore
+            continue
+
+        non_null = df[col].dropna()
+        if len(non_null) == 0:
+            # All NA - default to string dtype
+            df[col] = df[col].astype("string")
+            continue
+
+        first_val = non_null.iloc[0]
+        if isinstance(first_val, str):
+            df[col] = df[col].astype("string")
+        elif isinstance(first_val, (int, np.integer)):
+            df[col] = df[col].astype("Int64")
+        elif isinstance(first_val, (float, np.floating)):
+            df[col] = df[col].astype("Float64")
+        elif isinstance(first_val, (bool, np.bool_)):
+            df[col] = df[col].astype("boolean")
+
+    return df
+
+
+def write(
+    mdata: md.MuData,
+    path: str | Path,
+    validate: bool = True,
+    strict: bool = True,
+    compression: str = "gzip",
+) -> None:
+    """
+    Write MuData to file.
+
+    Parameters
+    ----------
+    mdata
+        Data to write.
+    path
+        Output path (should end in .h5mu).
+    validate
+        Validate schema before writing.
+    strict
+        Use strict validation (raise Exceptions instead of logging warnings).
+    compression
+        Compression for h5 file.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> ds.write(mdata, "processed_dataset.h5mu")  # doctest: +SKIP
+    """
+    path = Path(path)
+
+    if validate:
+        validate_schema(mdata, strict=strict)
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create a copy to avoid modifying the original
+    mdata = mdata.copy()
+
+    # Convert object-dtype columns with pd.NA to proper nullable dtypes
+    mdata.obs = _convert_nullable_columns(mdata.obs)
+    for mod in mdata.mod.values():
+        mod.var = _convert_nullable_columns(mod.var)
+        mod.obs = _convert_nullable_columns(mod.obs)
+
+    mdata.write(str(path), compression=compression)
+
+    log.info(f"Wrote {path}: {mdata.n_obs} cells")
 
 
 def read_bed(
@@ -34,7 +194,7 @@ def read_bed(
         Chromosome sizes for validation. Can be:
 
         - pd.DataFrame with columns: 'Chromosome', 'Start', 'End'
-          (e.g., from ``ds.datasets.fetch_gene_annotation()``)
+          (e.g., from ``ds.fetch_gene_annotation()``)
         - Path to chromsizes file (tab-separated: chrom, size)
         - None to skip validation (default)
 
@@ -66,22 +226,22 @@ def read_bed(
     Basic usage without validation:
 
     >>> import deepscenic as ds
-    >>> regions = ds.io.read_bed("peaks.bed")
-    >>> regions.head()
+    >>> regions = ds.read_bed("peaks.bed")  # doctest: +SKIP
+    >>> regions.head()  # doctest: +SKIP
        chromosome  start    end          region
     0        chr1   1000   2000  chr1:1000-2000
     1        chr1   3000   4000  chr1:3000-4000
 
     With chromosome validation:
 
-    >>> annot, chromsizes = ds.datasets.fetch_gene_annotation("mmusculus")
-    >>> regions = ds.io.read_bed("peaks.bed", chromsizes=chromsizes)
+    >>> annot, chromsizes = ds.fetch_gene_annotation("mmusculus")  # doctest: +SKIP
+    >>> regions = ds.read_bed("peaks.bed", chromsizes=chromsizes)  # doctest: +SKIP
     # Regions on unknown chromosomes or out of bounds are filtered
 
     Get list of region strings:
 
-    >>> regions_list = regions["region"].tolist()
-    >>> len(regions_list)
+    >>> regions_list = regions["region"].tolist()  # doctest: +SKIP
+    >>> len(regions_list)  # doctest: +SKIP
     1234
     """
     bed_file = Path(bed_file)

@@ -64,9 +64,7 @@ def logo_attribution(
     try:
         from tangermeme.plot import plot_logo
     except ImportError as e:
-        raise ImportError(
-            "tangermeme is required for logo_attribution. " "Install with: pip install tangermeme"
-        ) from e
+        raise ImportError("tangermeme is required for logo_attribution. Install with: pip install tangermeme") from e
 
     # Ensure shape is (seq_len, 4)
     if attributions.shape[0] == 4 and attributions.shape[1] != 4:
@@ -143,7 +141,7 @@ def logo_motif(
     try:
         import logomaker
     except ImportError as e:
-        raise ImportError("logomaker is required for logo_motif. " "Install with: pip install logomaker") from e
+        raise ImportError("logomaker is required for logo_motif. Install with: pip install logomaker") from e
 
     import pandas as pd
 

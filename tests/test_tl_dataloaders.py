@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from deepscenic.genome import clear_genome, register_genome
+from deepscenic._genome import clear_genome, register_genome
 from deepscenic.tl._dataloaders import CellDataset, SequenceDatasetWithIndex, collate_cell_batch
 
 

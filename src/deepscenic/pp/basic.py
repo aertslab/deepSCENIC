@@ -170,7 +170,7 @@ def mark_dars(
 
 def _load_dars_from_dir(dar_dir: Path) -> dict[str, list[str]]:
     """Load DARs from directory of BED files."""
-    from ..io.bed import read_bed
+    from .._io import read_bed
 
     dar_dict = {}
 

@@ -203,9 +203,7 @@ def split_features_by_chromosome(
         # Warn about unannotated genes
         n_unannotated = rna.var["chromosome"].isna().sum()
         if n_unannotated > 0:
-            log.info(
-                f"{n_unannotated} genes without chromosome annotation assigned to 'train' split"
-            )
+            log.info(f"{n_unannotated} genes without chromosome annotation assigned to 'train' split")
     else:
         raise ValueError(
             "Expects 'chromosome' column in rna.var. Run `ds.pp.add_gene_annotation` first to annotate gene positions based on TSS."

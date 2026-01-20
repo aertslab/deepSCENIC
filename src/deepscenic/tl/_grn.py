@@ -56,11 +56,13 @@ def extract_grn(model: DeepSCENICModel) -> dict[str, pd.DataFrame]:
             gene_idx = r2g_indices[1, i]
             weight = adj_E2[i]
 
-            E2_data.append({
-                "region": model.region_names[region_idx],
-                "gene": model.gene_names[gene_idx],
-                "weight": weight,
-            })
+            E2_data.append(
+                {
+                    "region": model.region_names[region_idx],
+                    "gene": model.gene_names[gene_idx],
+                    "weight": weight,
+                }
+            )
 
         E2_df = pd.DataFrame(E2_data)
 
@@ -121,11 +123,13 @@ def extract_e2_matrix(
             region_idx = r2g_indices[0, i]
             gene_idx = r2g_indices[1, i]
             weight = adj_E2[i]
-            data.append({
-                "region": model.region_names[region_idx],
-                "gene": model.gene_names[gene_idx],
-                "weight": weight,
-            })
+            data.append(
+                {
+                    "region": model.region_names[region_idx],
+                    "gene": model.gene_names[gene_idx],
+                    "weight": weight,
+                }
+            )
         return pd.DataFrame(data)
     else:
         # Dense format (warning: may be very large)
@@ -194,14 +198,16 @@ def get_tf_targets(
 
             for gene_idx, e2_weight in zip(gene_indices, e2_weights, strict=False):
                 if e2_weight > threshold:
-                    results.append({
-                        "tf": tf_name,
-                        "region": region_name,
-                        "E1_weight": e1_weight,
-                        "gene": model.gene_names[gene_idx],
-                        "E2_weight": e2_weight,
-                        "combined_weight": e1_weight * e2_weight,
-                    })
+                    results.append(
+                        {
+                            "tf": tf_name,
+                            "region": region_name,
+                            "E1_weight": e1_weight,
+                            "gene": model.gene_names[gene_idx],
+                            "E2_weight": e2_weight,
+                            "combined_weight": e1_weight * e2_weight,
+                        }
+                    )
 
     df = pd.DataFrame(results)
 
@@ -268,14 +274,16 @@ def get_gene_regulators(
         for tf_idx in range(len(model.tf_names)):
             e1_weight = E1[region_idx, tf_idx]
             if e1_weight > threshold:
-                results.append({
-                    "gene": gene_name,
-                    "tf": model.tf_names[tf_idx],
-                    "region": region_name,
-                    "E1_weight": e1_weight,
-                    "E2_weight": e2_weight,
-                    "combined_weight": e1_weight * e2_weight,
-                })
+                results.append(
+                    {
+                        "gene": gene_name,
+                        "tf": model.tf_names[tf_idx],
+                        "region": region_name,
+                        "E1_weight": e1_weight,
+                        "E2_weight": e2_weight,
+                        "combined_weight": e1_weight * e2_weight,
+                    }
+                )
 
     df = pd.DataFrame(results)
 

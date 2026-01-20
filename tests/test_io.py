@@ -275,7 +275,7 @@ def test_read_with_validation_warnings(minimal_mdata):
         minimal_mdata.write(path)
 
         # Read with validation - should warn but not raise with strict False
-        with pytest.warns(ds.data.SchemaWarning):
+        with pytest.warns(ds.SchemaWarning):
             loaded = ds.read(path, validate=True, strict=False)
 
         assert loaded is not None
@@ -289,7 +289,7 @@ class TestReadBed:
         bed_file = tmp_path / "regions.bed"
         bed_file.write_text("chr1\t1000\t2000\nchr1\t3000\t4000\nchr2\t5000\t6000\n")
 
-        regions = ds.io.read_bed(bed_file)
+        regions = ds.read_bed(bed_file)
 
         assert len(regions) == 3
         assert list(regions.columns) == ["chromosome", "start", "end", "region"]
@@ -310,7 +310,7 @@ class TestReadBed:
         # Standard BED6 format: chrom, start, end, name, score, strand
         bed_file.write_text("chr1\t1000\t2000\tpeak_1\t500\t+\nchr1\t3000\t4000\tpeak_2\t300\t-\n")
 
-        regions = ds.io.read_bed(bed_file)
+        regions = ds.read_bed(bed_file)
 
         # Should only use first 3 columns
         assert len(regions) == 2
@@ -322,7 +322,7 @@ class TestReadBed:
         bed_file = tmp_path / "regions.bed"
         bed_file.write_text("chr10\t12345\t67890\n")
 
-        regions = ds.io.read_bed(bed_file)
+        regions = ds.read_bed(bed_file)
 
         assert regions.iloc[0]["region"] == "chr10:12345-67890"
 
@@ -331,7 +331,7 @@ class TestReadBed:
         nonexistent = tmp_path / "nonexistent.bed"
 
         with pytest.raises(FileNotFoundError, match="BED file not found"):
-            ds.io.read_bed(nonexistent)
+            ds.read_bed(nonexistent)
 
     def test_empty_bed_file(self, tmp_path):
         """Test error on empty BED file."""
@@ -339,7 +339,7 @@ class TestReadBed:
         bed_file.write_text("")
 
         with pytest.raises(ValueError, match="BED file is empty"):
-            ds.io.read_bed(bed_file)
+            ds.read_bed(bed_file)
 
     def test_basic_coordinate_validation_negative_start(self, tmp_path):
         """Test filtering regions with negative start position."""
@@ -350,7 +350,7 @@ class TestReadBed:
             "chr2\t3000\t4000\n"
         )
 
-        regions = ds.io.read_bed(bed_file)
+        regions = ds.read_bed(bed_file)
 
         # Invalid region should be filtered
         assert len(regions) == 2
@@ -368,7 +368,7 @@ class TestReadBed:
             "chr2\t3000\t4000\n"
         )
 
-        regions = ds.io.read_bed(bed_file)
+        regions = ds.read_bed(bed_file)
 
         # Only valid regions should remain
         assert len(regions) == 2
@@ -396,7 +396,7 @@ class TestReadBed:
             }
         )
 
-        regions = ds.io.read_bed(bed_file, chromsizes=chromsizes)
+        regions = ds.read_bed(bed_file, chromsizes=chromsizes)
 
         # Only regions on chr1 and chr2 within bounds should remain
         assert len(regions) == 2
@@ -416,7 +416,7 @@ class TestReadBed:
         chromsizes_file = tmp_path / "chromsizes.txt"
         chromsizes_file.write_text("chr1\t50000\nchr2\t100000\n")
 
-        regions = ds.io.read_bed(bed_file, chromsizes=chromsizes_file)
+        regions = ds.read_bed(bed_file, chromsizes=chromsizes_file)
 
         # Only chr1 and chr2 regions should remain
         assert len(regions) == 2
@@ -432,7 +432,7 @@ class TestReadBed:
         )
 
         # No chromsizes provided, so no chromosome validation
-        regions = ds.io.read_bed(bed_file)
+        regions = ds.read_bed(bed_file)
 
         # Both regions should be present (validation skipped)
         assert len(regions) == 2
@@ -456,7 +456,7 @@ class TestReadBed:
         )
 
         with pytest.raises(ValueError, match="All regions.*filtered out"):
-            ds.io.read_bed(bed_file, chromsizes=chromsizes)
+            ds.read_bed(bed_file, chromsizes=chromsizes)
 
     def test_chromsizes_file_not_found(self, tmp_path):
         """Test error when chromsizes file doesn't exist."""
@@ -466,14 +466,14 @@ class TestReadBed:
         nonexistent = tmp_path / "nonexistent_chromsizes.txt"
 
         with pytest.raises(FileNotFoundError, match="Chromsizes file not found"):
-            ds.io.read_bed(bed_file, chromsizes=nonexistent)
+            ds.read_bed(bed_file, chromsizes=nonexistent)
 
     def test_get_region_list(self, tmp_path):
         """Test converting DataFrame to list of region strings."""
         bed_file = tmp_path / "regions.bed"
         bed_file.write_text("chr1\t1000\t2000\nchr1\t3000\t4000\n")
 
-        regions_df = ds.io.read_bed(bed_file)
+        regions_df = ds.read_bed(bed_file)
         regions_list = regions_df["region"].tolist()
 
         assert isinstance(regions_list, list)

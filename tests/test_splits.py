@@ -1,6 +1,6 @@
 """Tests for split handling utilities."""
 
-from deepscenic.data.splits import TrainingView, get_split
+from deepscenic._data import TrainingView, get_split
 
 
 class TestGetSplit:
