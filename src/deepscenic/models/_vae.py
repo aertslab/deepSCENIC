@@ -174,6 +174,7 @@ class DeepSCENICVAE(nn.Module):
         use_ppi: bool = True,
         use_mean: bool = False,
         ppi_device: torch.device | None = None,
+        batch_id: Tensor | None = None,
     ) -> VAEOutput:
         """
         Forward pass through VAE.
@@ -192,6 +193,8 @@ class DeepSCENICVAE(nn.Module):
             If True, use encoder mean instead of sampling
         ppi_device
             Device for PPI computation (can differ from main device)
+        batch_id
+            One-hot batch identifiers (n_cells, n_batches) for batch correction
 
         Returns
         -------
@@ -234,6 +237,11 @@ class DeepSCENICVAE(nn.Module):
         # Decoders
         x_rna_rec = self.decoder_rna(z_rna)
         x_atac_rec = self.decoder_atac(enh_act)
+
+        # Apply batch correction if enabled
+        if self.n_batches > 0 and batch_id is not None:
+            x_atac_rec = self.batch_layer_atac(torch.cat([batch_id, x_atac_rec], dim=1))
+            x_rna_rec = self.batch_layer_rna(torch.cat([batch_id, x_rna_rec], dim=1))
 
         return VAEOutput(
             x_rna_rec=x_rna_rec,

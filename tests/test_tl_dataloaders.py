@@ -229,9 +229,9 @@ class TestBuildSequenceDataloader:
 
         batch = next(iter(loader))
         (seqs,), indices = batch
-        # Shape is (batch, 1, 4, length) - batch=2, extra_dim=1, channels=4, length=640
+        # Shape is (batch, context_length, 4) - batch=2, context_length=640, channels=4
         assert seqs.shape[0] == 2
-        assert seqs.shape[-1] == 640
+        assert seqs.shape[-2] == 640
 
     def test_respects_context_length(self, tmp_fasta):
         """Should use specified context_length."""
@@ -249,8 +249,8 @@ class TestBuildSequenceDataloader:
 
         batch = next(iter(loader))
         (seqs,), indices = batch
-        # Shape is (batch, 1, 4, length)
-        assert seqs.shape[-1] == 320
+        # Shape is (batch, context_length, 4)
+        assert seqs.shape[-2] == 320
 
     def test_returns_indices(self, tmp_fasta):
         """Should return region indices with sequences."""

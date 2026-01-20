@@ -241,4 +241,6 @@ def collate_cell_batch(batch: list[dict]) -> dict[str, torch.Tensor]:
         "atac": torch.stack([item["atac"] for item in batch]),
         "idx": torch.stack([item["idx"] for item in batch]),
     }
+    if "batch_id" in batch[0]:
+        result["batch_id"] = torch.stack([item["batch_id"] for item in batch])
     return result
