@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 from torch import nn
 
-from ._training_state import TrainingConfig
+from ._training_state import PretrainConfig, TrainingConfig
 
 if TYPE_CHECKING:
     from ..models import DeepSCENICVAE, MotifNet
@@ -201,6 +201,161 @@ class DeepSCENICModel:
         self.tf2rnet.train()
         self.enformer.train()
         return self
+
+
+@dataclass
+class PretrainedModel:
+    """Container for pretrained sequence models.
+
+    This is the object returned by `ds.tl.pretrain()` containing pretrained
+    TF2rNet and Enformer models with a cached E1 matrix. It can be passed
+    to `ds.tl.train()` to initialize the sequence models.
+
+    Attributes
+    ----------
+    tf2rnet : MotifNet
+        Pretrained MotifNet model.
+    enformer : nn.Module
+        Pretrained Enformer model.
+    adj_E1 : Tensor
+        Cached E1 matrix (n_regions, n_tfs).
+    config : PretrainConfig
+        Pretraining configuration used.
+    tf_names : list[str]
+        TF names in order.
+    region_names : list[str]
+        Region names in order.
+
+    Examples
+    --------
+    >>> pretrained = ds.tl.pretrain(mdata, epochs=100)  # doctest: +SKIP
+    >>> pretrained.save("pretrained.pt")  # doctest: +SKIP
+    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
+    """
+
+    tf2rnet: MotifNet
+    enformer: nn.Module
+    adj_E1: torch.Tensor
+    config: PretrainConfig
+    tf_names: list[str]
+    region_names: list[str]
+
+    def save(self, path: str | Path) -> None:
+        """Save pretrained model to file.
+
+        Parameters
+        ----------
+        path
+            Output file path (.pt).
+        """
+        torch.save(
+            {
+                "tf2rnet_state_dict": self.tf2rnet.state_dict(),
+                "enformer_state_dict": self.enformer.state_dict(),
+                "adj_E1": self.adj_E1,
+                "config": self.config.to_dict(),
+                "tf_names": self.tf_names,
+                "region_names": self.region_names,
+                "n_tfs": self.tf2rnet.n_tfs,
+                "bottleneck_size": self.config.bottleneck_size,
+                "emb_len": self.config.emb_len,
+            },
+            path,
+        )
+
+    @classmethod
+    def load(cls, path: str | Path, device: str = "cpu") -> PretrainedModel:
+        """Load pretrained model from file.
+
+        Parameters
+        ----------
+        path
+            Model file path (.pt).
+        device
+            Device to load model to.
+
+        Returns
+        -------
+        PretrainedModel
+            Loaded pretrained model.
+        """
+        from ..models import MotifNet
+
+        data = torch.load(path, map_location=device)
+        config = PretrainConfig.from_dict(data["config"])
+
+        # Reconstruct MotifNet
+        tf2rnet = MotifNet(
+            n_tfs=data["n_tfs"],
+            bottleneck_size=data["bottleneck_size"],
+            emb_len=data["emb_len"],
+        )
+        tf2rnet.load_state_dict(data["tf2rnet_state_dict"])
+        tf2rnet.to(device)
+        tf2rnet.eval()
+
+        # Reconstruct Enformer
+        from enformer_pytorch import Enformer
+
+        enformer = Enformer.from_pretrained(
+            "EleutherAI/enformer-official-rough",
+            target_length=-1,
+        )
+        enformer.load_state_dict(data["enformer_state_dict"])
+        enformer.to(device)
+        enformer.eval()
+
+        return cls(
+            tf2rnet=tf2rnet,
+            enformer=enformer,
+            adj_E1=data["adj_E1"].to(device),
+            config=config,
+            tf_names=data["tf_names"],
+            region_names=data["region_names"],
+        )
+
+    def to(self, device: str | torch.device) -> PretrainedModel:
+        """Move model to device."""
+        self.tf2rnet.to(device)
+        self.enformer.to(device)
+        self.adj_E1 = self.adj_E1.to(device)
+        return self
+
+    def eval(self) -> PretrainedModel:
+        """Set all components to eval mode."""
+        self.tf2rnet.eval()
+        self.enformer.eval()
+        return self
+
+    def train_mode(self) -> PretrainedModel:
+        """Set all components to train mode."""
+        self.tf2rnet.train()
+        self.enformer.train()
+        return self
+
+
+def load_pretrained(path: str | Path, device: str = "cpu") -> PretrainedModel:
+    """Load a pretrained sequence model.
+
+    Parameters
+    ----------
+    path
+        Path to saved pretrained model file (.pt).
+    device
+        Device to load model to.
+
+    Returns
+    -------
+    PretrainedModel
+        Loaded pretrained model ready to use with ds.tl.train().
+
+    Examples
+    --------
+    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
+    """
+    return PretrainedModel.load(path, device=device)
 
 
 def load_model(path: str | Path, device: str = "cpu") -> DeepSCENICModel:

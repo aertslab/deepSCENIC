@@ -126,7 +126,7 @@ class TrainingConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
-        return {k: v for k, v in self.__dict__.items()}
+        return dict(self.__dict__)
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> TrainingConfig:
@@ -218,15 +218,126 @@ class Checkpoint:
         )
 
 
+@dataclass
+class PretrainConfig:
+    """Configuration for sequence model pretraining.
+
+    Parameters
+    ----------
+    epochs
+        Pretraining epochs.
+    batch_size
+        Sequences per batch.
+    lr
+        Learning rate.
+    weight_decay
+        Optimizer weight decay.
+    alpha
+        E1 sparsity weight.
+    device
+        Training device.
+    num_workers
+        Number of data loading workers.
+    bottleneck_size
+        Enformer embedding dimension.
+    emb_len
+        Enformer output sequence length.
+    seq_len
+        DNA sequence length (bp).
+
+    Examples
+    --------
+    >>> config = PretrainConfig(epochs=100, lr=1e-4)
+    >>> pretrained = ds.tl.pretrain(mdata, config=config)  # doctest: +SKIP
+    """
+
+    epochs: int = 100
+    batch_size: int = 256
+    lr: float = 1e-4
+    weight_decay: float = 0.0
+    alpha: float = 1e-2
+    device: str = "cuda"
+    num_workers: int = 0
+    bottleneck_size: int = 3072
+    emb_len: int = 5
+    seq_len: int = 640
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return dict(self.__dict__)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> PretrainConfig:
+        """Create from dictionary."""
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
+@dataclass
+class FinetuneConfig:
+    """Configuration for E2 finetuning.
+
+    Parameters
+    ----------
+    epochs
+        Finetuning epochs (typically 10000).
+    batch_size
+        Cells per batch.
+    lr
+        Learning rate (very small, e.g., 1e-6).
+    lr_patience
+        Epochs before reducing LR (ReduceLROnPlateau).
+    reinit_e2
+        Reinitialize E2 to zeros before finetuning.
+    gamma
+        E2 sparsity weight.
+    loss_rna
+        RNA loss type: 'mse', 'mae', 'cosine'.
+    dropout_mask_rna
+        Whether to mask RNA loss on zeros.
+    device
+        Training device.
+    num_workers
+        Number of data loading workers.
+    batch_key
+        Column in obs for batch correction.
+
+    Examples
+    --------
+    >>> config = FinetuneConfig(epochs=10000, lr=1e-6)
+    >>> model = ds.tl.finetune(model, mdata, config=config)  # doctest: +SKIP
+    """
+
+    epochs: int = 10000
+    batch_size: int = 64
+    lr: float = 1e-6
+    lr_patience: int = 50
+    reinit_e2: bool = True
+    gamma: float = 1.0
+    loss_rna: str = "mse"
+    dropout_mask_rna: bool = False
+    device: str = "cuda"
+    num_workers: int = 0
+    batch_key: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return dict(self.__dict__)
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> FinetuneConfig:
+        """Create from dictionary."""
+        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
+
+
 class EarlyStopping:
     """Early stopping handler.
 
     Parameters
     ----------
     patience
-        Number of epochs to wait before stopping
+        Number of epochs to wait before stopping.
     min_delta
-        Minimum improvement to consider as progress
+        Minimum improvement to consider as progress.
 
     Examples
     --------

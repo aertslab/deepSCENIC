@@ -8,15 +8,22 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 from torch.optim import Adam
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 from tqdm.auto import tqdm
 
 from ..models import DeepSCENICVAE, MotifNet
 from ._dataloaders import build_cell_dataloader, build_sequence_dataloader
 from ._logging import get_logger
 from ._loss import compute_total_loss, e1_sparsity_loss
-from ._model import DeepSCENICModel
-from ._training_state import Checkpoint, EarlyStopping, TrainingConfig, TrainingHistory
+from ._model import DeepSCENICModel, PretrainedModel
+from ._training_state import (
+    Checkpoint,
+    EarlyStopping,
+    FinetuneConfig,
+    PretrainConfig,
+    TrainingConfig,
+    TrainingHistory,
+)
 
 if TYPE_CHECKING:
     import mudata as md
@@ -91,6 +98,7 @@ def train(
     seq_batch_size: int = 1000,
     balance_dars: bool = False,
     num_workers: int = 0,
+    pretrained_model: PretrainedModel | None = None,
     config: TrainingConfig | None = None,
 ) -> DeepSCENICModel:
     """Train deepSCENIC model on multiome data.
@@ -130,6 +138,9 @@ def train(
         Requires DARs to be marked via ``ds.pp.mark_dars()`` first.
     num_workers
         Number of workers for parallel data loading (0 = main process only).
+    pretrained_model
+        Optional pretrained model from ds.tl.pretrain(). If provided, TF2rNet
+        and Enformer weights are initialized from the pretrained model.
     config
         Advanced configuration options. When provided, explicit function
         parameters take precedence over config values.
@@ -153,6 +164,11 @@ def train(
     >>> ds.genome.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
     >>> mdata = ds.read("preprocessed.h5mu")  # doctest: +SKIP
     >>> model = ds.tl.train(mdata, epochs=100, device="cuda")  # doctest: +SKIP
+
+    Training with pretrained model:
+
+    >>> pretrained = ds.tl.pretrain(mdata, epochs=50)  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
 
     Training with advanced configuration:
 
@@ -262,13 +278,17 @@ def train(
         n_batches=n_batches,
     ).to(device)
 
-    tf2rnet = MotifNet(
-        n_tfs=n_tfs,
-        bottleneck_size=config.bottleneck_size,
-        emb_len=config.emb_len,
-    ).to(device)
-
-    enformer = _init_enformer(device)
+    # Initialize sequence models (or use pretrained)
+    if pretrained_model is not None:
+        tf2rnet = pretrained_model.tf2rnet.to(device)
+        enformer = pretrained_model.enformer.to(device)
+    else:
+        tf2rnet = MotifNet(
+            n_tfs=n_tfs,
+            bottleneck_size=config.bottleneck_size,
+            emb_len=config.emb_len,
+        ).to(device)
+        enformer = _init_enformer(device)
 
     # Build dataloaders
     train_cell_loader = build_cell_dataloader(
@@ -278,7 +298,6 @@ def train(
         shuffle=True,
         balance_class=config.balance_class,
         class_key=config.class_key,
-        batch_key=config.batch_key,
         num_workers=config.num_workers,
     )
 
@@ -287,7 +306,6 @@ def train(
         split="test",
         batch_size=batch_size,
         shuffle=False,
-        batch_key=config.batch_key,
         num_workers=config.num_workers,
     )
 
@@ -314,8 +332,11 @@ def train(
         dar_indices=dar_indices,
     )
 
-    # Initialize E1 cache
-    adj_E1_cache = _init_e1_cache(enformer, tf2rnet, train_seq_loader, device, config)
+    # Initialize E1 cache (use pretrained if available)
+    if pretrained_model is not None:
+        adj_E1_cache = pretrained_model.adj_E1.to(device)
+    else:
+        adj_E1_cache = _init_e1_cache(enformer, tf2rnet, train_seq_loader, device, config)
 
     # Optimizers
     optimizer_vae = Adam(vae.parameters(), lr=config.lr_vae, weight_decay=config.weight_decay)
@@ -565,5 +586,462 @@ def train(
         config=config,
         tf_names=tf_names,
         gene_names=gene_names,
+        region_names=region_names,
+    )
+
+
+def finetune(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    *,
+    epochs: int = 10000,
+    batch_size: int = 64,
+    lr: float = 1e-6,
+    lr_patience: int = 50,
+    device: str = "cuda",
+    reinit_e2: bool = True,
+    checkpoint_dir: str | None = None,
+    checkpoint_every: int = 100,
+    logger: str = "dict",
+    log_dir: str = "./runs",
+    num_workers: int = 0,
+    config: FinetuneConfig | None = None,
+) -> DeepSCENICModel:
+    """Fine-tune E2 matrix on training data.
+
+    Freezes all model parameters except E2 (region-to-gene weights) and
+    trains with a very low learning rate using ReduceLROnPlateau scheduler.
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel from ds.tl.train().
+    mdata
+        MuData with train/test split.
+    epochs
+        Finetuning epochs.
+    batch_size
+        Cells per batch.
+    lr
+        Learning rate (very small, typically 1e-6).
+    lr_patience
+        Epochs before reducing LR if no improvement.
+    device
+        Training device.
+    reinit_e2
+        If True, reinitialize E2 to near-zero before finetuning.
+    checkpoint_dir
+        Directory for checkpoints (None = no checkpoints).
+    checkpoint_every
+        Save checkpoint every N epochs.
+    logger
+        Logging backend: 'dict', 'tensorboard', 'wandb'.
+    log_dir
+        Directory for logs.
+    num_workers
+        Number of workers for data loading.
+    config
+        Advanced configuration. Explicit parameters override config values.
+
+    Returns
+    -------
+    DeepSCENICModel
+        Model with finetuned E2 matrix.
+
+    Examples
+    --------
+    >>> model = ds.tl.train(mdata, epochs=100)  # doctest: +SKIP
+    >>> model = ds.tl.finetune(model, mdata, epochs=10000, lr=1e-6)  # doctest: +SKIP
+    """
+    # Build config
+    if config is not None:
+        base_config = config
+    else:
+        base_config = FinetuneConfig()
+
+    final_config = FinetuneConfig(
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        lr_patience=lr_patience,
+        reinit_e2=reinit_e2,
+        gamma=base_config.gamma,
+        loss_rna=base_config.loss_rna,
+        dropout_mask_rna=base_config.dropout_mask_rna,
+        device=device,
+        num_workers=num_workers,
+        batch_key=base_config.batch_key,
+    )
+    finetune_config = final_config
+
+    # Setup logging
+    training_logger = get_logger(logger, log_dir=log_dir)
+    training_logger.log_hyperparams(finetune_config.to_dict())
+
+    # Move model to device
+    vae = model.vae.to(device)
+    adj_E1 = model.adj_E1.to(device)
+
+    # Freeze all parameters except adj_E2
+    for name, param in vae.named_parameters():
+        if name == "adj_E2":
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
+
+    # Optionally reinitialize E2
+    if finetune_config.reinit_e2:
+        with torch.no_grad():
+            vae.adj_E2.fill_(1e-8)
+
+    # Build dataloaders
+    train_cell_loader = build_cell_dataloader(
+        mdata,
+        split="train",
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=finetune_config.num_workers,
+    )
+
+    test_cell_loader = build_cell_dataloader(
+        mdata,
+        split="test",
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=finetune_config.num_workers,
+    )
+
+    # Single optimizer for E2 only
+    optimizer = Adam([vae.adj_E2], lr=finetune_config.lr)
+    scheduler = ReduceLROnPlateau(
+        optimizer, mode="min", patience=finetune_config.lr_patience, factor=0.5
+    )
+
+    # History tracking
+    history = TrainingHistory()
+    best_loss = float("inf")
+    best_e2 = vae.adj_E2.data.clone()
+
+    # Training loop
+    for epoch in range(finetune_config.epochs):
+        vae.train()
+
+        epoch_metrics = {"loss": 0.0, "rec_rna": 0.0, "e2_sparse": 0.0}
+        n_batches_seen = 0
+
+        pbar = tqdm(train_cell_loader, desc=f"Finetune {epoch + 1}/{epochs}")
+        for batch in pbar:
+            x_rna = batch["rna"].to(device)
+            x_atac = batch["atac"].to(device)
+            batch_id = batch.get("batch_id")
+            if batch_id is not None:
+                batch_id = batch_id.to(device)
+
+            optimizer.zero_grad()
+
+            # VAE forward (no PPI, use_mean=False for training)
+            output = vae(
+                x_rna,
+                x_atac,
+                adj_E1,
+                batch_id=batch_id,
+                use_ppi=False,
+                use_mean=False,
+            )
+
+            # Compute RNA reconstruction loss only
+            from ._loss import e2_sparsity_loss, reconstruction_loss
+
+            loss_rec_rna = reconstruction_loss(
+                x_rna,
+                output.x_rna_rec,
+                loss_type=finetune_config.loss_rna,
+                dropout_mask=finetune_config.dropout_mask_rna,
+            )
+
+            loss_e2_sparse = e2_sparsity_loss(vae.adj_E2, vae.r2g_distances)
+            total_loss = loss_rec_rna + loss_e2_sparse * finetune_config.gamma
+
+            total_loss.backward()
+            optimizer.step()
+
+            # Accumulate metrics
+            epoch_metrics["loss"] += total_loss.item()
+            epoch_metrics["rec_rna"] += loss_rec_rna.item()
+            epoch_metrics["e2_sparse"] += loss_e2_sparse.item()
+            n_batches_seen += 1
+
+            pbar.set_postfix(loss=total_loss.item())
+
+        # Average epoch metrics
+        for key in epoch_metrics:
+            epoch_metrics[key] /= n_batches_seen
+
+        # Log metrics
+        history.log("train", epoch_metrics)
+        training_logger.log_metrics(
+            {f"train/{k}": v for k, v in epoch_metrics.items()}, step=epoch
+        )
+
+        # Validation
+        vae.eval()
+        val_loss = 0.0
+        n_val_batches = 0
+
+        with torch.no_grad():
+            for batch in test_cell_loader:
+                x_rna = batch["rna"].to(device)
+                x_atac = batch["atac"].to(device)
+                batch_id = batch.get("batch_id")
+                if batch_id is not None:
+                    batch_id = batch_id.to(device)
+
+                output = vae(
+                    x_rna,
+                    x_atac,
+                    adj_E1,
+                    batch_id=batch_id,
+                    use_ppi=False,
+                    use_mean=True,
+                )
+
+                loss_rec_rna = reconstruction_loss(
+                    x_rna,
+                    output.x_rna_rec,
+                    loss_type=finetune_config.loss_rna,
+                    dropout_mask=finetune_config.dropout_mask_rna,
+                )
+                loss_e2_sparse = e2_sparsity_loss(vae.adj_E2, vae.r2g_distances)
+
+                val_loss += (loss_rec_rna + loss_e2_sparse * finetune_config.gamma).item()
+                n_val_batches += 1
+
+        val_loss /= n_val_batches
+        history.log("test", {"loss": val_loss})
+        training_logger.log_metrics({"test/loss": val_loss}, step=epoch)
+
+        # Step scheduler
+        scheduler.step(val_loss)
+
+        # Track best model
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_e2 = vae.adj_E2.data.clone()
+
+        # Checkpointing
+        if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
+            checkpoint_path = Path(checkpoint_dir) / f"finetune_epoch_{epoch + 1}.pt"
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "adj_E2": vae.adj_E2.data,
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "history": history.to_dict(),
+                    "config": finetune_config.to_dict(),
+                    "best_loss": best_loss,
+                },
+                checkpoint_path,
+            )
+
+    # Close logger
+    training_logger.close()
+
+    # Restore best E2
+    vae.adj_E2.data = best_e2
+    vae.eval()
+
+    # Return updated model
+    return DeepSCENICModel(
+        vae=vae,
+        tf2rnet=model.tf2rnet,
+        enformer=model.enformer,
+        adj_E1=adj_E1,
+        config=model.config,
+        tf_names=model.tf_names,
+        gene_names=model.gene_names,
+        region_names=model.region_names,
+    )
+
+
+def pretrain(
+    mdata: md.MuData,
+    *,
+    epochs: int = 100,
+    batch_size: int = 256,
+    lr: float = 1e-4,
+    device: str = "cuda",
+    checkpoint_dir: str | None = None,
+    checkpoint_every: int = 10,
+    logger: str = "dict",
+    log_dir: str = "./runs",
+    num_workers: int = 0,
+    config: PretrainConfig | None = None,
+) -> PretrainedModel:
+    """Pretrain TF2rNet on DNA sequences.
+
+    Trains the sequence-to-TF prediction model (Enformer + MotifNet) using
+    L1 sparsity loss to learn biologically meaningful TF binding patterns.
+
+    Parameters
+    ----------
+    mdata
+        MuData with regions in ATAC modality.
+    epochs
+        Pretraining epochs.
+    batch_size
+        Sequences per batch.
+    lr
+        Learning rate.
+    device
+        Training device.
+    checkpoint_dir
+        Directory for checkpoints.
+    checkpoint_every
+        Save checkpoint every N epochs.
+    logger
+        Logging backend.
+    log_dir
+        Directory for logs.
+    num_workers
+        Number of workers for data loading.
+    config
+        Advanced configuration.
+
+    Returns
+    -------
+    PretrainedModel
+        Pretrained sequence models with cached E1 matrix.
+
+    Examples
+    --------
+    >>> pretrained = ds.tl.pretrain(mdata, epochs=100)  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
+    """
+    # Build config
+    if config is not None:
+        base_config = config
+    else:
+        base_config = PretrainConfig()
+
+    final_config = PretrainConfig(
+        epochs=epochs,
+        batch_size=batch_size,
+        lr=lr,
+        weight_decay=base_config.weight_decay,
+        alpha=base_config.alpha,
+        device=device,
+        num_workers=num_workers,
+        bottleneck_size=base_config.bottleneck_size,
+        emb_len=base_config.emb_len,
+        seq_len=base_config.seq_len,
+    )
+    pretrain_config = final_config
+
+    # Setup logging
+    training_logger = get_logger(logger, log_dir=log_dir)
+    training_logger.log_hyperparams(pretrain_config.to_dict())
+
+    # Extract metadata from MuData
+    tf_names = list(mdata.uns["tfs"])
+    region_names = list(mdata.mod["atac"].var_names)
+    n_tfs = len(tf_names)
+
+    # Initialize models
+    tf2rnet = MotifNet(
+        n_tfs=n_tfs,
+        bottleneck_size=pretrain_config.bottleneck_size,
+        emb_len=pretrain_config.emb_len,
+    ).to(device)
+
+    enformer = _init_enformer(device)
+
+    # Build sequence dataloader
+    seq_loader = build_sequence_dataloader(
+        regions=region_names,
+        batch_size=batch_size,
+        shuffle=True,
+        shift_augs=(-3, 3),
+        rc_aug=True,
+        context_length=pretrain_config.seq_len,
+        num_workers=pretrain_config.num_workers,
+    )
+
+    # Single optimizer for both models
+    optimizer = Adam(
+        list(tf2rnet.parameters()) + list(enformer.parameters()),
+        lr=pretrain_config.lr,
+        weight_decay=pretrain_config.weight_decay,
+    )
+
+    # History tracking
+    history = TrainingHistory()
+
+    # Training loop
+    for epoch in range(pretrain_config.epochs):
+        tf2rnet.train()
+        enformer.train()
+
+        epoch_loss = 0.0
+        n_batches = 0
+
+        pbar = tqdm(seq_loader, desc=f"Pretrain {epoch + 1}/{epochs}")
+        for (sequences,), _seq_idx in pbar:
+            sequences = sequences.to(device)
+
+            optimizer.zero_grad()
+
+            # Forward through Enformer + TF2rNet
+            emb = _get_enformer_embeddings(
+                enformer, sequences, pretrain_config.bottleneck_size, pretrain_config.emb_len
+            )
+            tf_pred = tf2rnet(emb)
+
+            # Loss: L1 sparsity on TF predictions
+            loss = e1_sparsity_loss(tf_pred) * pretrain_config.alpha
+
+            loss.backward()
+            optimizer.step()
+
+            epoch_loss += loss.item()
+            n_batches += 1
+            pbar.set_postfix(loss=loss.item())
+
+        # Average epoch loss
+        avg_loss = epoch_loss / n_batches
+        history.log("train", {"loss": avg_loss, "e1_sparse": avg_loss})
+        training_logger.log_metrics({"train/loss": avg_loss}, step=epoch)
+
+        # Checkpointing
+        if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
+            checkpoint_path = Path(checkpoint_dir) / f"pretrain_epoch_{epoch + 1}.pt"
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "tf2rnet_state_dict": tf2rnet.state_dict(),
+                    "enformer_state_dict": enformer.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "history": history.to_dict(),
+                    "config": pretrain_config.to_dict(),
+                },
+                checkpoint_path,
+            )
+
+    # Close logger
+    training_logger.close()
+
+    # Compute final E1 cache
+    tf2rnet.eval()
+    enformer.eval()
+    adj_E1 = _init_e1_cache(enformer, tf2rnet, seq_loader, device, pretrain_config)
+
+    return PretrainedModel(
+        tf2rnet=tf2rnet,
+        enformer=enformer,
+        adj_E1=adj_E1,
+        config=pretrain_config,
+        tf_names=tf_names,
         region_names=region_names,
     )

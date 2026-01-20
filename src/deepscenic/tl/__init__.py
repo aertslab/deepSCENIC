@@ -8,18 +8,44 @@ from ._grn import (
     get_tf_targets,
 )
 from ._inference import to_latent
-from ._model import DeepSCENICModel, load_legacy_grn, load_legacy_model, load_model
+from ._model import (
+    DeepSCENICModel,
+    PretrainedModel,
+    load_legacy_grn,
+    load_legacy_model,
+    load_model,
+    load_pretrained,
+)
 from ._perturbation import simulate_multi_perturbation, simulate_perturbation
-from ._train import train
+from ._train import finetune, pretrain, train
+from ._training_state import (
+    Checkpoint,
+    EarlyStopping,
+    FinetuneConfig,
+    PretrainConfig,
+    TrainingConfig,
+    TrainingHistory,
+)
 
 __all__ = [
-    # Training
+    # Training stages
+    "pretrain",
     "train",
+    "finetune",
     # Model
     "DeepSCENICModel",
+    "PretrainedModel",
     "load_model",
+    "load_pretrained",
     "load_legacy_model",
     "load_legacy_grn",
+    # Config
+    "PretrainConfig",
+    "TrainingConfig",
+    "FinetuneConfig",
+    "TrainingHistory",
+    "Checkpoint",
+    "EarlyStopping",
     # Inference
     "to_latent",
     # Perturbation
