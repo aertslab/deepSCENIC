@@ -169,7 +169,7 @@ def get_logger(
     **kwargs: Any,
 ) -> TrainingLogger:
     """
-    Factory function for creating loggers.
+    Create a training logger.
 
     Parameters
     ----------

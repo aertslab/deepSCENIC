@@ -89,14 +89,9 @@ def simulate_perturbation(
         atac = atac.toarray()
 
     n_cells = rna.shape[0]
-    n_genes = len(model.gene_names)
 
     # Output array
     logFC_all = []
-
-    # Build E2 matrix once
-    with torch.no_grad():
-        E2 = model.vae._build_e2_dense()
 
     # Process in batches
     with torch.no_grad():
@@ -136,9 +131,6 @@ def simulate_perturbation(
                     use_ppi=model.vae.use_ppi,
                     use_mean=True,
                 )
-
-                # Compute logFC in gene regulatory signal space
-                logFC = output_pert.z_rna - z_rna_orig
 
                 # Decode to get expression changes
                 x_rna_rec_orig = model.vae.decoder_rna(z_rna_orig)

@@ -244,7 +244,7 @@ class TestGenomeIntervalDataset:
         # Get multiple samples - they should sometimes differ
         seqs = [(dataset[0][0]) for _ in range(10)]
         # Not all should be identical due to random shifts
-        unique_seqs = set(tuple(s.flatten().tolist()) for s in seqs)
+        unique_seqs = {tuple(s.flatten().tolist()) for s in seqs}
         assert len(unique_seqs) > 1
 
     def test_no_shift_augmentation(self, tmp_fasta):
@@ -269,7 +269,7 @@ class TestGenomeIntervalDataset:
 
         # Get multiple samples - about half should be RC
         seqs = [(dataset[0][0]) for _ in range(20)]
-        unique_seqs = set(tuple(s.flatten().tolist()) for s in seqs)
+        unique_seqs = {tuple(s.flatten().tolist()) for s in seqs}
         # With RC, we should get at least 2 different versions
         assert len(unique_seqs) >= 2
 

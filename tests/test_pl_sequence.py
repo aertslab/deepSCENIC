@@ -89,8 +89,6 @@ class TestLogoAttribution:
         """Should raise ImportError if tangermeme not installed."""
         from deepscenic.pl import logo_attribution
 
-        attrs = np.random.randn(100, 4)
-
         # This will raise ImportError if tangermeme is not installed
         # We can't easily test this in CI, so just check the function exists
         assert callable(logo_attribution)

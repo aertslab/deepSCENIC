@@ -8,8 +8,6 @@ import pandas as pd
 from anndata import AnnData
 from sklearn.model_selection import train_test_split
 
-log = logging.getLogger("deepscenic.pp")
-
 from .._constants import (
     DEFAULT_CELL_SPLIT_SEED,
     DEFAULT_CELL_TEST_FRACTION,
@@ -18,6 +16,8 @@ from .._constants import (
 from .basic import add_gene_annotation, filter_regions_by_celltype, mark_dars, mark_tfs, remove_zero_variance_genes
 from .ppi import build_ppi_network, load_string_ppi
 from .search_space import compute_r2g_penalty
+
+log = logging.getLogger("deepscenic.pp")
 
 
 def create_mudata(
