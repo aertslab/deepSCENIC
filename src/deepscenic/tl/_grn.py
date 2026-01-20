@@ -47,8 +47,8 @@ def extract_grn(model: DeepSCENICModel) -> dict[str, pd.DataFrame]:
 
         # E2: region → gene (sparse)
         # Get sparse indices and weights from VAE
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
+        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[operator]
 
         E2_data = []
         for i in range(len(adj_E2)):
@@ -112,8 +112,8 @@ def extract_e2_matrix(
         E2 matrix in sparse or dense format
     """
     with torch.no_grad():
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
+        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[operator]
 
     if as_sparse:
         data = []
@@ -177,8 +177,8 @@ def get_tf_targets(
         E1_tf = model.adj_E1[:, tf_idx].cpu().numpy()
 
         # Get E2 sparse info
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
+        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[operator]
 
     # Find regions with non-zero E1 weight
     results = []
@@ -246,8 +246,8 @@ def get_gene_regulators(
 
     with torch.no_grad():
         E1 = model.adj_E1.cpu().numpy()
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
+        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[operator]
 
     # Find regions linked to this gene
     link_mask = r2g_indices[1] == gene_idx

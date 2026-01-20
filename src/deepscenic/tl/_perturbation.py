@@ -22,7 +22,7 @@ def simulate_perturbation(
     level: float = 0.0,
     n_iter: int = 10,
     batch_size: int = 256,
-    device: str | None = None,
+    device: str | torch.device | None = None,
     split: str | None = None,
 ) -> np.ndarray:
     """
@@ -125,7 +125,7 @@ def simulate_perturbation(
             for _ in range(n_iter):
                 # Set TF expression to perturbation level
                 # TF index in full gene matrix
-                tf_gene_idx = model.vae.tf_indices[tf_idx]
+                tf_gene_idx = model.vae.tf_indices[tf_idx]  # type: ignore[index]
                 perturbed_rna[:, tf_gene_idx] = level
 
                 # Forward pass with perturbed input
@@ -163,7 +163,7 @@ def simulate_multi_perturbation(
     levels: list[float] | None = None,
     n_iter: int = 10,
     batch_size: int = 256,
-    device: str | None = None,
+    device: str | torch.device | None = None,
     split: str | None = None,
 ) -> np.ndarray:
     """
@@ -256,7 +256,7 @@ def simulate_multi_perturbation(
             for _ in range(n_iter):
                 # Set all TF expressions to perturbation levels
                 for tf_idx, level in zip(tf_indices, levels, strict=False):
-                    tf_gene_idx = model.vae.tf_indices[tf_idx]
+                    tf_gene_idx = model.vae.tf_indices[tf_idx]  # type: ignore[index]
                     perturbed_rna[:, tf_gene_idx] = level
 
                 output_pert = model.vae(
@@ -272,7 +272,7 @@ def simulate_multi_perturbation(
 
                 perturbed_rna = x_rna + (x_rna_rec_pert - x_rna_rec_orig)
                 for tf_idx, level in zip(tf_indices, levels, strict=False):
-                    tf_gene_idx = model.vae.tf_indices[tf_idx]
+                    tf_gene_idx = model.vae.tf_indices[tf_idx]  # type: ignore[index]
                     perturbed_rna[:, tf_gene_idx] = level
 
             logFC_final = (x_rna_rec_pert - x_rna_rec_orig).cpu().numpy()

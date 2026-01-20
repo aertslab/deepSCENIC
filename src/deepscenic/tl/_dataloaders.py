@@ -38,7 +38,7 @@ class CellDataset(Dataset):
 
         self.rna = torch.Tensor(rna)
         self.atac = torch.Tensor(atac)
-        self.n_cells = rna.shape[0]
+        self.n_cells: int = rna.shape[0]
 
     def __len__(self) -> int:
         return self.n_cells
@@ -65,7 +65,7 @@ class SequenceDatasetWithIndex(Dataset):
         self.dataset = genome_dataset
 
     def __len__(self) -> int:
-        return len(self.dataset)
+        return len(self.dataset)  # type: ignore[arg-type]
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
         seq = self.dataset[idx]

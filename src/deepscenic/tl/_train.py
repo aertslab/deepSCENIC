@@ -42,7 +42,7 @@ def _init_enformer(device: str, emb_len: int) -> torch.nn.Module:
         target_length=emb_len,  # default TF2rNet embedding
     )
     enformer.to(device)
-    return enformer
+    return enformer  # type: ignore[no-any-return]
 
 
 def _get_enformer_embeddings(
@@ -73,7 +73,7 @@ def _get_enformer_embeddings(
         output = enformer(sequences, return_only_embeddings=True)
     # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
     # Convert to float32 since autocast may produce float16 output
-    return output.reshape(-1, bottleneck_size * emb_len).float()
+    return output.reshape(-1, bottleneck_size * emb_len).float()  # type: ignore[no-any-return]
 
 
 def _init_e1_cache(
@@ -81,13 +81,13 @@ def _init_e1_cache(
     tf2rnet: MotifNet,
     seq_dataloader: torch.utils.data.DataLoader,
     device: str,
-    config: TrainingConfig,
+    config: TrainingConfig | PretrainConfig,
 ) -> torch.Tensor:
     """Initialize E1 cache by running all sequences through Enformer + TF2rNet."""
     enformer.eval()
     tf2rnet.eval()
 
-    n_regions = len(seq_dataloader.dataset)
+    n_regions = len(seq_dataloader.dataset)  # type: ignore[arg-type]
     adj_E1 = torch.zeros(n_regions, tf2rnet.n_tfs, device=device)
 
     with torch.no_grad():
@@ -479,9 +479,9 @@ def train(
                 logvar=output.logvar,
                 adj_E1_batch=adj_E1[seq_idx] if epoch >= warmup_vae else adj_E1,
                 adj_E2=vae.adj_E2,
-                r2g_distances=vae.r2g_distances,
+                r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                 x_rna_ppi=output.x_rna_ppi,
-                gene_indices=vae.gene_indices,
+                gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                 loss_rna=config.loss_rna,
                 loss_atac=config.loss_atac,
                 dropout_mask_rna=config.dropout_mask_rna,
@@ -553,9 +553,9 @@ def train(
                     logvar=output.logvar,
                     adj_E1_batch=adj_E1_cache,
                     adj_E2=vae.adj_E2,
-                    r2g_distances=vae.r2g_distances,
+                    r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                     x_rna_ppi=output.x_rna_ppi,
-                    gene_indices=vae.gene_indices,
+                    gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                     loss_rna=config.loss_rna,
                     loss_atac=config.loss_atac,
                     beta=config.beta,
@@ -783,7 +783,7 @@ def finetune(
                 dropout_mask=finetune_config.dropout_mask_rna,
             )
 
-            loss_e2_sparse = e2_sparsity_loss(vae.adj_E2, vae.r2g_distances)
+            loss_e2_sparse = e2_sparsity_loss(vae.adj_E2, vae.r2g_distances)  # type: ignore[arg-type]
             total_loss = loss_rec_rna + loss_e2_sparse * finetune_config.gamma
 
             total_loss.backward()
@@ -829,7 +829,7 @@ def finetune(
                     loss_type=finetune_config.loss_rna,
                     dropout_mask=finetune_config.dropout_mask_rna,
                 )
-                loss_e2_sparse = e2_sparsity_loss(vae.adj_E2, vae.r2g_distances)
+                loss_e2_sparse = e2_sparsity_loss(vae.adj_E2, vae.r2g_distances)  # type: ignore[arg-type]
 
                 val_loss += (loss_rec_rna + loss_e2_sparse * finetune_config.gamma).item()
                 n_val_batches += 1

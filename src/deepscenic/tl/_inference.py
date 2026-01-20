@@ -19,7 +19,7 @@ def to_latent(
     model: DeepSCENICModel,
     mdata: md.MuData,
     batch_size: int = 256,
-    device: str | None = None,
+    device: str | torch.device | None = None,
     split: str | None = None,
 ) -> dict[str, np.ndarray]:
     """
@@ -80,7 +80,7 @@ def to_latent(
     n_cells = rna.shape[0]
 
     # Initialize output arrays
-    outputs = {
+    outputs: dict[str, list[np.ndarray]] = {
         "z_tf": [],
         "enh_act": [],
         "z_rna": [],

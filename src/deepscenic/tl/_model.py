@@ -819,16 +819,16 @@ def _build_ppi_indices(
 
     # Map TFs to PPI positions
     tf_to_order = {tf: i for i, tf in enumerate(tf_names)}
-    ppi_tfs_idx_keys = []
-    ppi_tfs_idx_values = []
+    ppi_tfs_idx_keys_list: list[int] = []
+    ppi_tfs_idx_values_list: list[int] = []
 
     for ppi_idx, gene in enumerate(node_list):
         if gene in tf_to_order:
-            ppi_tfs_idx_keys.append(ppi_idx)
-            ppi_tfs_idx_values.append(tf_to_order[gene])
+            ppi_tfs_idx_keys_list.append(ppi_idx)
+            ppi_tfs_idx_values_list.append(tf_to_order[gene])
 
-    ppi_tfs_idx_keys = torch.tensor(ppi_tfs_idx_keys, dtype=torch.long)
-    ppi_tfs_idx_values = torch.tensor(ppi_tfs_idx_values, dtype=torch.long)
+    ppi_tfs_idx_keys = torch.tensor(ppi_tfs_idx_keys_list, dtype=torch.long)
+    ppi_tfs_idx_values = torch.tensor(ppi_tfs_idx_values_list, dtype=torch.long)
 
     return edge_index, ppi_genes_idx, ppi_tfs_idx_keys, ppi_tfs_idx_values
 
