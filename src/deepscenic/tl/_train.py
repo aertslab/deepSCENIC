@@ -520,7 +520,6 @@ def train(
             use_ppi_this_batch = use_ppi and epoch >= warmup_grn
             output = vae(
                 x_rna,
-                x_atac,
                 adj_E1,
                 use_ppi=use_ppi_this_batch,
                 use_mean=False,
@@ -596,7 +595,6 @@ def train(
 
                 output = vae(
                     x_rna,
-                    x_atac,
                     adj_E1_cache,
                     use_ppi=use_ppi and epoch >= warmup_grn,
                     use_mean=True,
@@ -857,14 +855,12 @@ def finetune(
         pbar = tqdm(train_cell_loader, desc=f"Finetune {epoch + 1}/{epochs}")
         for batch in pbar:
             x_rna = batch["rna"].to(device)
-            x_atac = batch["atac"].to(device)
 
             optimizer.zero_grad()
 
             # VAE forward (no PPI, use_mean=False for training)
             output = vae(
                 x_rna,
-                x_atac,
                 adj_E1,
                 use_ppi=False,
                 use_mean=False,
@@ -910,11 +906,9 @@ def finetune(
         with torch.no_grad():
             for batch in test_cell_loader:
                 x_rna = batch["rna"].to(device)
-                x_atac = batch["atac"].to(device)
 
                 output = vae(
                     x_rna,
-                    x_atac,
                     adj_E1,
                     use_ppi=False,
                     use_mean=True,

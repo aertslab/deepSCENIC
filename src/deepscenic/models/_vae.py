@@ -197,7 +197,6 @@ class DeepSCENICVAE(nn.Module):
     def forward(
         self,
         x_rna: Tensor,
-        x_atac: Tensor,
         adj_E1: Tensor,
         use_ppi: bool = True,
         use_mean: bool = False,
@@ -211,8 +210,6 @@ class DeepSCENICVAE(nn.Module):
         ----------
         x_rna
             RNA expression (n_cells, n_genes)
-        x_atac
-            ATAC accessibility (n_cells, n_regions)
         adj_E1
             TF→region matrix from TF2rNet (n_regions, n_tfs)
         use_ppi

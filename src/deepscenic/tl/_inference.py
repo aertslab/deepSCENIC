@@ -95,11 +95,9 @@ def to_latent(
             end_idx = min(i + batch_size, n_cells)
 
             x_rna = torch.FloatTensor(rna[i:end_idx]).to(device)
-            x_atac = torch.FloatTensor(atac[i:end_idx]).to(device)
 
             output = model.vae(
                 x_rna,
-                x_atac,
                 model.adj_E1,
                 use_ppi=model.vae.use_ppi,
                 use_mean=True,  # Deterministic inference

@@ -72,7 +72,6 @@ class TestGradientFlow:
 
         output = vae(
             training_setup["x_rna"],
-            training_setup["x_atac"],
             training_setup["adj_E1"],
             use_ppi=False,
             use_mean=False,
@@ -111,7 +110,6 @@ class TestLossComputation:
         vae = training_setup["vae"]
         output = vae(
             training_setup["x_rna"],
-            training_setup["x_atac"],
             training_setup["adj_E1"],
             use_ppi=False,
             use_mean=False,
@@ -146,7 +144,6 @@ class TestOptimizerStep:
 
         output = vae(
             training_setup["x_rna"],
-            training_setup["x_atac"],
             training_setup["adj_E1"],
             use_ppi=False,
             use_mean=False,
@@ -209,7 +206,7 @@ class TestEndToEndMockTraining:
                 adj_E1_cache[seq_idx] = tf_pred.detach()
 
             optimizer_vae.zero_grad()
-            output = vae(x_rna, x_atac, adj_E1, use_ppi=False, use_mean=False)
+            output = vae(x_rna, adj_E1, use_ppi=False, use_mean=False)
 
             losses = compute_total_loss(
                 x_rna=x_rna,
@@ -233,6 +230,6 @@ class TestEndToEndMockTraining:
             optimizer_tf2rnet.step()
 
         vae.eval()
-        output = vae(x_rna, x_atac, adj_E1_cache, use_ppi=False, use_mean=True)
+        output = vae(x_rna, adj_E1_cache, use_ppi=False, use_mean=True)
         assert torch.isfinite(output.x_rna_rec).all()
         assert torch.isfinite(output.x_atac_rec).all()

@@ -48,10 +48,9 @@ class TestDeepSCENICVAE:
         vae = create_test_vae()
         n_cells = 8
         x_rna = torch.randn(n_cells, 100)
-        x_atac = torch.randn(n_cells, 200)
         adj_E1 = torch.randn(200, 50)
 
-        output = vae(x_rna, x_atac, adj_E1)
+        output = vae(x_rna, adj_E1)
         assert isinstance(output, VAEOutput)
 
     def test_output_shapes(self):
@@ -60,10 +59,9 @@ class TestDeepSCENICVAE:
         vae = create_test_vae(n_tfs=n_tfs, n_genes=n_genes, n_regions=n_regions)
         n_cells = 8
         x_rna = torch.randn(n_cells, n_genes)
-        x_atac = torch.randn(n_cells, n_regions)
         adj_E1 = torch.randn(n_regions, n_tfs)
 
-        output = vae(x_rna, x_atac, adj_E1)
+        output = vae(x_rna, adj_E1)
 
         assert output.x_rna_rec.shape == (n_cells, n_genes)
         assert output.x_atac_rec.shape == (n_cells, n_regions)
@@ -78,11 +76,10 @@ class TestDeepSCENICVAE:
         """When use_mean=True, output should be deterministic."""
         vae = create_test_vae()
         x_rna = torch.randn(4, 100)
-        x_atac = torch.randn(4, 200)
         adj_E1 = torch.randn(200, 50)
 
-        out1 = vae(x_rna, x_atac, adj_E1, use_mean=True)
-        out2 = vae(x_rna, x_atac, adj_E1, use_mean=True)
+        out1 = vae(x_rna, adj_E1, use_mean=True)
+        out2 = vae(x_rna, adj_E1, use_mean=True)
 
         assert torch.allclose(out1.z_tf, out2.z_tf)
         assert torch.allclose(out1.x_rna_rec, out2.x_rna_rec)
@@ -91,11 +88,10 @@ class TestDeepSCENICVAE:
         """When use_mean=False, sampling should be stochastic."""
         vae = create_test_vae()
         x_rna = torch.randn(4, 100)
-        x_atac = torch.randn(4, 200)
         adj_E1 = torch.randn(200, 50)
 
-        out1 = vae(x_rna, x_atac, adj_E1, use_mean=False)
-        out2 = vae(x_rna, x_atac, adj_E1, use_mean=False)
+        out1 = vae(x_rna, adj_E1, use_mean=False)
+        out2 = vae(x_rna, adj_E1, use_mean=False)
 
         # With high probability, samples should differ
         assert not torch.allclose(out1.z_tf, out2.z_tf)
@@ -106,22 +102,20 @@ class TestDeepSCENICVAE:
         vae = create_test_vae(n_batches=n_batches)
         n_cells = 8
         x_rna = torch.randn(n_cells, 100)
-        x_atac = torch.randn(n_cells, 200)
         adj_E1 = torch.randn(200, 50)
         batch_id = torch.zeros(n_cells, n_batches)
         batch_id[:, 0] = 1  # All cells in batch 0
 
-        output = vae(x_rna, x_atac, adj_E1, batch_id=batch_id)
+        output = vae(x_rna, adj_E1, batch_id=batch_id)
         assert output.x_rna_rec.shape == (n_cells, 100)
 
     def test_no_ppi_returns_ones(self):
         """Without PPI, x_rna_ppi should be all ones."""
         vae = create_test_vae(use_ppi=False)
         x_rna = torch.randn(4, 100)
-        x_atac = torch.randn(4, 200)
         adj_E1 = torch.randn(200, 50)
 
-        output = vae(x_rna, x_atac, adj_E1)
+        output = vae(x_rna, adj_E1)
         assert torch.allclose(output.x_rna_ppi, torch.ones_like(output.x_rna_ppi))
 
     def test_e2_parameter(self):
@@ -142,10 +136,9 @@ class TestDeepSCENICVAE:
         """Should work with batch size 1."""
         vae = create_test_vae()
         x_rna = torch.randn(1, 100)
-        x_atac = torch.randn(1, 200)
         adj_E1 = torch.randn(200, 50)
 
-        output = vae(x_rna, x_atac, adj_E1)
+        output = vae(x_rna, adj_E1)
         assert output.x_rna_rec.shape == (1, 100)
 
 
@@ -201,11 +194,10 @@ class TestVAEWithPPI:
     def test_ppi_modulates_output(self, vae_with_ppi):
         """PPI should modulate the output."""
         x_rna = torch.randn(4, 100)
-        x_atac = torch.randn(4, 200)
         adj_E1 = torch.randn(200, 50)
 
-        out_with_ppi = vae_with_ppi(x_rna, x_atac, adj_E1, use_ppi=True)
-        out_without_ppi = vae_with_ppi(x_rna, x_atac, adj_E1, use_ppi=False)
+        out_with_ppi = vae_with_ppi(x_rna, adj_E1, use_ppi=True)
+        out_without_ppi = vae_with_ppi(x_rna, adj_E1, use_ppi=False)
 
         # Outputs should differ when PPI is used
         assert not torch.allclose(out_with_ppi.z_tf, out_without_ppi.z_tf)
@@ -213,9 +205,8 @@ class TestVAEWithPPI:
     def test_ppi_weights_in_range(self, vae_with_ppi):
         """PPI weights should be in [0, 1] due to sigmoid."""
         x_rna = torch.randn(4, 100)
-        x_atac = torch.randn(4, 200)
         adj_E1 = torch.randn(200, 50)
 
-        output = vae_with_ppi(x_rna, x_atac, adj_E1, use_ppi=True)
+        output = vae_with_ppi(x_rna, adj_E1, use_ppi=True)
         assert (output.x_rna_ppi >= 0).all()
         assert (output.x_rna_ppi <= 1).all()

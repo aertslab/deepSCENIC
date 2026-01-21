@@ -77,16 +77,12 @@ def simulate_perturbation(
     if split is not None:
         mask = mdata.obs["split"] == split
         rna = mdata.mod["rna"][mask].X
-        atac = mdata.mod["atac"][mask].X
     else:
         rna = mdata.mod["rna"].X
-        atac = mdata.mod["atac"].X
 
     # Convert sparse to dense
     if issparse(rna):
         rna = rna.toarray()
-    if issparse(atac):
-        atac = atac.toarray()
 
     n_cells = rna.shape[0]
 
@@ -98,15 +94,12 @@ def simulate_perturbation(
         for i in tqdm(range(0, n_cells, batch_size), desc="Simulating perturbation"):
             end_idx = min(i + batch_size, n_cells)
             batch_rna = rna[i:end_idx].copy()
-            batch_atac = atac[i:end_idx]
 
             x_rna = torch.FloatTensor(batch_rna).to(device)
-            x_atac = torch.FloatTensor(batch_atac).to(device)
 
             # Get original z_rna (baseline)
             output_orig = model.vae(
                 x_rna,
-                x_atac,
                 model.adj_E1,
                 use_ppi=model.vae.use_ppi,
                 use_mean=True,
@@ -126,7 +119,6 @@ def simulate_perturbation(
                 # Forward pass with perturbed input
                 output_pert = model.vae(
                     perturbed_rna,
-                    x_atac,
                     model.adj_E1,
                     use_ppi=model.vae.use_ppi,
                     use_mean=True,
@@ -209,15 +201,11 @@ def simulate_multi_perturbation(
     if split is not None:
         mask = mdata.obs["split"] == split
         rna = mdata.mod["rna"][mask].X
-        atac = mdata.mod["atac"][mask].X
     else:
         rna = mdata.mod["rna"].X
-        atac = mdata.mod["atac"].X
 
     if issparse(rna):
         rna = rna.toarray()
-    if issparse(atac):
-        atac = atac.toarray()
 
     n_cells = rna.shape[0]
     logFC_all = []
@@ -226,15 +214,12 @@ def simulate_multi_perturbation(
         for i in tqdm(range(0, n_cells, batch_size), desc="Simulating multi-perturbation"):
             end_idx = min(i + batch_size, n_cells)
             batch_rna = rna[i:end_idx].copy()
-            batch_atac = atac[i:end_idx]
 
             x_rna = torch.FloatTensor(batch_rna).to(device)
-            x_atac = torch.FloatTensor(batch_atac).to(device)
 
             # Get original
             output_orig = model.vae(
                 x_rna,
-                x_atac,
                 model.adj_E1,
                 use_ppi=model.vae.use_ppi,
                 use_mean=True,
@@ -253,7 +238,6 @@ def simulate_multi_perturbation(
 
                 output_pert = model.vae(
                     perturbed_rna,
-                    x_atac,
                     model.adj_E1,
                     use_ppi=model.vae.use_ppi,
                     use_mean=True,
