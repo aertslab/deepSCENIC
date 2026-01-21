@@ -42,22 +42,10 @@ if TYPE_CHECKING:
 
 def __getattr__(name: str):
     """Lazy load heavy submodules."""
-    if name == "pp":
-        from . import pp as module
+    import importlib
 
-        return module
-    if name == "tl":
-        from . import tl as module
-
-        return module
-    if name == "pl":
-        from . import pl as module
-
-        return module
-    if name == "models":
-        from . import models as module
-
-        return module
+    if name in {"pp", "tl", "pl", "models"}:
+        return importlib.import_module(f".{name}", __name__)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
