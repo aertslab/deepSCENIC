@@ -4,3 +4,4 @@ thoughts/
 CLAUDE.md
 *__pycache__*
 pyrightconfig.json
+*.ipynb_checkpoints*
