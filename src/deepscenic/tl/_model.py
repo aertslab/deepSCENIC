@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -111,7 +112,9 @@ class DeepSCENICModel:
             # Custom sequence model flag
             "is_custom_sequence_model": is_custom_sequence_model,
         }
-
+        parent_dir = os.path.dirname(path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         if self.history is not None:
             data["history"] = self.history.to_dict()
 
