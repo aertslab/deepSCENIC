@@ -45,24 +45,43 @@ def _init_enformer(device: str, emb_len: int) -> torch.nn.Module:
     return enformer  # type: ignore[no-any-return]
 
 
-def _get_enformer_embeddings(
-    enformer: torch.nn.Module,
+def _is_enformer(model: torch.nn.Module) -> bool:
+    """Check if model is an Enformer instance.
+
+    Parameters
+    ----------
+    model
+        Sequence embedding model.
+
+    Returns
+    -------
+    bool
+        True if model is Enformer, False otherwise.
+    """
+    return type(model).__name__ == "Enformer"
+
+
+def _get_sequence_embeddings(
+    model: torch.nn.Module,
     sequences: torch.Tensor,
     bottleneck_size: int,
     emb_len: int,
 ) -> torch.Tensor:
-    """Get Enformer embeddings for sequences.
+    """Get embeddings from sequence model.
+
+    Handles both Enformer (which requires special calling convention) and
+    custom models that return flattened embeddings directly.
 
     Parameters
     ----------
-    enformer
-        Enformer model instance.
+    model
+        Sequence embedding model (Enformer or custom nn.Module).
     sequences
         Input sequences with shape (batch, seq_len, 4).
     bottleneck_size
-        Enformer embedding dimension (default: 3072).
+        Embedding dimension per position.
     emb_len
-        Enformer output sequence length.
+        Output sequence length (positions).
 
     Returns
     -------
@@ -70,21 +89,25 @@ def _get_enformer_embeddings(
         Flattened embeddings with shape (batch, bottleneck_size * emb_len).
     """
     with torch.amp.autocast("cuda", enabled=True):
-        output = enformer(sequences, return_only_embeddings=True)
-    # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
-    # Convert to float32 since autocast may produce float16 output
-    return output.reshape(-1, bottleneck_size * emb_len).float()  # type: ignore[no-any-return]
+        if _is_enformer(model):
+            # Enformer returns (batch, emb_len, bottleneck_size)
+            output = model(sequences, return_only_embeddings=True)
+            # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
+            return output.reshape(-1, bottleneck_size * emb_len).float()  # type: ignore[no-any-return]
+        else:
+            # Custom models return flat embeddings directly
+            return model(sequences).float()  # type: ignore[no-any-return]
 
 
 def _init_e1_cache(
-    enformer: torch.nn.Module,
+    sequence_model: torch.nn.Module,
     tf2rnet: MotifNet,
     seq_dataloader: torch.utils.data.DataLoader,
     device: str,
     config: TrainingConfig | PretrainConfig,
 ) -> torch.Tensor:
-    """Initialize E1 cache by running all sequences through Enformer + TF2rNet."""
-    enformer.eval()
+    """Initialize E1 cache by running all sequences through sequence model + TF2rNet."""
+    sequence_model.eval()
     tf2rnet.eval()
 
     n_regions = len(seq_dataloader.dataset)  # type: ignore[arg-type]
@@ -93,7 +116,7 @@ def _init_e1_cache(
     with torch.no_grad():
         for (sequences,), seq_idx in tqdm(seq_dataloader, desc="Initializing E1"):
             sequences = sequences.to(device)
-            emb = _get_enformer_embeddings(enformer, sequences, config.bottleneck_size, config.emb_len)
+            emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
             tf_pred = tf2rnet(emb)
             adj_E1[seq_idx] = tf_pred
 
@@ -160,10 +183,11 @@ def train(
         Number of workers for parallel data loading (0 = main process only).
     pretrained_model
         Optional pretrained model from ds.tl.pretrain(). If provided, TF2rNet
-        and Enformer weights are initialized from the pretrained model.
+        and sequence model weights are initialized from the pretrained model.
     config
         Advanced configuration options. When provided, explicit function
-        parameters take precedence over config values.
+        parameters take precedence over config values. Use config.sequence_model
+        to provide a custom sequence embedding model instead of Enformer.
 
     Returns
     -------
@@ -190,11 +214,15 @@ def train(
     >>> pretrained = ds.tl.pretrain(mdata, epochs=50)  # doctest: +SKIP
     >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
 
-    Training with advanced configuration:
+    Training with custom sequence model:
 
     >>> from deepscenic.tl import TrainingConfig
-    >>> config = TrainingConfig(beta=0.01, alpha=0.02)  # doctest: +SKIP
-    >>> model = ds.tl.train(mdata, epochs=200, config=config)  # doctest: +SKIP
+    >>> config = TrainingConfig(
+    ...     sequence_model=my_custom_model,
+    ...     bottleneck_size=256,
+    ...     emb_len=60,
+    ... )  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, config=config)  # doctest: +SKIP
     """
     # Build config: start from provided config or defaults, then override with explicit params
     if config is not None:
@@ -236,6 +264,7 @@ def train(
         bottleneck_size=base_config.bottleneck_size,
         emb_len=base_config.emb_len,
         seq_len=base_config.seq_len,
+        sequence_model=base_config.sequence_model,
     )
     config = final_config
 
@@ -300,17 +329,26 @@ def train(
         n_batches=n_batches,
     ).to(device)
 
-    # Initialize sequence models (or use pretrained)
+    # Initialize sequence models (or use pretrained/custom)
     if pretrained_model is not None:
         tf2rnet = pretrained_model.tf2rnet.to(device)
-        enformer = pretrained_model.enformer.to(device)
-    else:
+        sequence_model = pretrained_model.enformer.to(device)
+    elif config.sequence_model is not None:
+        # User provided custom sequence model
         tf2rnet = MotifNet(
             n_tfs=n_tfs,
             bottleneck_size=config.bottleneck_size,
             emb_len=config.emb_len,
         ).to(device)
-        enformer = _init_enformer(device, config.emb_len)
+        sequence_model = config.sequence_model.to(device)
+    else:
+        # Default: use Enformer
+        tf2rnet = MotifNet(
+            n_tfs=n_tfs,
+            bottleneck_size=config.bottleneck_size,
+            emb_len=config.emb_len,
+        ).to(device)
+        sequence_model = _init_enformer(device, config.emb_len)
 
     # Build dataloaders
     train_cell_loader = build_cell_dataloader(
@@ -358,7 +396,7 @@ def train(
     if pretrained_model is not None:
         adj_E1_cache = pretrained_model.adj_E1.to(device)
     else:
-        adj_E1_cache = _init_e1_cache(enformer, tf2rnet, train_seq_loader, device, config)
+        adj_E1_cache = _init_e1_cache(sequence_model, tf2rnet, train_seq_loader, device, config)
 
     n_cells = mdata.n_obs
     log.info(f"Starting training: {epochs} epochs, {n_cells} cells, {n_genes} genes, {n_tfs} TFs, {n_regions} regions")
@@ -366,7 +404,7 @@ def train(
     # Optimizers
     optimizer_vae = Adam(vae.parameters(), lr=config.lr_vae, weight_decay=config.weight_decay)
     optimizer_tf2rnet = Adam(
-        list(tf2rnet.parameters()) + list(enformer.parameters()),
+        list(tf2rnet.parameters()) + list(sequence_model.parameters()),
         lr=config.lr_tf2rnet,
         weight_decay=config.weight_decay,
     )
@@ -384,7 +422,7 @@ def train(
         vae.load_state_dict(checkpoint.vae_state_dict)
         tf2rnet.load_state_dict(checkpoint.tf2rnet_state_dict)
         if checkpoint.enformer_state_dict:
-            enformer.load_state_dict(checkpoint.enformer_state_dict)
+            sequence_model.load_state_dict(checkpoint.enformer_state_dict)
         optimizer_vae.load_state_dict(checkpoint.optimizer_state_dict)
         if checkpoint.scheduler_state_dict:
             scheduler.load_state_dict(checkpoint.scheduler_state_dict)
@@ -399,19 +437,19 @@ def train(
     for epoch in range(start_epoch, epochs):
         vae.train()
         tf2rnet.train()
-        enformer.train()
+        sequence_model.train()
 
         # Parameter freezing based on warmup_grn (legacy behavior)
-        # After warmup_grn: freeze TF2rNet/Enformer to stop gradient computation
+        # After warmup_grn: freeze TF2rNet/sequence model to stop gradient computation
         if epoch >= warmup_grn:
             for param in tf2rnet.parameters():
                 param.requires_grad = False
-            for param in enformer.parameters():
+            for param in sequence_model.parameters():
                 param.requires_grad = False
         else:
             for param in tf2rnet.parameters():
                 param.requires_grad = True
-            for param in enformer.parameters():
+            for param in sequence_model.parameters():
                 param.requires_grad = True
 
         epoch_metrics = {
@@ -444,9 +482,9 @@ def train(
 
                 sequences = sequences.to(device)
 
-                # Forward through Enformer + TF2rNet
+                # Forward through sequence model + TF2rNet
                 optimizer_tf2rnet.zero_grad()
-                emb = _get_enformer_embeddings(enformer, sequences, config.bottleneck_size, config.emb_len)
+                emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
                 tf_pred = tf2rnet(emb)
 
                 # Update E1 for this batch
@@ -526,7 +564,7 @@ def train(
         # Validation
         vae.eval()
         tf2rnet.eval()
-        enformer.eval()
+        sequence_model.eval()
         val_loss = 0.0
         n_val_batches = 0
 
@@ -585,7 +623,7 @@ def train(
                 epoch=epoch,
                 vae_state_dict=vae.state_dict(),
                 tf2rnet_state_dict=tf2rnet.state_dict(),
-                enformer_state_dict=enformer.state_dict(),
+                enformer_state_dict=sequence_model.state_dict(),
                 optimizer_state_dict=optimizer_vae.state_dict(),
                 scheduler_state_dict=scheduler.state_dict(),
                 history=history,
@@ -601,14 +639,14 @@ def train(
     # Return trained model
     vae.eval()
     tf2rnet.eval()
-    enformer.eval()
+    sequence_model.eval()
 
     log.info("Training completed")
 
     return DeepSCENICModel(
         vae=vae,
         tf2rnet=tf2rnet,
-        enformer=enformer,
+        enformer=sequence_model,
         adj_E1=adj_E1_cache,
         config=config,
         tf_names=tf_names,
@@ -956,6 +994,7 @@ def pretrain(
         bottleneck_size=base_config.bottleneck_size,
         emb_len=base_config.emb_len,
         seq_len=base_config.seq_len,
+        sequence_model=base_config.sequence_model,
     )
     pretrain_config = final_config
 
@@ -977,7 +1016,11 @@ def pretrain(
         emb_len=pretrain_config.emb_len,
     ).to(device)
 
-    enformer = _init_enformer(device, pretrain_config.emb_len)
+    # Initialize sequence model (custom or default Enformer)
+    if pretrain_config.sequence_model is not None:
+        sequence_model = pretrain_config.sequence_model.to(device)
+    else:
+        sequence_model = _init_enformer(device, pretrain_config.emb_len)
 
     # Build sequence dataloader
     seq_loader = build_sequence_dataloader(
@@ -992,7 +1035,7 @@ def pretrain(
 
     # Single optimizer for both models
     optimizer = Adam(
-        list(tf2rnet.parameters()) + list(enformer.parameters()),
+        list(tf2rnet.parameters()) + list(sequence_model.parameters()),
         lr=pretrain_config.lr,
         weight_decay=pretrain_config.weight_decay,
     )
@@ -1006,7 +1049,7 @@ def pretrain(
     # Training loop
     for epoch in range(pretrain_config.epochs):
         tf2rnet.train()
-        enformer.train()
+        sequence_model.train()
 
         epoch_loss = 0.0
         n_batches = 0
@@ -1017,9 +1060,9 @@ def pretrain(
 
             optimizer.zero_grad()
 
-            # Forward through Enformer + TF2rNet
-            emb = _get_enformer_embeddings(
-                enformer, sequences, pretrain_config.bottleneck_size, pretrain_config.emb_len
+            # Forward through sequence model + TF2rNet
+            emb = _get_sequence_embeddings(
+                sequence_model, sequences, pretrain_config.bottleneck_size, pretrain_config.emb_len
             )
             tf_pred = tf2rnet(emb)
 
@@ -1046,7 +1089,7 @@ def pretrain(
                 {
                     "epoch": epoch,
                     "tf2rnet_state_dict": tf2rnet.state_dict(),
-                    "enformer_state_dict": enformer.state_dict(),
+                    "enformer_state_dict": sequence_model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "history": history.to_dict(),
                     "config": pretrain_config.to_dict(),
@@ -1059,14 +1102,14 @@ def pretrain(
 
     # Compute final E1 cache
     tf2rnet.eval()
-    enformer.eval()
-    adj_E1 = _init_e1_cache(enformer, tf2rnet, seq_loader, device, pretrain_config)
+    sequence_model.eval()
+    adj_E1 = _init_e1_cache(sequence_model, tf2rnet, seq_loader, device, pretrain_config)
 
     log.info("Pretraining completed")
 
     return PretrainedModel(
         tf2rnet=tf2rnet,
-        enformer=enformer,
+        enformer=sequence_model,
         adj_E1=adj_E1,
         config=pretrain_config,
         tf_names=tf_names,

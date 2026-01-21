@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
+
+if TYPE_CHECKING:
+    from torch import nn
 
 
 @dataclass
@@ -16,63 +19,98 @@ class TrainingConfig:
     Parameters
     ----------
     epochs
-        Total training epochs
+        Total training epochs.
     batch_size
-        Cells per batch
+        Cells per batch.
     seq_batch_size
-        Sequences per batch
+        Sequences per batch.
     warmup_vae
-        Epochs before enabling TF2rNet
+        Epochs before enabling TF2rNet.
     warmup_grn
-        Epochs before enabling PPI
+        Epochs before enabling PPI.
     lr_vae
-        Learning rate for VAE
+        Learning rate for VAE.
     lr_tf2rnet
-        Learning rate for TF2rNet
+        Learning rate for TF2rNet.
     lr_ppi
-        Learning rate for PPI network
+        Learning rate for PPI network.
     weight_decay
-        Weight decay for optimizer
+        Weight decay for optimizer.
     beta
-        KL divergence weight
+        KL divergence weight.
     alpha
-        E1 sparsity + PPI weight
+        E1 sparsity + PPI weight.
     gamma
-        E2 sparsity weight
+        E2 sparsity weight.
     rna_tau
-        RNA reconstruction weight
+        RNA reconstruction weight.
     atac_tau
-        ATAC reconstruction weight
+        ATAC reconstruction weight.
     loss_rna
-        RNA loss type: 'mse', 'mae', 'cosine'
+        RNA loss type: 'mse', 'mae', 'cosine'.
     loss_atac
-        ATAC loss type: 'mse', 'mae', 'bce', 'cosine'
+        ATAC loss type: 'mse', 'mae', 'bce', 'cosine'.
     dropout_mask_rna
-        Whether to mask RNA loss on zeros
+        Whether to mask RNA loss on zeros.
     dropout_mask_atac
-        Whether to mask ATAC loss on zeros
+        Whether to mask ATAC loss on zeros.
     n_hidden
-        MLP hidden dimension
+        MLP hidden dimension.
     use_ppi
-        Whether to use PPI network
+        Whether to use PPI network.
     binary_atac
-        Whether ATAC is binary
+        Whether ATAC is binary.
     device
-        Training device
+        Training device.
     ppi_device
-        Separate device for PPI (optional)
+        Separate device for PPI (optional).
     batch_key
-        Column in obs for batch correction
+        Column in obs for batch correction.
     balance_class
-        Whether to use weighted sampling
+        Whether to use weighted sampling.
     class_key
-        Column in obs for class balancing
+        Column in obs for class balancing.
     bottleneck_size
-        Enformer embedding dimension
+        Sequence model embedding dimension per position.
     emb_len
-        Enformer output sequence length
+        Sequence model output length (positions).
     seq_len
-        DNA sequence length (bp)
+        DNA sequence length (bp).
+    sequence_model
+        Custom sequence embedding model. If None (default), uses Enformer.
+        Custom models must accept (batch, seq_len, 4) input and return
+        (batch, bottleneck_size * emb_len) flattened embeddings.
+
+    Examples
+    --------
+    Using default Enformer:
+
+    >>> config = TrainingConfig(epochs=100)
+    >>> model = ds.tl.train(mdata, config=config)  # doctest: +SKIP
+
+    Using a custom sequence model:
+
+    >>> import torch
+    >>> class MyModel(torch.nn.Module):
+    ...     def __init__(self):
+    ...         super().__init__()
+    ...         self.conv = torch.nn.Conv1d(4, 256, kernel_size=15, padding=7)
+    ...         self.pool = torch.nn.AdaptiveAvgPool1d(60)
+    ...
+    ...     def forward(self, x):
+    ...         # x: (batch, seq_len, 4)
+    ...         x = x.transpose(1, 2)  # (batch, 4, seq_len)
+    ...         x = self.conv(x)  # (batch, 256, seq_len)
+    ...         x = self.pool(x)  # (batch, 256, 60)
+    ...         return x.flatten(1)  # (batch, 15360)
+    ...
+    >>> config = TrainingConfig(
+    ...     sequence_model=MyModel(),
+    ...     bottleneck_size=256,
+    ...     emb_len=60,
+    ...     seq_len=640,
+    ... )
+    >>> model = ds.tl.train(mdata, config=config)  # doctest: +SKIP
     """
 
     # Training
@@ -119,14 +157,17 @@ class TrainingConfig:
     balance_dars: bool = False  # Whether to upweight DARs in sequence sampling
     num_workers: int = 0  # Number of data loading workers
 
-    # Enformer
+    # Sequence model
     bottleneck_size: int = 3072
     emb_len: int = 5
     seq_len: int = 640
+    sequence_model: nn.Module | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return dict(self.__dict__)
+        """Convert to dictionary (excludes non-serializable sequence_model)."""
+        d = dict(self.__dict__)
+        d.pop("sequence_model", None)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> TrainingConfig:
@@ -239,11 +280,15 @@ class PretrainConfig:
     num_workers
         Number of data loading workers.
     bottleneck_size
-        Enformer embedding dimension.
+        Sequence model embedding dimension per position.
     emb_len
-        Enformer output sequence length.
+        Sequence model output length (positions).
     seq_len
         DNA sequence length (bp).
+    sequence_model
+        Custom sequence embedding model. If None (default), uses Enformer.
+        Custom models must accept (batch, seq_len, 4) input and return
+        (batch, bottleneck_size * emb_len) flattened embeddings.
 
     Examples
     --------
@@ -261,10 +306,13 @@ class PretrainConfig:
     bottleneck_size: int = 3072
     emb_len: int = 5
     seq_len: int = 640
+    sequence_model: nn.Module | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return dict(self.__dict__)
+        """Convert to dictionary (excludes non-serializable sequence_model)."""
+        d = dict(self.__dict__)
+        d.pop("sequence_model", None)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> PretrainConfig:

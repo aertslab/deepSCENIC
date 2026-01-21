@@ -34,7 +34,7 @@ class DeepSCENICModel:
     tf2rnet
         Trained TF2rNet context head.
     enformer
-        Fine-tuned Enformer model.
+        Sequence embedding model (Enformer or custom nn.Module).
     adj_E1
         Cached E1 matrix (n_regions, n_tfs).
     config
@@ -71,14 +71,17 @@ class DeepSCENICModel:
         """
         Save model to file.
 
-        Includes all components (VAE, TF2rNet, Enformer), metadata, and training
-        history if available. File size will be ~1GB+ due to Enformer weights.
+        Includes all components (VAE, TF2rNet, sequence model), metadata, and
+        training history if available. File size will be ~1GB+ if using Enformer.
 
         Parameters
         ----------
         path
             Output file path (.pt)
         """
+        # Detect if sequence model is Enformer or custom
+        is_custom_sequence_model = type(self.enformer).__name__ != "Enformer"
+
         data = {
             "vae_state_dict": self.vae.state_dict(),
             "tf2rnet_state_dict": self.tf2rnet.state_dict(),
@@ -105,6 +108,8 @@ class DeepSCENICModel:
             "ppi_genes_idx": getattr(self.vae, "ppi_genes_idx", None),
             "ppi_tfs_idx_keys": getattr(self.vae, "ppi_tfs_idx_keys", None),
             "ppi_tfs_idx_values": getattr(self.vae, "ppi_tfs_idx_values", None),
+            # Custom sequence model flag
+            "is_custom_sequence_model": is_custom_sequence_model,
         }
 
         if self.history is not None:
@@ -115,7 +120,12 @@ class DeepSCENICModel:
         log.info(f"Saved model to {path}")
 
     @classmethod
-    def load(cls, path: str | Path, device: str = "cpu") -> DeepSCENICModel:
+    def load(
+        cls,
+        path: str | Path,
+        device: str = "cpu",
+        sequence_model: nn.Module | None = None,
+    ) -> DeepSCENICModel:
         """
         Load model from file.
 
@@ -125,11 +135,32 @@ class DeepSCENICModel:
             Model file path (.pt)
         device
             Device to load model to
+        sequence_model
+            Custom sequence model instance. Required when loading a model that
+            was trained with a custom sequence model. The model architecture
+            must match what was used during training.
 
         Returns
         -------
         DeepSCENICModel
             Loaded model ready for inference
+
+        Notes
+        -----
+        If the saved model used a custom sequence model (not Enformer), you must
+        provide a matching model instance via the ``sequence_model`` parameter.
+        The weights will be loaded from the checkpoint.
+
+        Examples
+        --------
+        Loading a model trained with default Enformer:
+
+        >>> model = DeepSCENICModel.load("model.pt")  # doctest: +SKIP
+
+        Loading a model trained with custom sequence model:
+
+        >>> custom = MySequenceModel()  # Same architecture as training
+        >>> model = DeepSCENICModel.load("model.pt", sequence_model=custom)  # doctest: +SKIP
         """
         from ..models import DeepSCENICVAE, MotifNet
 
@@ -169,16 +200,27 @@ class DeepSCENICModel:
         tf2rnet.to(device)
         tf2rnet.eval()
 
-        # Reconstruct Enformer
-        from enformer_pytorch import Enformer
+        # Reconstruct sequence model
+        is_custom = data.get("is_custom_sequence_model", False)
+        if is_custom:
+            if sequence_model is None:
+                raise ValueError(
+                    "This model was trained with a custom sequence model. "
+                    "You must provide the model instance via sequence_model parameter."
+                )
+            seq_model = sequence_model
+        else:
+            # Default: load Enformer
+            from enformer_pytorch import Enformer
 
-        enformer = Enformer.from_pretrained(
-            "EleutherAI/enformer-official-rough",
-            target_length=-1,
-        )
-        enformer.load_state_dict(data["enformer_state_dict"])
-        enformer.to(device)
-        enformer.eval()
+            seq_model = Enformer.from_pretrained(
+                "EleutherAI/enformer-official-rough",
+                target_length=-1,
+            )
+
+        seq_model.load_state_dict(data["enformer_state_dict"])
+        seq_model.to(device)
+        seq_model.eval()
 
         log.info(f"Loaded model from {path}: {data['n_genes']} genes, {data['n_tfs']} TFs, {data['n_regions']} regions")
 
@@ -190,7 +232,7 @@ class DeepSCENICModel:
         return cls(
             vae=vae,
             tf2rnet=tf2rnet,
-            enformer=enformer,
+            enformer=seq_model,
             adj_E1=data["adj_E1"].to(device),
             config=config,
             tf_names=data["tf_names"],
@@ -227,7 +269,7 @@ class PretrainedModel:
     """Container for pretrained sequence models.
 
     This is the object returned by `ds.tl.pretrain()` containing pretrained
-    TF2rNet and Enformer models with a cached E1 matrix. It can be passed
+    TF2rNet and sequence models with a cached E1 matrix. It can be passed
     to `ds.tl.train()` to initialize the sequence models.
 
     Attributes
@@ -235,7 +277,7 @@ class PretrainedModel:
     tf2rnet
         Pretrained MotifNet model.
     enformer
-        Pretrained Enformer model.
+        Pretrained sequence embedding model (Enformer or custom nn.Module).
     adj_E1
         Cached E1 matrix (n_regions, n_tfs).
     config
@@ -268,6 +310,8 @@ class PretrainedModel:
         path
             Output file path (.pt).
         """
+        is_custom_sequence_model = type(self.enformer).__name__ != "Enformer"
+
         torch.save(
             {
                 "tf2rnet_state_dict": self.tf2rnet.state_dict(),
@@ -279,6 +323,7 @@ class PretrainedModel:
                 "n_tfs": self.tf2rnet.n_tfs,
                 "bottleneck_size": self.config.bottleneck_size,
                 "emb_len": self.config.emb_len,
+                "is_custom_sequence_model": is_custom_sequence_model,
             },
             path,
         )
@@ -286,7 +331,12 @@ class PretrainedModel:
         log.info(f"Saved pretrained model to {path}")
 
     @classmethod
-    def load(cls, path: str | Path, device: str = "cpu") -> PretrainedModel:
+    def load(
+        cls,
+        path: str | Path,
+        device: str = "cpu",
+        sequence_model: nn.Module | None = None,
+    ) -> PretrainedModel:
         """Load pretrained model from file.
 
         Parameters
@@ -295,6 +345,9 @@ class PretrainedModel:
             Model file path (.pt).
         device
             Device to load model to.
+        sequence_model
+            Custom sequence model instance. Required when loading a model that
+            was pretrained with a custom sequence model.
 
         Returns
         -------
@@ -316,22 +369,33 @@ class PretrainedModel:
         tf2rnet.to(device)
         tf2rnet.eval()
 
-        # Reconstruct Enformer
-        from enformer_pytorch import Enformer
+        # Reconstruct sequence model
+        is_custom = data.get("is_custom_sequence_model", False)
+        if is_custom:
+            if sequence_model is None:
+                raise ValueError(
+                    "This model was pretrained with a custom sequence model. "
+                    "You must provide the model instance via sequence_model parameter."
+                )
+            seq_model = sequence_model
+        else:
+            # Default: load Enformer
+            from enformer_pytorch import Enformer
 
-        enformer = Enformer.from_pretrained(
-            "EleutherAI/enformer-official-rough",
-            target_length=-1,
-        )
-        enformer.load_state_dict(data["enformer_state_dict"])
-        enformer.to(device)
-        enformer.eval()
+            seq_model = Enformer.from_pretrained(
+                "EleutherAI/enformer-official-rough",
+                target_length=-1,
+            )
+
+        seq_model.load_state_dict(data["enformer_state_dict"])
+        seq_model.to(device)
+        seq_model.eval()
 
         log.info(f"Loaded pretrained model from {path}")
 
         return cls(
             tf2rnet=tf2rnet,
-            enformer=enformer,
+            enformer=seq_model,
             adj_E1=data["adj_E1"].to(device),
             config=config,
             tf_names=data["tf_names"],
@@ -358,7 +422,11 @@ class PretrainedModel:
         return self
 
 
-def load_pretrained(path: str | Path, device: str = "cpu") -> PretrainedModel:
+def load_pretrained(
+    path: str | Path,
+    device: str = "cpu",
+    sequence_model: nn.Module | None = None,
+) -> PretrainedModel:
     """Load a pretrained sequence model.
 
     Parameters
@@ -367,6 +435,9 @@ def load_pretrained(path: str | Path, device: str = "cpu") -> PretrainedModel:
         Path to saved pretrained model file (.pt).
     device
         Device to load model to.
+    sequence_model
+        Custom sequence model instance. Required when loading a model that
+        was pretrained with a custom sequence model.
 
     Returns
     -------
@@ -378,10 +449,14 @@ def load_pretrained(path: str | Path, device: str = "cpu") -> PretrainedModel:
     >>> pretrained = ds.tl.load_pretrained("pretrained.pt")  # doctest: +SKIP
     >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
     """
-    return PretrainedModel.load(path, device=device)
+    return PretrainedModel.load(path, device=device, sequence_model=sequence_model)
 
 
-def load_model(path: str | Path, device: str = "cpu") -> DeepSCENICModel:
+def load_model(
+    path: str | Path,
+    device: str = "cpu",
+    sequence_model: nn.Module | None = None,
+) -> DeepSCENICModel:
     """
     Load a trained deepSCENIC model.
 
@@ -391,13 +466,16 @@ def load_model(path: str | Path, device: str = "cpu") -> DeepSCENICModel:
         Path to saved model file (.pt)
     device
         Device to load model to
+    sequence_model
+        Custom sequence model instance. Required when loading a model that
+        was trained with a custom sequence model.
 
     Returns
     -------
     DeepSCENICModel
         Loaded model ready for inference
     """
-    return DeepSCENICModel.load(path, device=device)
+    return DeepSCENICModel.load(path, device=device, sequence_model=sequence_model)
 
 
 def load_legacy_model(

@@ -34,15 +34,24 @@ def force_cpu(monkeypatch):
 
 
 class MockEnformer(torch.nn.Module):
-    """Mock Enformer for testing (avoids loading real model)."""
+    """Mock Enformer for testing (avoids loading real model).
 
-    def __init__(self):
+    Mimics Enformer's interface by accepting return_only_embeddings parameter
+    and returning embeddings with shape (batch, emb_len, bottleneck_size).
+    """
+
+    def __init__(self, bottleneck_size: int = 16, emb_len: int = 2):
         super().__init__()
-        self.linear = torch.nn.Linear(10, 10)
+        self.bottleneck_size = bottleneck_size
+        self.emb_len = emb_len
+        self.linear = torch.nn.Linear(10, bottleneck_size * emb_len)
 
-    def forward(self, x):
-        """Mock forward."""
-        return x
+    def forward(
+        self, x: torch.Tensor, return_only_embeddings: bool = False
+    ) -> torch.Tensor:
+        """Return mock embeddings with shape (batch, emb_len, bottleneck_size)."""
+        batch_size = x.shape[0]
+        return torch.randn(batch_size, self.emb_len, self.bottleneck_size)
 
 
 @pytest.fixture
@@ -199,7 +208,10 @@ def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
     return DeepSCENICModel(
         vae=mock_vae,
         tf2rnet=mock_tf2rnet,
-        enformer=MockEnformer(),
+        enformer=MockEnformer(
+            bottleneck_size=d["bottleneck_size"],
+            emb_len=d["emb_len"],
+        ),
         adj_E1=mock_adj_E1,
         config=config,
         tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
