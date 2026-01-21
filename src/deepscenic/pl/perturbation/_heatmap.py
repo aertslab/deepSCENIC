@@ -72,6 +72,12 @@ def heatmap_perturbation(
     Returns
     -------
     Figure or None
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> results = ds.tl.perturb_all_tfs(model, mdata)  # doctest: +SKIP
+    >>> ds.pl.heatmap_perturbation(results)  # doctest: +SKIP
     """
     df = results.copy()
 
@@ -165,6 +171,12 @@ def dotplot_perturbation(
     Returns
     -------
     Axes, Figure, or None
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> results = ds.tl.perturb_all_tfs(model, mdata)  # doctest: +SKIP
+    >>> ds.pl.dotplot_perturbation(results, tfs=["SOX2", "NANOG"])  # doctest: +SKIP
     """
     df = results.copy()
 

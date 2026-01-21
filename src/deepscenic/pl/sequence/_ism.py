@@ -60,6 +60,13 @@ def ism_heatmap(
     Returns
     -------
     Axes, Figure, or None
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import deepscenic as ds
+    >>> ism_scores = np.random.randn(100, 4)
+    >>> ds.pl.ism_heatmap(ism_scores)  # doctest: +SKIP
     """
     # Ensure shape is (4, seq_len) for heatmap
     if ism_scores.shape[1] == 4 and ism_scores.shape[0] != 4:

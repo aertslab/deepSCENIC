@@ -80,6 +80,17 @@ def arc_plot(
     Returns
     -------
     Axes, Figure, or None
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> import deepscenic as ds
+    >>> links = pd.DataFrame({
+    ...     "region": ["chr1:1000-2000", "chr1:3000-4000"],
+    ...     "gene": ["GENE1", "GENE2"],
+    ...     "weight": [0.5, 0.8],
+    ... })
+    >>> ds.pl.arc_plot(links, chrom="chr1", start=0, end=5000)  # doctest: +SKIP
     """
     import pandas as pd
     from matplotlib import cm

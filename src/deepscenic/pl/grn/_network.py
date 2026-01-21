@@ -79,6 +79,12 @@ def network_grn(
     Returns
     -------
     Axes, Figure, or None
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.network_grn(model, top_k=15)  # doctest: +SKIP
     """
     from deepscenic.tl import get_tf_targets
 
@@ -218,6 +224,12 @@ def network_tf_targets(
     Returns
     -------
     Axes, Figure, or None
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.network_tf_targets(model, "SOX2", top_k=20)  # doctest: +SKIP
     """
     from deepscenic.tl import get_tf_targets
 
@@ -325,6 +337,12 @@ def network_gene_regulators(
     Returns
     -------
     Axes, Figure, or None
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.network_gene_regulators(model, "NANOG")  # doctest: +SKIP
     """
     from deepscenic.tl import get_gene_regulators
 

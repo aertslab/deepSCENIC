@@ -68,6 +68,12 @@ def volcano_perturbation(
     Returns
     -------
     Axes, Figure, or None
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> results = ds.tl.perturb_tf(model, mdata, "SOX2")  # doctest: +SKIP
+    >>> ds.pl.volcano_perturbation(results)  # doctest: +SKIP
     """
     df = results.copy()
 
