@@ -158,13 +158,41 @@ class DeepSCENICVAE(nn.Module):
                 if hasattr(m, "bias") and m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-    def _build_e2_dense(self) -> Tensor:
-        """Build dense E2 matrix from sparse representation."""
-        return torch.sparse_coo_tensor(
-            self.r2g_indices,
-            self.adj_E2.abs(),
-            size=(self.n_regions, self.n_genes),
-        ).to_dense()
+    def _region_to_gene(self, enh_act: Tensor) -> Tensor:
+        """Compute region→gene signal using scatter_add (memory efficient).
+
+        Equivalent to enh_act @ E2 where E2 is a sparse (n_regions, n_genes) matrix,
+        but avoids materializing any dense matrices during forward or backward.
+
+        Parameters
+        ----------
+        enh_act
+            Region activity tensor (n_cells, n_regions)
+
+        Returns
+        -------
+        Tensor
+            Gene regulatory signal (n_cells, n_genes)
+        """
+        n_cells = enh_act.shape[0]
+        device = enh_act.device
+
+        # r2g_indices: (2, n_links) - row 0 = region indices, row 1 = gene indices
+        region_idx = self.r2g_indices[0]  # (n_links,)
+        gene_idx = self.r2g_indices[1]  # (n_links,)
+        weights = self.adj_E2.abs()  # (n_links,)
+
+        # Gather region activities for each link and weight them
+        # enh_act[:, region_idx]: (n_cells, n_links)
+        # weights: (n_links,) broadcasts to (n_cells, n_links)
+        link_values = enh_act[:, region_idx] * weights
+
+        # Scatter-add to accumulate weighted contributions per gene
+        z_rna = torch.zeros(n_cells, self.n_genes, device=device, dtype=enh_act.dtype)
+        gene_idx_expanded = gene_idx.unsqueeze(0).expand(n_cells, -1)
+        z_rna.scatter_add_(1, gene_idx_expanded, link_values)
+
+        return z_rna
 
     def forward(
         self,
@@ -230,9 +258,8 @@ class DeepSCENICVAE(nn.Module):
         # TF activity → region activity via E1
         enh_act = z_tf @ adj_E1.T
 
-        # Region activity → gene signal via E2
-        E2 = self._build_e2_dense()
-        z_rna = enh_act @ E2
+        # Region activity → gene signal via E2 (scatter_add for memory efficiency)
+        z_rna = self._region_to_gene(enh_act)
 
         # Decoders
         x_rna_rec = self.decoder_rna(z_rna)
