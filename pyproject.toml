@@ -61,7 +61,7 @@ dependencies = [
     "networkx>=3.0",
 
     # Genome sequence handling
-    "pyfaidx>=0.7",
+    "pyfaidx>=0.9",
     "tangermeme>=1.0.0",
 ]
 
