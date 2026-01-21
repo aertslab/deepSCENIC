@@ -1,7 +1,7 @@
 """Plotting functions for deepSCENIC."""
 
 from ._colors import get_colors, set_colors
-from ._utils import savefig_or_show, setup_axes
+from ._utils import get_cmap_colors, parse_region, savefig_or_show, setup_axes
 from .genomics import arc_plot, genome_browser
 from .grn import (
     heatmap_e1,
@@ -17,12 +17,20 @@ from .perturbation import (
     volcano_perturbation,
 )
 from .sequence import ism_heatmap, logo_attribution, logo_motif
-from .training import latent_umap, loss_curves, sparsity_histogram
+from .training import (
+    enhancer_activity_histogram,
+    latent_umap,
+    loss_curves,
+    sparsity_histogram,
+    tf_activity_clustermap,
+)
 
 __all__ = [
     # Utilities
     "setup_axes",
     "savefig_or_show",
+    "get_cmap_colors",
+    "parse_region",
     "set_colors",
     "get_colors",
     # GRN
@@ -43,8 +51,10 @@ __all__ = [
     # Genomics
     "genome_browser",
     "arc_plot",
-    # Training
+    # Training / Diagnostics
     "loss_curves",
     "sparsity_histogram",
     "latent_umap",
+    "enhancer_activity_histogram",
+    "tf_activity_clustermap",
 ]

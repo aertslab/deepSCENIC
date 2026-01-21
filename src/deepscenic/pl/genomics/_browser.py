@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
     from mudata import MuData
 
-from .._utils import savefig_or_show
+from .._utils import COLORS, parse_region, savefig_or_show
 
 
 def genome_browser(
@@ -107,12 +107,6 @@ def genome_browser(
                     }
                 )
 
-    # Parse region coordinates
-    def parse_region(r: str) -> tuple[str, int, int]:
-        chrom_r, coords = r.split(":")
-        s, e = coords.split("-")
-        return chrom_r, int(s), int(e)
-
     # Filter regions in view
     region_mask = []
     region_coords = []
@@ -159,7 +153,7 @@ def genome_browser(
 
                 # Plot as bars
                 for (r_start, r_end), signal in zip(region_coords, group_signal, strict=False):
-                    color = group_colors.get(group_name, "#4DBBD5") if group_colors else "#4DBBD5"
+                    color = group_colors.get(group_name, COLORS["gene"]) if group_colors else COLORS["gene"]
                     ax.fill_between([r_start, r_end], 0, signal, alpha=0.7, color=color)
 
                 ax.set_ylabel(group_name, fontsize=8)
@@ -174,7 +168,7 @@ def genome_browser(
             agg_signal = np.mean(atac_data[:, region_mask], axis=0)
 
             for (r_start, r_end), signal in zip(region_coords, agg_signal, strict=False):
-                ax.fill_between([r_start, r_end], 0, signal, alpha=0.7, color="#4DBBD5")
+                ax.fill_between([r_start, r_end], 0, signal, alpha=0.7, color=COLORS["gene"])
 
             ax.set_ylabel("Accessibility", fontsize=8)
             ax.set_xlim(start, end)
@@ -194,7 +188,7 @@ def genome_browser(
 
             # Draw gene body
             y_pos = 0.5
-            ax.plot([g_start, g_end], [y_pos, y_pos], color="#E64B35", linewidth=3)
+            ax.plot([g_start, g_end], [y_pos, y_pos], color=COLORS["tf"], linewidth=3)
 
             # Add arrow for direction
             if strand == "+":
@@ -202,14 +196,14 @@ def genome_browser(
                     "",
                     xy=(g_end, y_pos),
                     xytext=(g_end - (end - start) * 0.02, y_pos),
-                    arrowprops={"arrowstyle": "->", "color": "#E64B35"},
+                    arrowprops={"arrowstyle": "->", "color": COLORS["tf"]},
                 )
             else:
                 ax.annotate(
                     "",
                     xy=(g_start, y_pos),
                     xytext=(g_start + (end - start) * 0.02, y_pos),
-                    arrowprops={"arrowstyle": "->", "color": "#E64B35"},
+                    arrowprops={"arrowstyle": "->", "color": COLORS["tf"]},
                 )
 
             # Gene name

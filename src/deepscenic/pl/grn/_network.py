@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from deepscenic.tl._model import DeepSCENICModel
 
-from .._utils import savefig_or_show, setup_axes
+from .._utils import COLORS, savefig_or_show, setup_axes
 
 
 def network_grn(
@@ -254,13 +254,13 @@ def network_tf_targets(
     for node in G.nodes():
         ntype = G.nodes[node].get("node_type", "gene")
         if ntype == "tf":
-            node_colors.append("#E64B35")
+            node_colors.append(COLORS["tf"])
             node_sizes.append(1000)
         elif ntype == "region":
-            node_colors.append("#00A087")
+            node_colors.append(COLORS["region"])
             node_sizes.append(400)
         else:
-            node_colors.append("#4DBBD5")
+            node_colors.append(COLORS["gene"])
             node_sizes.append(500)
 
     # Draw
@@ -345,7 +345,7 @@ def network_gene_regulators(
 
     fig, ax = setup_axes(ax, figsize=figsize)
 
-    node_colors = ["#E64B35" if G.nodes[n].get("node_type") == "tf" else "#4DBBD5" for n in G.nodes()]
+    node_colors = [COLORS["tf"] if G.nodes[n].get("node_type") == "tf" else COLORS["gene"] for n in G.nodes()]
     node_sizes = [800 if G.nodes[n].get("node_type") == "tf" else 1000 for n in G.nodes()]
 
     nx.draw_networkx(

@@ -1,9 +1,17 @@
 """Training diagnostic visualizations."""
 
-from ._diagnostics import latent_umap, loss_curves, sparsity_histogram
+from ._diagnostics import (
+    enhancer_activity_histogram,
+    latent_umap,
+    loss_curves,
+    sparsity_histogram,
+    tf_activity_clustermap,
+)
 
 __all__ = [
     "loss_curves",
-    "latent_umap",
     "sparsity_histogram",
+    "latent_umap",
+    "enhancer_activity_histogram",
+    "tf_activity_clustermap",
 ]

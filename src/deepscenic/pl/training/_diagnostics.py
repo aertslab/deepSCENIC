@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     from deepscenic.tl._model import DeepSCENICModel
 
-from .._utils import savefig_or_show, setup_axes
+from .._utils import COLORS, savefig_or_show, setup_axes
 
 
 def loss_curves(
@@ -167,13 +167,13 @@ def sparsity_histogram(
     if which == "both":
         fig, axes = plt.subplots(1, 2, figsize=figsize)
 
-        axes[0].hist(E1_vals, bins=bins, alpha=0.7, color="#E64B35")
+        axes[0].hist(E1_vals, bins=bins, alpha=0.7, color=COLORS["tf"])
         axes[0].set_xlabel("Weight")
         axes[0].set_ylabel("Count")
         e1_sparsity = (E1_vals < threshold).mean()
         axes[0].set_title(f"E1 (TF->Region)\nSparsity: {e1_sparsity:.1%}")
 
-        axes[1].hist(E2_vals, bins=bins, alpha=0.7, color="#4DBBD5")
+        axes[1].hist(E2_vals, bins=bins, alpha=0.7, color=COLORS["gene"])
         axes[1].set_xlabel("Weight")
         axes[1].set_ylabel("Count")
         e2_sparsity = (E2_vals < threshold).mean()
@@ -188,7 +188,7 @@ def sparsity_histogram(
     else:
         fig, ax = setup_axes(ax, figsize=(figsize[0] // 2, figsize[1]))
         vals = E1_vals if which == "E1" else E2_vals
-        color = "#E64B35" if which == "E1" else "#4DBBD5"
+        color = COLORS["tf"] if which == "E1" else COLORS["gene"]
 
         ax.hist(vals, bins=bins, alpha=0.7, color=color)
         ax.set_xlabel("Weight")
@@ -329,4 +329,234 @@ def latent_umap(
         return fig
     if show is False:
         return ax
+    return None
+
+
+def enhancer_activity_histogram(
+    model: DeepSCENICModel,
+    mdata: MuData,
+    *,
+    log_scale: bool = True,
+    bins: int = 100,
+    exclude_zeros: bool = True,
+    ax: Axes | None = None,
+    show: bool | None = None,
+    save: str | bool | None = None,
+    return_fig: bool = False,
+    figsize: tuple[float, float] = (8, 5),
+) -> Axes | Figure | None:
+    """
+    Histogram of enhancer activity distribution.
+
+    Use to diagnose if the model learned meaningful enhancer activity profiles.
+    A well-trained model should show a smooth, roughly normal distribution
+    (possibly with long tails) rather than uniform or degenerate distributions.
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel.
+    mdata
+        MuData with cell annotations.
+    log_scale
+        Use logarithmic scale for y-axis.
+    bins
+        Number of histogram bins.
+    exclude_zeros
+        Exclude zero-activity enhancers from histogram.
+    ax
+        Pre-existing axes.
+    show
+        Display figure.
+    save
+        Save figure.
+    return_fig
+        Return Figure.
+    figsize
+        Figure size.
+
+    Returns
+    -------
+    Axes, Figure, or None depending on parameters.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.enhancer_activity_histogram(model, mdata)  # doctest: +SKIP
+    """
+    import torch
+
+    # Get enhancer activity from model forward pass
+    with torch.no_grad():
+        rna_data = mdata.mod["rna"].X
+        if hasattr(rna_data, "toarray"):
+            rna_data = rna_data.toarray()
+
+        # Get TF expression and compute enhancer activity
+        tf_indices = model.vae.tf_indices.cpu().numpy()
+        tf_expression = rna_data[:, tf_indices]
+
+        # Enhancer activity = TF expression @ E1
+        tf_tensor = torch.FloatTensor(tf_expression)
+
+        # Get z_tf from encoder
+        _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
+        z_tf = mu.squeeze(-1)
+
+        # Compute enhancer activity: z_tf @ E1
+        enh_act = (z_tf @ model.adj_E1).cpu().numpy()
+
+    # Flatten and optionally exclude zeros
+    values = enh_act.flatten()
+    if exclude_zeros:
+        values = values[values != 0]
+
+    fig, ax = setup_axes(ax, figsize=figsize)
+
+    ax.hist(values, bins=bins, alpha=0.7, color=COLORS["region"], edgecolor="white")
+    ax.set_xlabel("Enhancer Activity")
+    ax.set_ylabel("Count")
+    ax.set_title("Enhancer Activity Distribution")
+
+    if log_scale:
+        ax.set_yscale("log")
+
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    savefig_or_show("enhancer_activity_histogram", show=show, save=save)
+
+    if return_fig:
+        return fig
+    if show is False:
+        return ax
+    return None
+
+
+def tf_activity_clustermap(
+    model: DeepSCENICModel,
+    mdata: MuData,
+    *,
+    groupby: str,
+    top_n_tfs: int | None = 50,
+    tfs: list[str] | None = None,
+    cluster_rows: bool = True,
+    cluster_cols: bool = False,
+    cmap: str = "RdBu_r",
+    center: float = 0,
+    show: bool | None = None,
+    save: str | bool | None = None,
+    return_fig: bool = False,
+    figsize: tuple[float, float] = (12, 8),
+    **kwargs,
+) -> Figure | None:
+    """
+    Clustered heatmap of TF activities per cell group.
+
+    Use to diagnose if the model learned cell-type-specific TF activity patterns.
+    A well-trained model should show distinct TF activity profiles that
+    correlate with known biology (e.g., lineage-specific TFs).
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel.
+    mdata
+        MuData with cell annotations.
+    groupby
+        Column in mdata.obs to group cells by (e.g., 'celltype').
+    top_n_tfs
+        Number of top TFs to show (by variance across groups).
+        Ignored if tfs is provided.
+    tfs
+        Specific TFs to include.
+    cluster_rows
+        Cluster TF rows.
+    cluster_cols
+        Cluster cell group columns.
+    cmap
+        Colormap.
+    center
+        Center value for diverging colormap.
+    show
+        Display figure.
+    save
+        Save figure.
+    return_fig
+        Return Figure.
+    figsize
+        Figure size.
+    **kwargs
+        Passed to seaborn.clustermap.
+
+    Returns
+    -------
+    Figure or None.
+
+    Examples
+    --------
+    >>> import deepscenic as ds
+    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
+    >>> ds.pl.tf_activity_clustermap(model, mdata, groupby="celltype")  # doctest: +SKIP
+    """
+    import pandas as pd
+    import seaborn as sns
+    import torch
+
+    # Get TF activity from model
+    with torch.no_grad():
+        rna_data = mdata.mod["rna"].X
+        if hasattr(rna_data, "toarray"):
+            rna_data = rna_data.toarray()
+
+        tf_indices = model.vae.tf_indices.cpu().numpy()
+        tf_expression = rna_data[:, tf_indices]
+
+        # Get z_tf from encoder
+        tf_tensor = torch.FloatTensor(tf_expression)
+        _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
+        z_tf = mu.squeeze(-1).cpu().numpy()
+
+    # Get TF names
+    tf_names = model.tf_names
+
+    # Create DataFrame with TF activity per cell
+    df_tf = pd.DataFrame(z_tf, index=mdata.obs_names, columns=tf_names)
+
+    # Group by annotation and compute mean
+    groups = mdata.obs[groupby]
+    df_grouped = df_tf.groupby(groups).mean().T
+
+    # Select TFs to display
+    if tfs is not None:
+        df_grouped = df_grouped.loc[df_grouped.index.isin(tfs)]
+    elif top_n_tfs is not None and top_n_tfs < len(df_grouped):
+        # Select top TFs by variance across groups
+        variances = df_grouped.var(axis=1)
+        top_tfs = variances.nlargest(top_n_tfs).index
+        df_grouped = df_grouped.loc[top_tfs]
+
+    # Create clustermap
+    g = sns.clustermap(
+        df_grouped,
+        row_cluster=cluster_rows,
+        col_cluster=cluster_cols,
+        cmap=cmap,
+        center=center,
+        figsize=figsize,
+        xticklabels=True,
+        yticklabels=True,
+        dendrogram_ratio=(0.1, 0.05),
+        cbar_pos=(0.02, 0.8, 0.03, 0.15),
+        **kwargs,
+    )
+    g.ax_heatmap.set_xlabel(groupby)
+    g.ax_heatmap.set_ylabel("TF")
+    g.fig.suptitle(f"TF Activity by {groupby}", y=1.02)
+
+    savefig_or_show("tf_activity_clustermap", show=show, save=save)
+
+    if return_fig:
+        return g.fig
     return None

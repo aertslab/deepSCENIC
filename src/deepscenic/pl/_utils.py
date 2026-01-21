@@ -11,6 +11,14 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
 
+# Default color palette (NPG-inspired)
+COLORS = {
+    "tf": "#E64B35",  # TF nodes, E1 weights, up-regulated
+    "gene": "#4DBBD5",  # Gene nodes, E2 weights, down-regulated
+    "region": "#00A087",  # Region nodes
+}
+
+
 def setup_axes(
     ax: Axes | None = None,
     figsize: tuple[float, float] | None = None,
@@ -102,3 +110,36 @@ def get_cmap_colors(n: int, cmap: str = "tab20") -> list[str]:
 
     cmap_obj = cm.get_cmap(cmap)
     return [rgb2hex(cmap_obj(i / max(n - 1, 1))) for i in range(n)]
+
+
+def parse_region(region: str) -> tuple[str, int, int]:
+    """
+    Parse a genomic region string into chromosome, start, and end.
+
+    Parameters
+    ----------
+    region
+        Region string in format 'chr:start-end' (e.g., 'chr1:1000-2000').
+
+    Returns
+    -------
+    tuple[str, int, int]
+        Tuple of (chromosome, start, end).
+
+    Raises
+    ------
+    ValueError
+        If region string is not in expected format.
+
+    Examples
+    --------
+    >>> from deepscenic.pl import parse_region
+    >>> parse_region("chr1:1000-2000")
+    ('chr1', 1000, 2000)
+    """
+    try:
+        chrom, coords = region.split(":")
+        start_str, end_str = coords.split("-")
+        return chrom, int(start_str), int(end_str)
+    except (ValueError, AttributeError) as e:
+        raise ValueError(f"Invalid region format '{region}'. Expected 'chr:start-end'.") from e

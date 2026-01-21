@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-from .._utils import savefig_or_show, setup_axes
+from .._utils import COLORS, savefig_or_show, setup_axes
 
 
 def volcano_perturbation(
@@ -86,11 +86,11 @@ def volcano_perturbation(
 
     # Significant up
     sig_up = df[df["significant"] & (df["direction"] == "up")]
-    ax.scatter(sig_up[logfc_col], sig_up["neg_log_pval"], c="#E64B35", alpha=0.7, s=30, label="Up-regulated")
+    ax.scatter(sig_up[logfc_col], sig_up["neg_log_pval"], c=COLORS["tf"], alpha=0.7, s=30, label="Up-regulated")
 
     # Significant down
     sig_down = df[df["significant"] & (df["direction"] == "down")]
-    ax.scatter(sig_down[logfc_col], sig_down["neg_log_pval"], c="#4DBBD5", alpha=0.7, s=30, label="Down-regulated")
+    ax.scatter(sig_down[logfc_col], sig_down["neg_log_pval"], c=COLORS["gene"], alpha=0.7, s=30, label="Down-regulated")
 
     # Threshold lines
     ax.axhline(-np.log10(pval_threshold), linestyle="--", color="gray", alpha=0.5)

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
-from .._utils import savefig_or_show, setup_axes
+from .._utils import parse_region, savefig_or_show, setup_axes
 
 
 def arc_plot(
@@ -88,11 +88,6 @@ def arc_plot(
     df = links.copy()
 
     # Parse regions
-    def parse_region(r: str) -> tuple[str, int, int]:
-        chrom_r, coords = r.split(":")
-        s, e = coords.split("-")
-        return chrom_r, int(s), int(e)
-
     parsed = df[region_col].apply(lambda x: pd.Series(parse_region(x)))
     df[["chrom", "reg_start", "reg_end"]] = parsed
     df["reg_center"] = (df["reg_start"] + df["reg_end"]) // 2
