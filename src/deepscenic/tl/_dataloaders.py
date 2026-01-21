@@ -143,7 +143,8 @@ def build_sequence_dataloader(
     shuffle: bool = True,
     shift_augs: tuple[int, int] = (-3, 3),
     rc_aug: bool = True,
-    context_length: int = 640,
+    *,
+    context_length: int,
     num_workers: int = 0,
     balance_dars: bool = False,
     dar_indices: NDArray | None = None,
@@ -167,7 +168,7 @@ def build_sequence_dataloader(
     rc_aug
         Whether to use reverse complement augmentation.
     context_length
-        Sequence length (bp).
+        Sequence length in base pairs. Should match your model's expected input.
     num_workers
         Number of data loading workers.
     balance_dars

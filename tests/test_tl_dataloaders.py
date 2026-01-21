@@ -180,6 +180,7 @@ class TestBuildSequenceDataloader:
             regions=regions,
             batch_size=2,
             shuffle=False,
+            context_length=640,
         )
 
         batch = next(iter(loader))
@@ -218,6 +219,7 @@ class TestBuildSequenceDataloader:
             regions=regions,
             batch_size=3,
             shuffle=False,
+            context_length=640,
         )
 
         batch = next(iter(loader))
@@ -232,4 +234,4 @@ class TestBuildSequenceDataloader:
         regions = ["chr1:0-640"]
 
         with pytest.raises(RuntimeError, match="No genome registered"):
-            build_sequence_dataloader(regions=regions)
+            build_sequence_dataloader(regions=regions, context_length=640)

@@ -75,7 +75,8 @@ class TrainingConfig:
     emb_len
         Sequence model output length (positions).
     seq_len
-        DNA sequence length (bp).
+        DNA sequence length in base pairs. Default is 640bp for Enformer
+        compatibility (target_length=5). Set to match your sequence_model's input.
     sequence_model
         Custom sequence embedding model. If None (default), uses Enformer.
         Custom models must accept (batch, seq_len, 4) input and return
@@ -284,7 +285,8 @@ class PretrainConfig:
     emb_len
         Sequence model output length (positions).
     seq_len
-        DNA sequence length (bp).
+        DNA sequence length in base pairs. Default is 640bp for Enformer
+        compatibility (target_length=5). Set to match your sequence_model's input.
     sequence_model
         Custom sequence embedding model. If None (default), uses Enformer.
         Custom models must accept (batch, seq_len, 4) input and return

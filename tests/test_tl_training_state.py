@@ -6,6 +6,7 @@ import torch
 from deepscenic.tl._training_state import (
     Checkpoint,
     EarlyStopping,
+    PretrainConfig,
     TrainingConfig,
     TrainingHistory,
 )
@@ -128,3 +129,22 @@ class TestSaveBestCheckpoints:
         checkpoint.save(path)
         loaded = Checkpoint.load(path)
         assert loaded.best_loss == pytest.approx(0.42)
+
+
+class TestSeqLenConfiguration:
+    """Tests for seq_len configuration."""
+
+    def test_training_config_default_seq_len(self):
+        """TrainingConfig has 640bp default for Enformer."""
+        config = TrainingConfig()
+        assert config.seq_len == 640
+
+    def test_pretrain_config_default_seq_len(self):
+        """PretrainConfig has 640bp default for Enformer."""
+        config = PretrainConfig()
+        assert config.seq_len == 640
+
+    def test_custom_seq_len(self):
+        """Allows custom seq_len for custom models."""
+        config = TrainingConfig(seq_len=1024)
+        assert config.seq_len == 1024

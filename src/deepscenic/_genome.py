@@ -241,8 +241,8 @@ class GenomeIntervalDataset(Dataset):
     genome
         Genome instance for sequence extraction.
     context_length
-        Desired sequence length. Regions are centered and padded/trimmed
-        symmetrically to this length.
+        Sequence length in base pairs to extract. Regions are centered and
+        padded/trimmed to this length. Should match your model's expected input.
     shift_augs
         Tuple of (min_shift, max_shift) for random position augmentation.
         Set to (0, 0) for no augmentation.
@@ -272,7 +272,7 @@ class GenomeIntervalDataset(Dataset):
         self,
         regions: list[str],
         genome: Genome,
-        context_length: int = 640,
+        context_length: int,
         shift_augs: tuple[int, int] = (0, 0),
         rc_aug: bool = False,
     ) -> None:
