@@ -815,8 +815,8 @@ def finetune(
             from ._loss import e2_sparsity_loss, reconstruction_loss
 
             loss_rec_rna = reconstruction_loss(
-                x_rna,
                 output.x_rna_rec,
+                x_rna,
                 loss_type=finetune_config.loss_rna,
                 dropout_mask=finetune_config.dropout_mask_rna,
             )
@@ -862,8 +862,8 @@ def finetune(
                 )
 
                 loss_rec_rna = reconstruction_loss(
-                    x_rna,
                     output.x_rna_rec,
+                    x_rna,
                     loss_type=finetune_config.loss_rna,
                     dropout_mask=finetune_config.dropout_mask_rna,
                 )

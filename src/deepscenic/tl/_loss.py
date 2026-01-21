@@ -235,8 +235,10 @@ def compute_total_loss(
     else:
         loss_ppi = torch.tensor(0.0, device=x_rna.device)
 
-    # Total loss (E1 sparsity only included after warmup_grn)
-    total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse + loss_ppi
+    # Total loss for backpropagation
+    # Note: PPI loss is computed for logging but excluded from total to match legacy
+    # behavior where it was calculated but commented out of the loss sum.
+    total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse
     if include_e1_sparsity:
         total = total + loss_e1_sparse
 
