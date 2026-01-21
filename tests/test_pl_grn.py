@@ -142,9 +142,7 @@ class TestNetworkTFTargets:
         from deepscenic.pl import network_tf_targets
 
         tf = mock_deepscenic_model.tf_names[0]
-        ax = network_tf_targets(
-            mock_deepscenic_model, tf, threshold=0.0, top_k=5, show_regions=True, show=False
-        )
+        ax = network_tf_targets(mock_deepscenic_model, tf, threshold=0.0, top_k=5, show_regions=True, show=False)
 
         assert ax is not None
         plt.close("all")

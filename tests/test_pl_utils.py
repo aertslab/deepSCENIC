@@ -1,6 +1,5 @@
 """Tests for deepSCENIC plotting utilities."""
 
-
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -151,9 +150,7 @@ class TestSetColors:
         from deepscenic.pl import set_colors
 
         # Add a categorical column
-        sample_mdata.obs["cell_type"] = pd.Categorical(
-            ["A"] * 50 + ["B"] * 50, categories=["A", "B"]
-        )
+        sample_mdata.obs["cell_type"] = pd.Categorical(["A"] * 50 + ["B"] * 50, categories=["A", "B"])
 
         set_colors(sample_mdata, "cell_type")
 
@@ -164,9 +161,7 @@ class TestSetColors:
         """Should use provided color list."""
         from deepscenic.pl import set_colors
 
-        sample_mdata.obs["cell_type"] = pd.Categorical(
-            ["A"] * 50 + ["B"] * 50, categories=["A", "B"]
-        )
+        sample_mdata.obs["cell_type"] = pd.Categorical(["A"] * 50 + ["B"] * 50, categories=["A", "B"])
 
         set_colors(sample_mdata, "cell_type", colors=["#FF0000", "#00FF00"])
 
@@ -177,9 +172,7 @@ class TestSetColors:
         """Should use provided color dictionary."""
         from deepscenic.pl import set_colors
 
-        sample_mdata.obs["cell_type"] = pd.Categorical(
-            ["A"] * 50 + ["B"] * 50, categories=["A", "B"]
-        )
+        sample_mdata.obs["cell_type"] = pd.Categorical(["A"] * 50 + ["B"] * 50, categories=["A", "B"])
 
         set_colors(sample_mdata, "cell_type", colors={"A": "#FF0000", "B": "#00FF00"})
 
@@ -198,9 +191,7 @@ class TestSetColors:
         """Should raise ValueError for wrong number of colors."""
         from deepscenic.pl import set_colors
 
-        sample_mdata.obs["cell_type"] = pd.Categorical(
-            ["A"] * 50 + ["B"] * 50, categories=["A", "B"]
-        )
+        sample_mdata.obs["cell_type"] = pd.Categorical(["A"] * 50 + ["B"] * 50, categories=["A", "B"])
 
         with pytest.raises(ValueError, match="Need 2 colors"):
             set_colors(sample_mdata, "cell_type", colors=["#FF0000"])
@@ -213,9 +204,7 @@ class TestGetColors:
         """Should retrieve colors from mdata.uns."""
         from deepscenic.pl import get_colors, set_colors
 
-        sample_mdata.obs["cell_type"] = pd.Categorical(
-            ["A"] * 50 + ["B"] * 50, categories=["A", "B"]
-        )
+        sample_mdata.obs["cell_type"] = pd.Categorical(["A"] * 50 + ["B"] * 50, categories=["A", "B"])
         set_colors(sample_mdata, "cell_type", colors=["#FF0000", "#00FF00"])
 
         colors = get_colors(sample_mdata, "cell_type")
@@ -227,9 +216,7 @@ class TestGetColors:
         """Should generate colors if not already stored."""
         from deepscenic.pl import get_colors
 
-        sample_mdata.obs["cell_type"] = pd.Categorical(
-            ["A"] * 50 + ["B"] * 50, categories=["A", "B"]
-        )
+        sample_mdata.obs["cell_type"] = pd.Categorical(["A"] * 50 + ["B"] * 50, categories=["A", "B"])
 
         colors = get_colors(sample_mdata, "cell_type")
 
@@ -242,9 +229,7 @@ class TestGetColors:
         """Should return dict mapping categories to colors."""
         from deepscenic.pl import get_colors
 
-        sample_mdata.obs["cell_type"] = pd.Categorical(
-            ["A"] * 50 + ["B"] * 50, categories=["A", "B"]
-        )
+        sample_mdata.obs["cell_type"] = pd.Categorical(["A"] * 50 + ["B"] * 50, categories=["A", "B"])
 
         colors = get_colors(sample_mdata, "cell_type")
 

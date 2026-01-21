@@ -46,9 +46,7 @@ class MockEnformer(torch.nn.Module):
         self.emb_len = emb_len
         self.linear = torch.nn.Linear(10, bottleneck_size * emb_len)
 
-    def forward(
-        self, x: torch.Tensor, return_only_embeddings: bool = False
-    ) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, return_only_embeddings: bool = False) -> torch.Tensor:
         """Return mock embeddings with shape (batch, emb_len, bottleneck_size)."""
         batch_size = x.shape[0]
         return torch.randn(batch_size, self.emb_len, self.bottleneck_size)

@@ -176,13 +176,34 @@ class Genome:
 
     @staticmethod
     def _reverse_complement(seq: str) -> str:
-        """Return reverse complement of DNA sequence."""
-        complement = {"A": "T", "T": "A", "C": "G", "G": "C", "N": "N"}
-        return "".join(complement.get(base, "N") for base in reversed(seq))
+        """Return reverse complement of DNA sequence.
+
+        Parameters
+        ----------
+        seq
+            DNA sequence string (uppercase).
+
+        Returns
+        -------
+        str
+            Reverse complement sequence.
+
+        Examples
+        --------
+        >>> Genome._reverse_complement("ACGT")
+        'ACGT'
+        >>> Genome._reverse_complement("AAAA")
+        'TTTT'
+        """
+        from tangermeme.utils import reverse_complement
+
+        return reverse_complement(seq)
 
     @staticmethod
     def _seq_to_onehot(seq: str) -> torch.Tensor:
         """Convert DNA sequence to one-hot encoding.
+
+        Uses tangermeme's optimized encoding with numba-compiled backend.
 
         Parameters
         ----------
@@ -194,22 +215,17 @@ class Genome:
         torch.Tensor
             One-hot encoded tensor with shape (4, length).
             Channels are ordered A, C, G, T.
-            N bases are encoded as 0.25 for each channel.
+            N bases are encoded as all zeros.
+
+        Examples
+        --------
+        >>> onehot = Genome._seq_to_onehot("ACGT")
+        >>> onehot.shape
+        torch.Size([4, 4])
         """
-        base_to_idx = {"A": 0, "C": 1, "G": 2, "T": 3}
+        from tangermeme.utils import one_hot_encode
 
-        length = len(seq)
-        onehot = torch.zeros(4, length)
-
-        for i, base in enumerate(seq):
-            idx = base_to_idx.get(base)
-            if idx is not None:
-                onehot[idx, i] = 1.0
-            else:
-                # N or unknown bases: uniform 0.25 distribution
-                onehot[:, i] = 0.25
-
-        return onehot
+        return one_hot_encode(seq, dtype=torch.float32)
 
 
 class GenomeIntervalDataset(Dataset):

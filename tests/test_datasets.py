@@ -16,7 +16,7 @@ class TestFetchTFCollection:
     def test_invalid_species(self):
         """Test error on invalid species."""
         with pytest.raises(ValueError, match="Unknown species"):
-            ds.fetch_tf_collection(species="invalid") # type: ignore[arg-type]
+            ds.fetch_tf_collection(species="invalid")  # type: ignore[arg-type]
 
     def test_species_urls_have_hash(self):
         """Test that all expected species have URLs defined."""

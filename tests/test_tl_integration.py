@@ -13,12 +13,14 @@ def training_setup(minimal_dims):
     d = minimal_dims
     n_cells = d["n_cells"] * 2
 
-    r2g_indices = torch.stack([
-        torch.randint(0, d["n_regions"], (d["n_links"],)),
-        torch.randint(0, d["n_genes"], (d["n_links"],)),
-    ])
+    r2g_indices = torch.stack(
+        [
+            torch.randint(0, d["n_regions"], (d["n_links"],)),
+            torch.randint(0, d["n_genes"], (d["n_links"],)),
+        ]
+    )
     r2g_distances = torch.rand(d["n_links"])
-    tf_indices = torch.randperm(d["n_genes"])[:d["n_tfs"]]
+    tf_indices = torch.randperm(d["n_genes"])[: d["n_tfs"]]
     gene_indices = torch.arange(d["n_genes"])
 
     vae = DeepSCENICVAE(

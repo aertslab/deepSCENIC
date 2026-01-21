@@ -139,13 +139,13 @@ class TestGenome:
         assert "N" not in seq[:10]  # No N in valid region
 
     def test_onehot_n_bases(self, tmp_fasta):
-        """N bases should be encoded as 0.25 for each channel."""
+        """N bases should be encoded as all zeros."""
         genome = Genome(tmp_fasta)
         # Fetch region with padding (will have N bases)
         onehot = genome.fetch_onehot("chr1", -5, 5)
-        # First 5 positions are N, should be 0.25 each
+        # First 5 positions are N, should be all zeros
         n_region = onehot[:, :5]
-        assert torch.allclose(n_region, torch.full((4, 5), 0.25))
+        assert torch.allclose(n_region, torch.zeros((4, 5)))
 
 
 class TestGenomeRegistration:
@@ -237,9 +237,7 @@ class TestGenomeIntervalDataset:
         """Shift augmentation should produce different sequences."""
         genome = Genome(tmp_fasta)
         regions = ["chr1:500-1140"]
-        dataset = GenomeIntervalDataset(
-            regions, genome, context_length=640, shift_augs=(-50, 50)
-        )
+        dataset = GenomeIntervalDataset(regions, genome, context_length=640, shift_augs=(-50, 50))
 
         # Get multiple samples - they should sometimes differ
         seqs = [(dataset[0][0]) for _ in range(10)]
@@ -251,9 +249,7 @@ class TestGenomeIntervalDataset:
         """Without shift augmentation, same region gives same sequence."""
         genome = Genome(tmp_fasta)
         regions = ["chr1:500-1140"]
-        dataset = GenomeIntervalDataset(
-            regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=False
-        )
+        dataset = GenomeIntervalDataset(regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=False)
 
         seq1 = dataset[0][0]
         seq2 = dataset[0][0]
@@ -263,9 +259,7 @@ class TestGenomeIntervalDataset:
         """RC augmentation should produce different sequences."""
         genome = Genome(tmp_fasta)
         regions = ["chr1:500-1140"]
-        dataset = GenomeIntervalDataset(
-            regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=True
-        )
+        dataset = GenomeIntervalDataset(regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=True)
 
         # Get multiple samples - about half should be RC
         seqs = [(dataset[0][0]) for _ in range(20)]
@@ -303,9 +297,7 @@ class TestGenomeIntervalDataset:
             "chr1:1000-1640",
             "chr2:0-640",
         ]
-        dataset = GenomeIntervalDataset(
-            regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=False
-        )
+        dataset = GenomeIntervalDataset(regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=False)
 
         # Each region should give different sequence
         seq0 = dataset[0][0]
@@ -314,3 +306,46 @@ class TestGenomeIntervalDataset:
 
         assert not torch.equal(seq0, seq1)
         assert not torch.equal(seq0, seq2)
+
+
+class TestSeqToOnehot:
+    """Tests for _seq_to_onehot with tangermeme backend."""
+
+    def test_basic_encoding(self):
+        """Basic ACGT encoding should produce correct one-hot."""
+        onehot = Genome._seq_to_onehot("ACGT")
+        expected = torch.tensor(
+            [
+                [1.0, 0.0, 0.0, 0.0],  # A
+                [0.0, 1.0, 0.0, 0.0],  # C
+                [0.0, 0.0, 1.0, 0.0],  # G
+                [0.0, 0.0, 0.0, 1.0],  # T
+            ]
+        )
+        assert torch.allclose(onehot, expected)
+
+    def test_n_base_encoding(self):
+        """N bases should encode as all zeros."""
+        onehot = Genome._seq_to_onehot("N")
+        expected = torch.zeros((4, 1))
+        assert torch.allclose(onehot, expected)
+
+    def test_mixed_sequence(self):
+        """Sequence with N bases mixed in should encode correctly."""
+        onehot = Genome._seq_to_onehot("ANC")
+        assert onehot.shape == (4, 3)
+        assert onehot[0, 0] == 1.0  # A at position 0
+        assert torch.allclose(onehot[:, 1], torch.zeros(4))  # N at position 1 is all zeros
+        assert onehot[1, 2] == 1.0  # C at position 2
+
+    def test_long_sequence(self):
+        """Realistic sequence length should work correctly."""
+        seq = "ACGT" * 160  # 640 bp
+        onehot = Genome._seq_to_onehot(seq)
+        assert onehot.shape == (4, 640)
+        assert torch.allclose(onehot.sum(dim=0), torch.ones(640))
+
+    def test_output_dtype(self):
+        """Output should be float32."""
+        onehot = Genome._seq_to_onehot("ACGT")
+        assert onehot.dtype == torch.float32

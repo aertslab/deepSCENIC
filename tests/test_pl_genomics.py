@@ -99,7 +99,7 @@ class TestGenomeBrowser:
 
         # Create sample data
         atac_data = np.random.rand(50, 10)
-        region_names = [f"chr1:{i*10000}-{i*10000+640}" for i in range(10)]
+        region_names = [f"chr1:{i * 10000}-{i * 10000 + 640}" for i in range(10)]
 
         fig = genome_browser(
             chrom="chr1",
@@ -119,7 +119,7 @@ class TestGenomeBrowser:
         from deepscenic.pl import genome_browser
 
         atac_data = np.random.rand(50, 10)
-        region_names = [f"chr1:{i*30000}-{i*30000+640}" for i in range(10)]
+        region_names = [f"chr1:{i * 30000}-{i * 30000 + 640}" for i in range(10)]
 
         fig = genome_browser(
             chrom="chr1",
@@ -140,7 +140,7 @@ class TestGenomeBrowser:
         from deepscenic.pl import genome_browser
 
         atac_data = np.random.rand(50, 10)
-        region_names = [f"chr1:{i*30000}-{i*30000+640}" for i in range(10)]
+        region_names = [f"chr1:{i * 30000}-{i * 30000 + 640}" for i in range(10)]
 
         fig = genome_browser(
             chrom="chr1",
@@ -162,7 +162,7 @@ class TestGenomeBrowser:
         from deepscenic.pl import genome_browser
 
         atac_data = np.random.rand(50, 10)
-        region_names = [f"chr1:{i*10000}-{i*10000+640}" for i in range(10)]
+        region_names = [f"chr1:{i * 10000}-{i * 10000 + 640}" for i in range(10)]
         cell_groups = {"Group1": np.arange(25), "Group2": np.arange(25, 50)}
         group_colors = {"Group1": "#E64B35", "Group2": "#4DBBD5"}
 

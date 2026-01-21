@@ -62,9 +62,7 @@ class TestVolcanoPerturbation:
         """Should highlight significant genes."""
         from deepscenic.pl import volcano_perturbation
 
-        ax = volcano_perturbation(
-            sample_perturbation_results, logfc_threshold=0.5, pval_threshold=0.05, show=False
-        )
+        ax = volcano_perturbation(sample_perturbation_results, logfc_threshold=0.5, pval_threshold=0.05, show=False)
 
         assert ax is not None
         plt.close("all")

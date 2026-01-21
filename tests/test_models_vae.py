@@ -164,10 +164,12 @@ class TestVAEWithPPI:
         n_ppi_genes = 80
 
         # Create sparse r2g indices
-        r2g_indices = torch.stack([
-            torch.randint(0, n_regions, (n_links,)),
-            torch.randint(0, n_genes, (n_links,)),
-        ])
+        r2g_indices = torch.stack(
+            [
+                torch.randint(0, n_regions, (n_links,)),
+                torch.randint(0, n_genes, (n_links,)),
+            ]
+        )
         r2g_distances = torch.rand(n_links)
 
         # TF and gene indices

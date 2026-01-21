@@ -107,9 +107,7 @@ class TestExtractTFWeights:
         ppi_tfs_idx_values = torch.arange(n_tfs)
         device = torch.device("cpu")
 
-        result = extract_tf_weights(
-            ppi_output, n_cells, n_ppi_genes, ppi_tfs_idx_keys, ppi_tfs_idx_values, device
-        )
+        result = extract_tf_weights(ppi_output, n_cells, n_ppi_genes, ppi_tfs_idx_keys, ppi_tfs_idx_values, device)
 
         assert result.shape == (n_cells, n_tfs)
 
@@ -123,9 +121,7 @@ class TestExtractTFWeights:
         ppi_tfs_idx_values = torch.arange(n_tfs)
         device = torch.device("cpu")
 
-        result = extract_tf_weights(
-            ppi_output, n_cells, n_ppi_genes, ppi_tfs_idx_keys, ppi_tfs_idx_values, device
-        )
+        result = extract_tf_weights(ppi_output, n_cells, n_ppi_genes, ppi_tfs_idx_keys, ppi_tfs_idx_values, device)
 
         assert (result >= 0).all()
         assert (result <= 1).all()

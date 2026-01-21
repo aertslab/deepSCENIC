@@ -62,13 +62,13 @@ dependencies = [
 
     # Genome sequence handling
     "pyfaidx>=0.7",
+    "tangermeme>=1.0.0",
 ]
 
 [project.optional-dependencies]
 enformer = ["enformer-pytorch>=0.8"]
 sequence = [
     "logomaker>=0.8",
-    "tangermeme>=1.0.0",
 ]
 dev = [
     "pre-commit>=3.0",
