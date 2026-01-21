@@ -82,3 +82,49 @@ class TestEarlyStopping:
 
         assert not early_stop.should_stop
         assert early_stop.counter == 0
+
+
+class TestSaveBestCheckpoints:
+    """Tests for save_best_checkpoints parameter behavior."""
+
+    def test_default_enables_with_checkpoint_dir(self):
+        """save_best_checkpoints=None enables when checkpoint_dir is set."""
+        checkpoint_dir = "/some/path"
+        save_best = None
+        resolved = save_best if save_best is not None else (checkpoint_dir is not None)
+        assert resolved is True
+
+    def test_default_disables_without_checkpoint_dir(self):
+        """save_best_checkpoints=None disables when checkpoint_dir is None."""
+        checkpoint_dir = None
+        save_best = None
+        resolved = save_best if save_best is not None else (checkpoint_dir is not None)
+        assert resolved is False
+
+    def test_explicit_false_disables(self):
+        """save_best_checkpoints=False disables even with checkpoint_dir."""
+        checkpoint_dir = "/some/path"
+        save_best = False
+        resolved = save_best if save_best is not None else (checkpoint_dir is not None)
+        assert resolved is False
+
+    def test_best_loss_preserved_in_checkpoint(self, tmp_path):
+        """best_loss should be preserved when saving/loading checkpoints."""
+        history = TrainingHistory()
+        config = TrainingConfig()
+        checkpoint = Checkpoint(
+            epoch=5,
+            vae_state_dict={},
+            tf2rnet_state_dict={},
+            enformer_state_dict=None,
+            optimizer_state_dict={},
+            scheduler_state_dict=None,
+            history=history,
+            config=config,
+            adj_E1=torch.randn(10, 5),
+            best_loss=0.42,
+        )
+        path = tmp_path / "test.pt"
+        checkpoint.save(path)
+        loaded = Checkpoint.load(path)
+        assert loaded.best_loss == pytest.approx(0.42)

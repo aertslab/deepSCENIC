@@ -136,6 +136,7 @@ def train(
     log_dir: str = "./runs",
     checkpoint_dir: str | None = None,
     checkpoint_every: int = 10,
+    save_best_checkpoints: bool | None = None,
     resume_from: str | None = None,
     early_stopping_patience: int | None = None,
     seq_batch_size: int = 1000,
@@ -170,6 +171,9 @@ def train(
         Directory for checkpoints (None = no checkpoints).
     checkpoint_every
         Save checkpoint every N epochs.
+    save_best_checkpoints
+        Save checkpoint when validation loss improves. If None (default),
+        enabled when checkpoint_dir is set. Saves to 'best.pt' in checkpoint_dir.
     resume_from
         Path to checkpoint to resume from.
     early_stopping_patience
@@ -415,6 +419,22 @@ def train(
     history = TrainingHistory()
     early_stopping = EarlyStopping(patience=early_stopping_patience) if early_stopping_patience else None
 
+    # Resolve save_best_checkpoints
+    if save_best_checkpoints is None:
+        save_best_checkpoints = checkpoint_dir is not None
+    if save_best_checkpoints and checkpoint_dir is None:
+        raise ValueError("save_best_checkpoints=True requires checkpoint_dir")
+
+    # Log checkpoint configuration
+    if checkpoint_dir is not None:
+        log.info(f"Checkpointing enabled: saving every {checkpoint_every} epochs to {checkpoint_dir}")
+        if save_best_checkpoints:
+            log.info("Best checkpoint saving enabled: saving to 'best.pt' on improvement")
+    else:
+        log.info("Checkpointing disabled (checkpoint_dir=None)")
+
+    best_loss = float("inf")
+
     # Resume from checkpoint
     start_epoch = 0
     if resume_from is not None:
@@ -429,6 +449,7 @@ def train(
         history = checkpoint.history
         adj_E1_cache = checkpoint.adj_E1.to(device)
         start_epoch = checkpoint.epoch + 1
+        best_loss = checkpoint.best_loss
 
     # Sequence iterator for cycling
     seq_iterator = iter(train_seq_loader)
@@ -615,11 +636,12 @@ def train(
                 log.info(f"Early stopping at epoch {epoch + 1}")
                 break
 
-        # Checkpointing
-        if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
-            checkpoint_path = Path(checkpoint_dir) / f"epoch_{epoch + 1}.pt"
-            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-            checkpoint = Checkpoint(
+        # Best checkpoint saving
+        if save_best_checkpoints and val_loss < best_loss:
+            best_loss = val_loss
+            best_path = Path(checkpoint_dir) / "best.pt"
+            best_path.parent.mkdir(parents=True, exist_ok=True)
+            best_checkpoint = Checkpoint(
                 epoch=epoch,
                 vae_state_dict=vae.state_dict(),
                 tf2rnet_state_dict=tf2rnet.state_dict(),
@@ -629,9 +651,28 @@ def train(
                 history=history,
                 config=config,
                 adj_E1=adj_E1_cache,
-                best_loss=val_loss,
+                best_loss=best_loss,
             )
-            checkpoint.save(checkpoint_path)
+            best_checkpoint.save(best_path)
+            log.info(f"New best val loss: {val_loss:.6f} - saved to {best_path}")
+
+        # Periodic checkpointing
+        if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
+            checkpoint_path = Path(checkpoint_dir) / f"epoch_{epoch + 1}.pt"
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            periodic_checkpoint = Checkpoint(
+                epoch=epoch,
+                vae_state_dict=vae.state_dict(),
+                tf2rnet_state_dict=tf2rnet.state_dict(),
+                enformer_state_dict=sequence_model.state_dict(),
+                optimizer_state_dict=optimizer_vae.state_dict(),
+                scheduler_state_dict=scheduler.state_dict(),
+                history=history,
+                config=config,
+                adj_E1=adj_E1_cache,
+                best_loss=best_loss,
+            )
+            periodic_checkpoint.save(checkpoint_path)
 
     # Close logger
     training_logger.close()
@@ -668,6 +709,7 @@ def finetune(
     reinit_e2: bool = True,
     checkpoint_dir: str | None = None,
     checkpoint_every: int = 100,
+    save_best_checkpoints: bool | None = None,
     logger: str = "dict",
     log_dir: str = "./runs",
     num_workers: int = 0,
@@ -700,6 +742,9 @@ def finetune(
         Directory for checkpoints (None = no checkpoints).
     checkpoint_every
         Save checkpoint every N epochs.
+    save_best_checkpoints
+        Save checkpoint when validation loss improves. If None (default),
+        enabled when checkpoint_dir is set. Saves to 'finetune_best.pt'.
     logger
         Logging backend: 'dict', 'tensorboard', 'wandb'.
     log_dir
@@ -785,6 +830,20 @@ def finetune(
     history = TrainingHistory()
     best_loss = float("inf")
     best_e2 = vae.adj_E2.data.clone()
+
+    # Resolve save_best_checkpoints
+    if save_best_checkpoints is None:
+        save_best_checkpoints = checkpoint_dir is not None
+    if save_best_checkpoints and checkpoint_dir is None:
+        raise ValueError("save_best_checkpoints=True requires checkpoint_dir")
+
+    # Log checkpoint configuration
+    if checkpoint_dir is not None:
+        log.info(f"Checkpointing enabled: saving every {checkpoint_every} epochs to {checkpoint_dir}")
+        if save_best_checkpoints:
+            log.info("Best checkpoint saving enabled: saving to 'finetune_best.pt' on improvement")
+    else:
+        log.info("Checkpointing disabled (checkpoint_dir=None)")
 
     log.info(f"Starting finetuning: {epochs} epochs")
 
@@ -883,8 +942,25 @@ def finetune(
         if val_loss < best_loss:
             best_loss = val_loss
             best_e2 = vae.adj_E2.data.clone()
+            # Save best checkpoint
+            if save_best_checkpoints:
+                best_path = Path(checkpoint_dir) / "finetune_best.pt"
+                best_path.parent.mkdir(parents=True, exist_ok=True)
+                torch.save(
+                    {
+                        "epoch": epoch,
+                        "adj_E2": vae.adj_E2.data,
+                        "optimizer_state_dict": optimizer.state_dict(),
+                        "scheduler_state_dict": scheduler.state_dict(),
+                        "history": history.to_dict(),
+                        "config": finetune_config.to_dict(),
+                        "best_loss": best_loss,
+                    },
+                    best_path,
+                )
+                log.info(f"New best val loss: {val_loss:.6f} - saved to {best_path}")
 
-        # Checkpointing
+        # Periodic checkpointing
         if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = Path(checkpoint_dir) / f"finetune_epoch_{epoch + 1}.pt"
             checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
