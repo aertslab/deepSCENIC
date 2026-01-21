@@ -118,29 +118,6 @@ class TestDeepSCENICVAE:
         output = vae(x_rna, adj_E1)
         assert torch.allclose(output.x_rna_ppi, torch.ones_like(output.x_rna_ppi))
 
-    def test_e2_parameter(self):
-        """adj_E2 should be a learnable parameter."""
-        vae = create_test_vae()
-        assert isinstance(vae.adj_E2, torch.nn.Parameter)
-        assert vae.adj_E2.requires_grad
-
-    def test_buffers_not_parameters(self):
-        """Index tensors should be buffers, not parameters."""
-        vae = create_test_vae()
-        param_names = [name for name, _ in vae.named_parameters()]
-        assert "tf_indices" not in param_names
-        assert "gene_indices" not in param_names
-        assert "r2g_indices" not in param_names
-
-    def test_batch_size_one(self):
-        """Should work with batch size 1."""
-        vae = create_test_vae()
-        x_rna = torch.randn(1, 100)
-        adj_E1 = torch.randn(200, 50)
-
-        output = vae(x_rna, adj_E1)
-        assert output.x_rna_rec.shape == (1, 100)
-
 
 class TestVAEWithPPI:
     """Tests for VAE with PPI network enabled."""

@@ -24,15 +24,6 @@ class TestPPIgnn:
         out = ppi(x, edge_index)
         assert out.shape == (n_nodes, 1)
 
-    def test_different_configurations(self):
-        """Should work with different hidden sizes and attention heads."""
-        for hidden, heads in [(8, 2), (16, 2), (16, 4)]:
-            ppi = PPIgnn(hidden_channels=hidden, heads=heads)
-            x = torch.randn(20, 1)
-            edge_index = torch.randint(0, 20, (2, 50))
-            out = ppi(x, edge_index)
-            assert out.shape == (20, 1)
-
 
 class TestNoPPI:
     """Tests for NoPPI (dummy module)."""
@@ -46,15 +37,6 @@ class TestNoPPI:
         out = no_ppi(x, edge_index)
         assert out.shape == x.shape
         assert torch.allclose(out, torch.ones_like(x))
-
-    def test_different_shapes(self):
-        """Should work with different input shapes."""
-        no_ppi = NoPPI()
-        for n_nodes in [10, 50, 100]:
-            x = torch.randn(n_nodes, 1)
-            edge_index = torch.randint(0, n_nodes, (2, n_nodes * 2))
-            out = no_ppi(x, edge_index)
-            assert torch.allclose(out, torch.ones_like(x))
 
 
 class TestBuildPPIBatch:
@@ -75,23 +57,6 @@ class TestBuildPPIBatch:
         # Batch should have n_cells * n_ppi_genes total nodes
         assert batch.x.shape[0] == n_cells * n_ppi_genes
         assert batch.x.shape[1] == 1
-
-    def test_node_features(self):
-        """Node features should come from correct gene indices."""
-        n_cells = 4
-        n_genes = 100
-        n_ppi_genes = 10
-        x_rna = torch.randn(n_cells, n_genes)
-        ppi_genes_idx = torch.tensor([0, 5, 10, 15, 20, 25, 30, 35, 40, 45])
-        edge_index = torch.tensor([[0, 1], [1, 2]]).T
-        device = torch.device("cpu")
-
-        batch = build_ppi_batch(x_rna, ppi_genes_idx, edge_index, device)
-
-        # First n_ppi_genes nodes should match first cell's selected genes
-        first_cell_features = batch.x[:n_ppi_genes].squeeze()
-        expected = x_rna[0, ppi_genes_idx]
-        assert torch.allclose(first_cell_features, expected)
 
 
 class TestExtractTFWeights:

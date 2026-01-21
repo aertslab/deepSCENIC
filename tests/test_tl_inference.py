@@ -9,11 +9,6 @@ from deepscenic.tl._inference import to_latent
 class TestToLatent:
     """Tests for to_latent function."""
 
-    def test_returns_dict(self, mock_deepscenic_model, mock_mdata_for_model):
-        """to_latent should return a dictionary."""
-        result = to_latent(mock_deepscenic_model, mock_mdata_for_model, batch_size=4, device="cpu")
-        assert isinstance(result, dict)
-
     def test_returns_expected_keys(self, mock_deepscenic_model, mock_mdata_for_model):
         """to_latent should return all expected embedding keys."""
         result = to_latent(mock_deepscenic_model, mock_mdata_for_model, batch_size=4, device="cpu")

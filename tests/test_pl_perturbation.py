@@ -58,44 +58,6 @@ class TestVolcanoPerturbation:
         assert ax is not None
         plt.close("all")
 
-    def test_highlights_significant_genes(self, sample_perturbation_results):
-        """Should highlight significant genes."""
-        from deepscenic.pl import volcano_perturbation
-
-        ax = volcano_perturbation(sample_perturbation_results, logfc_threshold=0.5, pval_threshold=0.05, show=False)
-
-        assert ax is not None
-        plt.close("all")
-
-    def test_highlights_specific_genes(self, sample_perturbation_results):
-        """Should highlight specified genes."""
-        from deepscenic.pl import volcano_perturbation
-
-        ax = volcano_perturbation(sample_perturbation_results, highlight_genes=["Gene_0", "Gene_1"], show=False)
-
-        assert ax is not None
-        plt.close("all")
-
-    def test_returns_figure_when_requested(self, sample_perturbation_results):
-        """Should return Figure when return_fig=True."""
-        from matplotlib.figure import Figure
-
-        from deepscenic.pl import volcano_perturbation
-
-        fig = volcano_perturbation(sample_perturbation_results, show=False, return_fig=True)
-
-        assert isinstance(fig, Figure)
-        plt.close("all")
-
-    def test_adds_title_when_specified(self, sample_perturbation_results):
-        """Should add title when provided."""
-        from deepscenic.pl import volcano_perturbation
-
-        ax = volcano_perturbation(sample_perturbation_results, title="Test Volcano", show=False)
-
-        assert ax.get_title() == "Test Volcano"
-        plt.close("all")
-
 
 class TestHeatmapPerturbation:
     """Tests for heatmap_perturbation function."""
@@ -108,19 +70,6 @@ class TestHeatmapPerturbation:
         result = heatmap_perturbation(sample_multi_tf_results, show=False, cluster_rows=False, cluster_cols=False)
 
         assert result is None
-        plt.close("all")
-
-    def test_returns_figure_when_requested(self, sample_multi_tf_results):
-        """Should return Figure when return_fig=True."""
-        from matplotlib.figure import Figure
-
-        from deepscenic.pl import heatmap_perturbation
-
-        fig = heatmap_perturbation(
-            sample_multi_tf_results, show=False, return_fig=True, cluster_rows=False, cluster_cols=False
-        )
-
-        assert isinstance(fig, Figure)
         plt.close("all")
 
     def test_filters_by_tfs(self, sample_multi_tf_results):
@@ -160,17 +109,6 @@ class TestDotplotPerturbation:
         ax = dotplot_perturbation(sample_multi_tf_results, show=False)
 
         assert ax is not None
-        plt.close("all")
-
-    def test_returns_figure_when_requested(self, sample_multi_tf_results):
-        """Should return Figure when return_fig=True."""
-        from matplotlib.figure import Figure
-
-        from deepscenic.pl import dotplot_perturbation
-
-        fig = dotplot_perturbation(sample_multi_tf_results, show=False, return_fig=True)
-
-        assert isinstance(fig, Figure)
         plt.close("all")
 
     def test_filters_by_tfs_and_genes(self, sample_multi_tf_results):

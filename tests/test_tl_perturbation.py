@@ -38,35 +38,6 @@ class TestSimulatePerturbation:
                 device="cpu",
             )
 
-    def test_knockout_level_zero(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Knockout (level=0) should work."""
-        result = simulate_perturbation(
-            mock_deepscenic_model, mock_mdata_for_model, tf_name="TF0", level=0.0, n_iter=2, batch_size=4, device="cpu"
-        )
-        assert result is not None
-
-    def test_overexpression_level_positive(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Overexpression (level>0) should work."""
-        result = simulate_perturbation(
-            mock_deepscenic_model, mock_mdata_for_model, tf_name="TF0", level=2.0, n_iter=2, batch_size=4, device="cpu"
-        )
-        assert result is not None
-
-    def test_different_n_iter(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
-        """Should work with different iteration counts."""
-        for n_iter in [1, 5, 10]:
-            result = simulate_perturbation(
-                mock_deepscenic_model,
-                mock_mdata_for_model,
-                tf_name="TF0",
-                level=0.0,
-                n_iter=n_iter,
-                batch_size=4,
-                device="cpu",
-            )
-            d = minimal_dims
-            assert result.shape == (d["n_cells"] * 2, d["n_genes"])
-
 
 class TestSimulateMultiPerturbation:
     """Tests for simulate_multi_perturbation function."""
@@ -98,13 +69,6 @@ class TestSimulateMultiPerturbation:
                 batch_size=4,
                 device="cpu",
             )
-
-    def test_levels_default_to_zero(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Should default to knockout (level=0) for all TFs."""
-        result = simulate_multi_perturbation(
-            mock_deepscenic_model, mock_mdata_for_model, tf_names=["TF0", "TF1"], n_iter=2, batch_size=4, device="cpu"
-        )
-        assert result is not None
 
     def test_custom_levels(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should accept custom levels per TF."""

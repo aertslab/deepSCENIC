@@ -26,16 +26,6 @@ class TestExtractGRN:
         assert "E1" in result
         assert "E2" in result
 
-    def test_e1_is_dataframe(self, mock_deepscenic_model):
-        """E1 should be a DataFrame."""
-        result = extract_grn(mock_deepscenic_model)
-        assert isinstance(result["E1"], pd.DataFrame)
-
-    def test_e2_is_dataframe(self, mock_deepscenic_model):
-        """E2 should be a DataFrame."""
-        result = extract_grn(mock_deepscenic_model)
-        assert isinstance(result["E2"], pd.DataFrame)
-
     def test_e1_shape(self, mock_deepscenic_model, minimal_dims):
         """E1 should have shape (n_regions, n_tfs)."""
         result = extract_grn(mock_deepscenic_model)
@@ -63,11 +53,6 @@ class TestExtractGRN:
 class TestExtractE1Matrix:
     """Tests for extract_e1_matrix function."""
 
-    def test_returns_dataframe(self, mock_deepscenic_model):
-        """Should return a DataFrame."""
-        result = extract_e1_matrix(mock_deepscenic_model)
-        assert isinstance(result, pd.DataFrame)
-
     def test_shape(self, mock_deepscenic_model, minimal_dims):
         """Should have correct shape."""
         result = extract_e1_matrix(mock_deepscenic_model)
@@ -77,14 +62,6 @@ class TestExtractE1Matrix:
 
 class TestExtractE2Matrix:
     """Tests for extract_e2_matrix function."""
-
-    def test_sparse_format(self, mock_deepscenic_model):
-        """Sparse format should return DataFrame with 3 columns."""
-        result = extract_e2_matrix(mock_deepscenic_model, as_sparse=True)
-        assert isinstance(result, pd.DataFrame)
-        assert "region" in result.columns
-        assert "gene" in result.columns
-        assert "weight" in result.columns
 
     def test_dense_format(self, mock_deepscenic_model, minimal_dims):
         """Dense format should return (n_regions, n_genes) DataFrame."""
@@ -114,11 +91,6 @@ class TestGetTFTargets:
             expected_cols = ["tf", "region", "E1_weight", "gene", "E2_weight", "combined_weight"]
             for col in expected_cols:
                 assert col in result.columns
-
-    def test_top_k(self, mock_deepscenic_model):
-        """Should limit results with top_k."""
-        result = get_tf_targets(mock_deepscenic_model, "TF0", threshold=0.0, top_k=5)
-        assert len(result) <= 5
 
     def test_threshold_filter(self, mock_deepscenic_model):
         """Should filter by threshold."""

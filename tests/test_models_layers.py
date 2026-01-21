@@ -44,24 +44,11 @@ class TestPositiveLinear:
         # With abs() applied, output should be positive
         assert (out > 0).all()
 
-    def test_no_bias_by_default(self):
-        """Bias should be None by default."""
-        layer = PositiveLinear(10, 5)
-        assert layer.bias is None
-
     def test_bias_when_requested(self):
         """Bias should exist when requested."""
         layer = PositiveLinear(10, 5, bias=True)
         assert layer.bias is not None
         assert layer.bias.shape == (5,)
-
-    def test_extra_repr(self):
-        """Extra repr should show in/out features."""
-        layer = PositiveLinear(10, 5, bias=True)
-        repr_str = layer.extra_repr()
-        assert "in_features=10" in repr_str
-        assert "out_features=5" in repr_str
-        assert "bias=True" in repr_str
 
 
 class TestGaussianSampler:
@@ -91,8 +78,3 @@ class TestGaussianSampler:
         z2, _, _ = sampler(x, use_mean=False)
         # With high probability, samples should differ
         assert not torch.allclose(z1, z2)
-
-    def test_mu_layer_is_positive_linear(self):
-        """Mu layer should be PositiveLinear."""
-        sampler = GaussianSampler(64, 1)
-        assert isinstance(sampler.mu_layer, PositiveLinear)

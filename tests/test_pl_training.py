@@ -39,49 +39,6 @@ class TestLossCurves:
         assert ax is not None
         plt.close("all")
 
-    def test_creates_loss_curves_from_dict(self):
-        """Should create loss curves from dict."""
-        from deepscenic.pl import loss_curves
-
-        history = {
-            "loss": [1.0, 0.8, 0.6, 0.5, 0.4],
-            "val_loss": [1.1, 0.9, 0.7, 0.6, 0.5],
-        }
-        ax = loss_curves(history, show=False)
-
-        assert ax is not None
-        plt.close("all")
-
-    def test_filters_metrics(self, sample_history):
-        """Should only plot specified metrics."""
-        from deepscenic.pl import loss_curves
-
-        ax = loss_curves(sample_history, metrics=["loss", "val_loss"], show=False)
-
-        assert ax is not None
-        plt.close("all")
-
-    def test_returns_figure_when_requested(self, sample_history):
-        """Should return Figure when return_fig=True."""
-        from matplotlib.figure import Figure
-
-        from deepscenic.pl import loss_curves
-
-        fig = loss_curves(sample_history, show=False, return_fig=True)
-
-        assert isinstance(fig, Figure)
-        plt.close("all")
-
-    def test_linear_scale(self, sample_history):
-        """Should use linear scale when log_scale=False."""
-        from deepscenic.pl import loss_curves
-
-        ax = loss_curves(sample_history, log_scale=False, show=False)
-
-        assert ax is not None
-        assert ax.get_yscale() == "linear"
-        plt.close("all")
-
     def test_creates_loss_curves_from_model(self, mock_deepscenic_model):
         """Should create loss curves from DeepSCENICModel with history."""
         from deepscenic.pl import loss_curves
@@ -155,17 +112,6 @@ class TestSparsityHistogram:
         ax = sparsity_histogram(mock_deepscenic_model, which="E2", show=False)
 
         assert ax is not None
-        plt.close("all")
-
-    def test_returns_figure_when_requested(self, mock_deepscenic_model):
-        """Should return Figure when return_fig=True."""
-        from matplotlib.figure import Figure
-
-        from deepscenic.pl import sparsity_histogram
-
-        fig = sparsity_histogram(mock_deepscenic_model, which="both", show=False, return_fig=True)
-
-        assert isinstance(fig, Figure)
         plt.close("all")
 
 

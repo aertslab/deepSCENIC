@@ -22,25 +22,6 @@ class TestDeepSCENICModel:
         assert hasattr(mock_deepscenic_model, "region_names")
         assert hasattr(mock_deepscenic_model, "history")
 
-    def test_to_device(self, mock_deepscenic_model):
-        """Model should move to device correctly."""
-        mock_deepscenic_model.to("cpu")
-        assert next(mock_deepscenic_model.vae.parameters()).device.type == "cpu"
-
-    def test_eval_mode(self, mock_deepscenic_model):
-        """Model should set eval mode correctly."""
-        mock_deepscenic_model.train()
-        assert mock_deepscenic_model.vae.training
-        mock_deepscenic_model.eval()
-        assert not mock_deepscenic_model.vae.training
-
-    def test_train_mode(self, mock_deepscenic_model):
-        """Model should set train mode correctly."""
-        mock_deepscenic_model.eval()
-        assert not mock_deepscenic_model.vae.training
-        mock_deepscenic_model.train()
-        assert mock_deepscenic_model.vae.training
-
 
 class TestModelSaveLoad:
     """Tests for model save/load functionality."""

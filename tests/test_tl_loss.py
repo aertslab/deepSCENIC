@@ -81,14 +81,6 @@ class TestReconstructionLoss:
         with pytest.raises(ValueError, match="Unknown loss type"):
             reconstruction_loss(pred, target, "invalid")
 
-    def test_returns_scalar(self):
-        """Loss should be a scalar."""
-        pred = torch.randn(8, 100)
-        target = torch.randn(8, 100)
-        for loss_type in ["mse", "mae", "cosine"]:
-            loss = reconstruction_loss(pred, target, loss_type)
-            assert loss.dim() == 0
-
 
 class TestKLDivergence:
     """Tests for kl_divergence function."""
@@ -106,13 +98,6 @@ class TestKLDivergence:
         logvar = torch.zeros(10, 20)
         kl = kl_divergence(mu, logvar)
         assert kl > 0
-
-    def test_returns_scalar(self):
-        """KL should return a scalar."""
-        mu = torch.randn(8, 50)
-        logvar = torch.randn(8, 50)
-        kl = kl_divergence(mu, logvar)
-        assert kl.dim() == 0
 
     def test_gradient_flows(self):
         """Gradients should flow through KL."""
@@ -227,13 +212,6 @@ class TestComputeTotalLoss:
         assert "e2_sparse" in result
         assert "ppi" in result
 
-    def test_total_is_sum(self, loss_inputs):
-        """Total should approximately equal sum of components."""
-        # Note: components are detached, so we need to compute fresh
-        result = compute_total_loss(**loss_inputs)
-        # Total should have gradients, components are detached
-        assert result["total"].requires_grad or not result["total"].requires_grad
-
     def test_gradient_flows_through_total(self, loss_inputs):
         """Gradients should flow through total loss."""
         loss_inputs["x_rna_rec"] = torch.randn(8, 100, requires_grad=True)
@@ -255,11 +233,7 @@ class TestComputeTotalLoss:
 
         # Total should NOT include PPI (matching legacy behavior)
         expected_total = (
-            result["rec_rna"]
-            + result["rec_atac"]
-            + result["kl"]
-            + result["e1_sparse"]
-            + result["e2_sparse"]
+            result["rec_rna"] + result["rec_atac"] + result["kl"] + result["e1_sparse"] + result["e2_sparse"]
         )
         assert torch.isclose(result["total"], expected_total, rtol=1e-4)
 

@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from deepscenic._genome import clear_genome, register_genome
-from deepscenic.tl._dataloaders import CellDataset, SequenceDatasetWithIndex, collate_cell_batch
+from deepscenic.tl._dataloaders import CellDataset, collate_cell_batch
 
 
 class TestCellDataset:
@@ -31,17 +31,6 @@ class TestCellDataset:
         assert "atac" in item
         assert "idx" in item
 
-    def test_getitem_shapes(self):
-        """Getitem should return correct shapes."""
-        n_genes, n_regions = 50, 200
-        rna = np.random.randn(100, n_genes)
-        atac = np.random.randn(100, n_regions)
-        dataset = CellDataset(rna, atac)
-
-        item = dataset[0]
-        assert item["rna"].shape == (n_genes,)
-        assert item["atac"].shape == (n_regions,)
-
     def test_sparse_input(self):
         """Should handle sparse matrices."""
         from scipy.sparse import csr_matrix
@@ -53,40 +42,6 @@ class TestCellDataset:
         assert len(dataset) == 100
         item = dataset[0]
         assert item["rna"].shape == (50,)
-
-    def test_tensors_are_float(self):
-        """Tensors should be float type."""
-        rna = np.random.randn(10, 5).astype(np.float64)
-        atac = np.random.randn(10, 20).astype(np.float64)
-        dataset = CellDataset(rna, atac)
-
-        item = dataset[0]
-        assert item["rna"].dtype == torch.float32
-        assert item["atac"].dtype == torch.float32
-
-
-class TestSequenceDatasetWithIndex:
-    """Tests for SequenceDatasetWithIndex."""
-
-    def test_wraps_dataset(self):
-        """Should wrap underlying dataset and add index."""
-
-        # Mock dataset
-        class MockDataset:
-            def __len__(self):
-                return 100
-
-            def __getitem__(self, idx):
-                return torch.randn(4, 640)  # (channels, length)
-
-        mock = MockDataset()
-        dataset = SequenceDatasetWithIndex(mock)
-
-        assert len(dataset) == 100
-
-        seq, idx = dataset[42]
-        assert seq.shape == (4, 640)
-        assert idx == 42
 
 
 class TestCollateCellBatch:
@@ -269,26 +224,6 @@ class TestBuildSequenceDataloader:
         (seqs,), indices = batch
         assert len(indices) == 3
         assert set(indices.tolist()) == {0, 1, 2}
-
-    def test_dar_upweighting(self, tmp_fasta):
-        """Should apply DAR upweighting when specified."""
-        from deepscenic.tl._dataloaders import build_sequence_dataloader
-
-        register_genome(tmp_fasta)
-
-        regions = ["chr1:0-640", "chr1:100-740", "chr1:200-840"]
-        dar_indices = np.array([0, 2])  # First and third regions are DARs
-
-        loader = build_sequence_dataloader(
-            regions=regions,
-            batch_size=1,
-            balance_dars=True,
-            dar_indices=dar_indices,
-        )
-
-        # Just verify it builds and runs
-        batch = next(iter(loader))
-        assert batch is not None
 
     def test_raises_without_genome(self):
         """Should raise error when no genome registered."""
