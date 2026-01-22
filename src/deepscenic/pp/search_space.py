@@ -282,18 +282,29 @@ def compute_r2g_penalty(
     # Compute matrix using internal function
     r2g_matrix, config = _compute_r2g_matrix(regions, genes, max_distance, sigma, method)
 
-    # Filter RNA modality to only genes in R2G matrix (matching legacy behavior)
-    # This ensures R2G columns match RNA var_names exactly
+    # Filter RNA modality to genes in R2G matrix, but ALWAYS keep TFs
+    # TFs are needed as encoder input even if they lack chromosome annotation
+    # This matches legacy behavior where TFs are added to R2G with zero links
     r2g_gene_set = set(genes.index)
     rna = mdata.mod["rna"]
-    genes_to_keep = [g for g in rna.var_names if g in r2g_gene_set]
+
+    # Determine which genes to keep: R2G genes + all TFs
+    if "is_tf" in rna.var.columns:
+        tf_mask = rna.var["is_tf"].fillna(False)
+        genes_to_keep = [g for g in rna.var_names if g in r2g_gene_set or tf_mask[g]]
+        n_tfs_without_r2g = sum(1 for g in rna.var_names if tf_mask[g] and g not in r2g_gene_set)
+    else:
+        genes_to_keep = [g for g in rna.var_names if g in r2g_gene_set]
+        n_tfs_without_r2g = 0
+
     n_removed = rna.n_vars - len(genes_to_keep)
 
     if n_removed > 0:
-        print(
-            f"Filtering RNA modality to {len(genes_to_keep)} genes with R2G links "
-            f"({n_removed} genes without chromosome annotation removed)"
-        )
+        msg = f"Filtering RNA modality to {len(genes_to_keep)} genes"
+        if n_tfs_without_r2g > 0:
+            msg += f" ({n_tfs_without_r2g} TFs kept without R2G links)"
+        msg += f" ({n_removed} non-TF genes without annotation removed)"
+        print(msg)
         # Filter RNA in-place within MuData
         mdata.mod["rna"] = rna[:, genes_to_keep].copy()
 
