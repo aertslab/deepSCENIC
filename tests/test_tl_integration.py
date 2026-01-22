@@ -22,6 +22,7 @@ def training_setup(minimal_dims):
     r2g_distances = torch.rand(d["n_links"])
     tf_indices = torch.randperm(d["n_genes"])[: d["n_tfs"]]
     gene_indices = torch.arange(d["n_genes"])
+    region_indices = torch.arange(d["n_regions"])
 
     vae = DeepSCENICVAE(
         n_tfs=d["n_tfs"],
@@ -31,6 +32,7 @@ def training_setup(minimal_dims):
         r2g_distances=r2g_distances,
         tf_indices=tf_indices,
         gene_indices=gene_indices,
+        region_indices=region_indices,
         n_hidden=d["n_hidden"],
         use_ppi=False,
         n_batches=0,
@@ -57,6 +59,7 @@ def training_setup(minimal_dims):
         "n_cells": n_cells,
         "tf_indices": tf_indices,
         "gene_indices": gene_indices,
+        "region_indices": region_indices,
         "r2g_distances": r2g_distances,
     }
 
@@ -89,6 +92,7 @@ class TestGradientFlow:
             r2g_distances=training_setup["r2g_distances"],
             x_rna_ppi=output.x_rna_ppi,
             gene_indices=training_setup["gene_indices"],
+            region_indices=training_setup["region_indices"],
         )
 
         losses["total"].backward()
@@ -127,6 +131,7 @@ class TestLossComputation:
             r2g_distances=training_setup["r2g_distances"],
             x_rna_ppi=output.x_rna_ppi,
             gene_indices=training_setup["gene_indices"],
+            region_indices=training_setup["region_indices"],
         )
 
         assert losses["total"].dim() == 0
@@ -161,6 +166,7 @@ class TestOptimizerStep:
             r2g_distances=training_setup["r2g_distances"],
             x_rna_ppi=output.x_rna_ppi,
             gene_indices=training_setup["gene_indices"],
+            region_indices=training_setup["region_indices"],
         )
 
         optimizer.zero_grad()
@@ -220,6 +226,7 @@ class TestEndToEndMockTraining:
                 r2g_distances=training_setup["r2g_distances"],
                 x_rna_ppi=output.x_rna_ppi,
                 gene_indices=training_setup["gene_indices"],
+                region_indices=training_setup["region_indices"],
             )
 
             e1_sparse = tf_pred.abs().mean() * 0.01

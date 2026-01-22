@@ -162,15 +162,16 @@ def split_features_by_chromosome(
     inplace: bool = True,
 ) -> md.MuData | None:
     """
-    Split features (genes/regions) by chromosome for evaluation.
+    Split features (genes/regions) by chromosome for training and evaluation.
 
     Adds a 'split' column to both `atac.var` and `rna.var` inside `mdata` object.
     When ``keep_tfs_in_both=True`` (default), TFs get ``split='both'`` to indicate
     they should be included in both train and test views.
 
-    Note: This split is primarily for **evaluation purposes**. Training uses all
-    features regardless of their split assignment. The split enables evaluation
-    on held-out chromosomes to assess generalization.
+    Note: The feature split affects both training and evaluation:
+    - **Reconstruction loss** is computed only on TRAIN genes and TRAIN regions
+    - **E2 sparsity loss** is applied to ALL region→gene links (including test genes)
+    - The split enables evaluation on held-out chromosomes to assess generalization
 
     Expects `mdata["rna"].var` to contain "chromosome" column.
     Run `ds.pp.add_gene_annotation` first to assign gene positions based on TSS.

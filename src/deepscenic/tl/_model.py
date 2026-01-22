@@ -101,6 +101,7 @@ class DeepSCENICModel:
             # Store buffer tensors for VAE reconstruction
             "tf_indices": self.vae.tf_indices,
             "gene_indices": self.vae.gene_indices,
+            "region_indices": self.vae.region_indices,
             "r2g_indices": self.vae.r2g_indices,
             "r2g_distances": self.vae.r2g_distances,
             # PPI buffers (if present)
@@ -181,6 +182,7 @@ class DeepSCENICModel:
             r2g_distances=data["r2g_distances"],
             tf_indices=data["tf_indices"],
             gene_indices=data["gene_indices"],
+            region_indices=data["region_indices"],
             ppi_edge_index=data.get("ppi_edge_index"),
             ppi_genes_idx=data.get("ppi_genes_idx"),
             ppi_tfs_idx_keys=data.get("ppi_tfs_idx_keys"),
@@ -613,8 +615,10 @@ def load_legacy_model(
 
     log.info(f"  RNA: {n_genes} genes, ATAC: {n_regions} regions, TFs: {n_tfs}")
 
-    # Gene indices (which genes to reconstruct) - use all genes
+    # Gene indices (which genes to reconstruct) - use all genes for legacy models
     gene_indices = torch.arange(n_genes, dtype=torch.long)
+    # Region indices (which regions to reconstruct) - use all regions for legacy models
+    region_indices = torch.arange(n_regions, dtype=torch.long)
 
     # Load r2g sparse matrix
     r2g_sparse = load_npz(r2g_path)
@@ -657,6 +661,7 @@ def load_legacy_model(
         r2g_distances=r2g_distances,
         tf_indices=tf_indices,
         gene_indices=gene_indices,
+        region_indices=region_indices,
         ppi_edge_index=ppi_edge_index,
         ppi_genes_idx=ppi_genes_idx,
         ppi_tfs_idx_keys=ppi_tfs_idx_keys,
@@ -686,6 +691,7 @@ def load_legacy_model(
             r2g_distances=r2g_distances,
             tf_indices=tf_indices,
             gene_indices=gene_indices,
+            region_indices=region_indices,
             ppi_edge_index=ppi_edge_index,
             ppi_genes_idx=ppi_genes_idx,
             ppi_tfs_idx_keys=ppi_tfs_idx_keys,

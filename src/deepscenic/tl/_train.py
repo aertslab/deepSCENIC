@@ -289,7 +289,34 @@ def train(
 
     # Compute TF indices from is_tf mask
     tf_indices = torch.tensor(np.where(tf_mask)[0])
-    gene_indices = torch.arange(n_genes)
+
+    # Validate split columns exist
+    if "split" not in rna.var.columns:
+        raise ValueError(
+            "RNA modality missing 'split' column in var. "
+            "Run ds.pp.split_features_by_chromosome() first."
+        )
+    atac = mdata.mod["atac"]
+    if "split" not in atac.var.columns:
+        raise ValueError(
+            "ATAC modality missing 'split' column in var. "
+            "Run ds.pp.split_features_by_chromosome() first."
+        )
+
+    # Compute gene_indices for reconstruction loss: only TRAIN genes (split='train' or 'both')
+    # This matches legacy behavior where reconstruction loss only evaluates on train features,
+    # while E2 matrix can span ALL genes (E2 sparsity loss applies to all links).
+    gene_split = rna.var["split"]
+    # Include genes with split='train' or 'both' (TFs get 'both' by default)
+    train_gene_mask = gene_split.isin(["train", "both"])
+    gene_indices = torch.tensor(np.where(train_gene_mask)[0])
+    log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train + both splits)")
+
+    # Compute region_indices for ATAC reconstruction loss: only TRAIN regions
+    region_split = atac.var["split"]
+    train_region_mask = region_split == "train"
+    region_indices = torch.tensor(np.where(train_region_mask)[0])
+    log.info(f"Using {len(region_indices)}/{n_regions} regions for ATAC reconstruction (train split)")
 
     # Get r2g sparse matrix info (convert CSR to COO for indices)
     r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
@@ -323,6 +350,7 @@ def train(
         r2g_distances=r2g_distances,
         tf_indices=tf_indices,
         gene_indices=gene_indices,
+        region_indices=region_indices,
         ppi_edge_index=ppi_edge_index,
         ppi_genes_idx=ppi_genes_idx,
         ppi_tfs_idx_keys=ppi_tfs_idx_keys,
@@ -540,6 +568,7 @@ def train(
                 r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                 x_rna_ppi=output.x_rna_ppi,
                 gene_indices=vae.gene_indices,  # type: ignore[arg-type]
+                region_indices=vae.region_indices,  # type: ignore[arg-type]
                 loss_rna=config.loss_rna,
                 loss_atac=config.loss_atac,
                 dropout_mask_rna=config.dropout_mask_rna,

@@ -149,6 +149,7 @@ def compute_total_loss(
     r2g_distances: Tensor,
     x_rna_ppi: Tensor,
     gene_indices: Tensor,
+    region_indices: Tensor,
     loss_rna: str = "mse",
     loss_atac: str = "mse",
     dropout_mask_rna: bool = False,
@@ -187,7 +188,12 @@ def compute_total_loss(
     x_rna_ppi
         PPI modulation weights
     gene_indices
-        Indices of genes to reconstruct
+        Indices of TRAIN genes to compute RNA reconstruction loss on.
+        Only these genes contribute to the reconstruction loss, while E2 links
+        to all genes still receive sparsity regularization.
+    region_indices
+        Indices of TRAIN regions to compute ATAC reconstruction loss on.
+        Only these regions contribute to the reconstruction loss.
     loss_rna
         RNA loss type
     loss_atac
@@ -218,9 +224,15 @@ def compute_total_loss(
     dict[str, Tensor]
         Dictionary with all loss components and total
     """
-    # Reconstruction losses
-    loss_rec_rna = reconstruction_loss(x_rna_rec, x_rna[:, gene_indices], loss_rna, dropout_mask_rna) * rna_tau
-    loss_rec_atac = reconstruction_loss(x_atac_rec, x_atac, loss_atac, dropout_mask_atac) * atac_tau
+    # Reconstruction losses - filter both prediction and target to TRAIN features
+    # This ensures reconstruction loss only evaluates on held-in features,
+    # while E2 sparsity loss still applies to ALL links (including to test genes).
+    loss_rec_rna = reconstruction_loss(
+        x_rna_rec[:, gene_indices], x_rna[:, gene_indices], loss_rna, dropout_mask_rna
+    ) * rna_tau
+    loss_rec_atac = reconstruction_loss(
+        x_atac_rec[:, region_indices], x_atac[:, region_indices], loss_atac, dropout_mask_atac
+    ) * atac_tau
 
     # KL divergence
     loss_kl = kl_divergence(mu, logvar) * beta

@@ -198,6 +198,7 @@ class TestComputeTotalLoss:
             "r2g_distances": torch.rand(n_links),
             "x_rna_ppi": torch.rand(n_cells, n_tfs),
             "gene_indices": torch.arange(n_genes),
+            "region_indices": torch.arange(n_regions),
         }
 
     def test_returns_dict(self, loss_inputs):

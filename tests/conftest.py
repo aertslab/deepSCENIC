@@ -164,6 +164,7 @@ def mock_vae():
     r2g_distances = torch.rand(d["n_links"])
     tf_indices = torch.randperm(d["n_genes"])[: d["n_tfs"]]
     gene_indices = torch.arange(d["n_genes"])
+    region_indices = torch.arange(d["n_regions"])
 
     return DeepSCENICVAE(
         n_tfs=d["n_tfs"],
@@ -173,6 +174,7 @@ def mock_vae():
         r2g_distances=r2g_distances,
         tf_indices=tf_indices,
         gene_indices=gene_indices,
+        region_indices=region_indices,
         n_hidden=d["n_hidden"],
         use_ppi=False,
         n_batches=0,

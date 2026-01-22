@@ -90,6 +90,7 @@ class DeepSCENICVAE(nn.Module):
         r2g_distances: Tensor,
         tf_indices: Tensor,
         gene_indices: Tensor,
+        region_indices: Tensor,
         ppi_edge_index: Tensor | None = None,
         ppi_genes_idx: Tensor | None = None,
         ppi_tfs_idx_keys: Tensor | None = None,
@@ -111,6 +112,7 @@ class DeepSCENICVAE(nn.Module):
         # Store indices as buffers (not parameters)
         self.register_buffer("tf_indices", tf_indices)
         self.register_buffer("gene_indices", gene_indices)
+        self.register_buffer("region_indices", region_indices)
         self.register_buffer("r2g_indices", r2g_indices)
         self.register_buffer("r2g_distances", r2g_distances)
 
