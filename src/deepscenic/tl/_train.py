@@ -413,7 +413,7 @@ def train(
         weight_decay=config.weight_decay,
     )
 
-    scheduler = CosineAnnealingLR(optimizer_vae, T_max=epochs)
+    scheduler = CosineAnnealingLR(optimizer_vae, T_max=epochs) if config.use_scheduler else None
 
     # History and early stopping
     history = TrainingHistory()
@@ -444,7 +444,7 @@ def train(
         if checkpoint.enformer_state_dict:
             sequence_model.load_state_dict(checkpoint.enformer_state_dict)
         optimizer_vae.load_state_dict(checkpoint.optimizer_state_dict)
-        if checkpoint.scheduler_state_dict:
+        if checkpoint.scheduler_state_dict and scheduler is not None:
             scheduler.load_state_dict(checkpoint.scheduler_state_dict)
         history = checkpoint.history
         adj_E1_cache = checkpoint.adj_E1.to(device)
@@ -575,7 +575,8 @@ def train(
             epoch_metrics[key] /= n_batches_seen
 
         # Step scheduler
-        scheduler.step()
+        if scheduler is not None:
+            scheduler.step()
 
         # Log metrics
         history.log("train", epoch_metrics)
@@ -645,7 +646,7 @@ def train(
                 tf2rnet_state_dict=tf2rnet.state_dict(),
                 enformer_state_dict=sequence_model.state_dict(),
                 optimizer_state_dict=optimizer_vae.state_dict(),
-                scheduler_state_dict=scheduler.state_dict(),
+                scheduler_state_dict=scheduler.state_dict() if scheduler is not None else None,
                 history=history,
                 config=config,
                 adj_E1=adj_E1_cache,
@@ -664,7 +665,7 @@ def train(
                 tf2rnet_state_dict=tf2rnet.state_dict(),
                 enformer_state_dict=sequence_model.state_dict(),
                 optimizer_state_dict=optimizer_vae.state_dict(),
-                scheduler_state_dict=scheduler.state_dict(),
+                scheduler_state_dict=scheduler.state_dict() if scheduler is not None else None,
                 history=history,
                 config=config,
                 adj_E1=adj_E1_cache,

@@ -120,12 +120,12 @@ class TrainingConfig:
     seq_batch_size: int = 1000
 
     # Warmup
-    warmup_vae: int = 10
-    warmup_grn: int = 50
+    warmup_vae: int = 0
+    warmup_grn: int = 0
 
     # Learning rates
-    lr_vae: float = 1e-3
-    lr_tf2rnet: float = 1e-3
+    lr_vae: float = 1e-4
+    lr_tf2rnet: float = 1e-4
     lr_ppi: float = 1e-3
     weight_decay: float = 0.0
 
@@ -137,8 +137,8 @@ class TrainingConfig:
     atac_tau: float = 1.0  # ATAC reconstruction
 
     # Loss types
-    loss_rna: str = "mse"  # 'mse', 'mae', 'cosine'
-    loss_atac: str = "mse"  # 'mse', 'mae', 'bce', 'cosine'
+    loss_rna: str = "mae"  # 'mse', 'mae', 'cosine'
+    loss_atac: str = "cos"  # 'mse', 'mae', 'bce', 'cosine'
     dropout_mask_rna: bool = False
     dropout_mask_atac: bool = False
 
@@ -150,6 +150,9 @@ class TrainingConfig:
     # Device
     device: str = "cuda"
     ppi_device: str | None = None  # Separate device for PPI
+
+    # Scheduler
+    use_scheduler: bool = False  # Whether to use CosineAnnealingLR scheduler
 
     # Data
     batch_key: str | None = None
