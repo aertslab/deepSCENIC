@@ -572,7 +572,7 @@ def load_legacy_model(
     See Also
     --------
     load_model : Load new format model
-    load_legacy_grn : Load just E1/E2 matrices from pickle files
+    extract_grn : Extract GRN matrices from loaded model
     """
     import scanpy as sc
     from scipy.sparse import load_npz
@@ -710,6 +710,12 @@ def load_legacy_model(
         # Remove PPI keys from state dict if we're not using PPI
         vae_state = {k: v for k, v in vae_state.items() if not k.startswith("ppi.")}
 
+    # Log ignored keys (e.g., generative_rec.* dead code in PPI models)
+    expected_keys = set(vae.state_dict().keys())
+    ignored_keys = [k for k in vae_state.keys() if k not in expected_keys]
+    if ignored_keys:
+        log.info(f"  Ignoring {len(ignored_keys)} unused legacy keys: {ignored_keys[:3]}{'...' if len(ignored_keys) > 3 else ''}")
+
     vae.load_state_dict(vae_state, strict=False)
     vae.to(device)
     vae.eval()
@@ -728,7 +734,8 @@ def load_legacy_model(
     )
 
     tf2r_ckpt = torch.load(tf2rnet_path, map_location=device)
-    tf2rnet.load_state_dict(tf2r_ckpt["model_state_dict"])
+    tf2r_state = _map_legacy_motifnet_state_dict(tf2r_ckpt["model_state_dict"])
+    tf2rnet.load_state_dict(tf2r_state)
     tf2rnet.to(device)
     tf2rnet.eval()
 
@@ -789,53 +796,6 @@ def load_legacy_model(
 
     log.info("Legacy model loaded successfully!")
     return model
-
-
-def load_legacy_grn(
-    e1_path: str | Path | None = None,
-    e2_path: str | Path | None = None,
-) -> dict[str, pd.DataFrame]:
-    """
-    Load legacy GRN matrices from pickle files.
-
-    These are the extracted E1/E2 matrices saved during legacy training.
-
-    Parameters
-    ----------
-    e1_path
-        Path to E1.pkl (TF→region matrix)
-    e2_path
-        Path to E2.pkl (region→gene matrix)
-
-    Returns
-    -------
-    dict
-        Dictionary with 'E1' and/or 'E2' DataFrames
-
-    Examples
-    --------
-    >>> grn = ds.tl.load_legacy_grn(
-    ...     e1_path="results/E1.pkl",
-    ...     e2_path="results/E2.pkl",
-    ... )
-    >>> grn["E1"]  # (n_tfs, n_regions) DataFrame
-    >>> grn["E2"]  # (n_regions, n_genes) DataFrame
-    """
-    result = {}
-
-    if e1_path is not None:
-        e1_path = Path(e1_path)
-        if not e1_path.exists():
-            raise FileNotFoundError(f"E1 file not found: {e1_path}")
-        result["E1"] = pd.read_pickle(e1_path)
-
-    if e2_path is not None:
-        e2_path = Path(e2_path)
-        if not e2_path.exists():
-            raise FileNotFoundError(f"E2 file not found: {e2_path}")
-        result["E2"] = pd.read_pickle(e2_path)
-
-    return result
 
 
 def _build_ppi_indices(
@@ -918,6 +878,22 @@ def _build_ppi_indices(
     ppi_tfs_idx_values = torch.tensor(ppi_tfs_idx_values_list, dtype=torch.long)
 
     return edge_index, ppi_genes_idx, ppi_tfs_idx_keys, ppi_tfs_idx_values
+
+
+def _map_legacy_motifnet_state_dict(state_dict: dict) -> dict:
+    """Map legacy MotifNet state dict keys to new format.
+
+    Legacy format:
+    - ctx_head_layer.weight → ctx_conv.weight
+    - ctx_lin.weight → ctx_linear.weight
+    - ctx_lin.bias → ctx_linear.bias
+    """
+    key_mapping = {
+        "ctx_head_layer.weight": "ctx_conv.weight",
+        "ctx_lin.weight": "ctx_linear.weight",
+        "ctx_lin.bias": "ctx_linear.bias",
+    }
+    return {key_mapping.get(k, k): v for k, v in state_dict.items()}
 
 
 def _map_legacy_vae_state_dict(state_dict: dict) -> dict:
