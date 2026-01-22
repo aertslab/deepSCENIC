@@ -308,7 +308,7 @@ class TestComputeR2GPenalty:
         assert "NotInRNA_A" not in mdata.uns["r2g"]["gene_names"]
 
     def test_compute_r2g_penalty_filters_rna_to_r2g_genes(self, sample_rna):
-        """Test that RNA modality is filtered to only genes in R2G matrix (legacy behavior)."""
+        """Test that RNA modality is filtered to R2G genes + TFs."""
         n_cells = sample_rna.n_obs
         atac = sc.AnnData(np.random.rand(n_cells, 3))
         atac.obs_names = sample_rna.obs_names
@@ -316,6 +316,9 @@ class TestComputeR2GPenalty:
 
         mdata = ds.pp.create_mudata(rna=sample_rna, atac=atac)
         original_n_genes = mdata.mod["rna"].n_vars
+
+        # Remove is_tf column to test pure R2G filtering
+        del mdata.mod["rna"].var["is_tf"]
 
         # Annotation only covers 2 of the 50 genes in sample_rna
         genes = pd.DataFrame(
@@ -329,7 +332,7 @@ class TestComputeR2GPenalty:
 
         ds.pp.compute_r2g_penalty(mdata, genes, max_distance=50000)
 
-        # RNA modality should be filtered to only annotated genes
+        # Without is_tf column, RNA should be filtered to only annotated genes
         assert mdata.mod["rna"].n_vars == 2
         assert mdata.mod["rna"].n_vars < original_n_genes
         assert list(mdata.mod["rna"].var_names) == ["Gene_0", "Gene_1"]
@@ -358,6 +361,54 @@ class TestComputeR2GPenalty:
 
         with pytest.raises(ValueError, match="No genes from annotation found"):
             ds.pp.compute_r2g_penalty(mdata, genes)
+
+    def test_compute_r2g_penalty_keeps_tfs_without_annotation(self, sample_rna):
+        """Test that TFs are kept even if they lack chromosome annotation."""
+        n_cells = sample_rna.n_obs
+        atac = sc.AnnData(np.random.rand(n_cells, 3))
+        atac.obs_names = sample_rna.obs_names
+        atac.var_names = ["chr1:0-640", "chr1:1000-1640", "chr1:2000-2640"]
+
+        mdata = ds.pp.create_mudata(rna=sample_rna, atac=atac)
+
+        # Mark some genes as TFs (including ones that won't have annotation)
+        # sample_rna has genes Gene_0, Gene_1, ..., Gene_49
+        # Mark Gene_0, Gene_1, Gene_2 as TFs
+        mdata.mod["rna"].var["is_tf"] = False
+        mdata.mod["rna"].var.loc[["Gene_0", "Gene_1", "Gene_2"], "is_tf"] = True
+
+        # Annotation only covers Gene_0 and Gene_1 (not Gene_2)
+        # Gene_2 is a TF but has no annotation
+        genes = pd.DataFrame(
+            {
+                "tss": [320, 1320],
+                "chromosome": ["chr1", "chr1"],
+                "genenames": ["Gene_0", "Gene_1"],
+            },
+        )
+        genes.set_index("genenames", inplace=True)
+
+        original_n_genes = mdata.mod["rna"].n_vars
+        ds.pp.compute_r2g_penalty(mdata, genes, max_distance=50000)
+
+        # Gene_2 (TF without annotation) should be kept
+        assert "Gene_2" in mdata.mod["rna"].var_names
+
+        # Gene_0 and Gene_1 (annotated) should be kept
+        assert "Gene_0" in mdata.mod["rna"].var_names
+        assert "Gene_1" in mdata.mod["rna"].var_names
+
+        # Non-TF genes without annotation should be removed
+        # (Gene_3 through Gene_49 are not TFs and not in annotation)
+        assert mdata.mod["rna"].n_vars < original_n_genes
+
+        # Should have exactly 3 genes: Gene_0, Gene_1 (annotated) + Gene_2 (TF)
+        assert mdata.mod["rna"].n_vars == 3
+
+        # R2G gene_names should only have annotated genes (not Gene_2)
+        assert "Gene_0" in mdata.uns["r2g"]["gene_names"]
+        assert "Gene_1" in mdata.uns["r2g"]["gene_names"]
+        assert "Gene_2" not in mdata.uns["r2g"]["gene_names"]
 
 
 class TestCreateMuData:
@@ -460,11 +511,20 @@ class TestSplitFeaturesByChromosome:
         assert atac_train == 20
         assert atac_test == 10
 
-        # Check RNA splits: 30 chr1 (train), 10 chr7 + 10 chr11 = 20, but only chr7 is test
-        rna_train = (mdata.mod["rna"].var["split"] == "train").sum()
-        rna_test = (mdata.mod["rna"].var["split"] == "test").sum()
-        assert rna_train == 40  # chr1 (30) + chr11 (10)
-        assert rna_test == 10  # chr7 only
+        # Check RNA splits with TFs getting "both":
+        # - Genes 0-9 (10): TFs get "both"
+        # - Genes 10-24 (15) chr1: train
+        # - Genes 25-29 (5) NA: train (unannotated default)
+        # - Genes 30-39 (10) chr7: test
+        # - Genes 40-49 (10) chr11: train
+        rna_var = mdata.mod["rna"].var
+        rna_train = (rna_var["split"] == "train").sum()
+        rna_test = (rna_var["split"] == "test").sum()
+        rna_both = (rna_var["split"] == "both").sum()
+
+        assert rna_both == 10  # 10 TFs
+        assert rna_train == 30  # 15 (chr1 non-TF) + 5 (NA) + 10 (chr11)
+        assert rna_test == 10  # chr7 only (non-TFs)
 
     def test_split_features_multiple_test_chromosomes(self, sample_rna, sample_atac):
         """Test splitting with multiple test chromosomes."""
@@ -505,26 +565,94 @@ class TestSplitFeaturesByChromosome:
             ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"])
 
     def test_split_features_with_na_chromosomes(self, sample_rna, sample_atac):
-        """Test that genes without chromosome annotation are assigned to train."""
+        """Test that non-TF genes without chromosome annotation are assigned to train."""
         mdata = ds.pp.create_mudata(rna=sample_rna, atac=sample_atac)
 
         # Remove existing split columns
         del mdata.mod["atac"].var["split"]
         del mdata.mod["rna"].var["split"]
 
-        # Set some chromosomes to NA (simulating unannotated genes)
-        na_genes = mdata.mod["rna"].var_names[:5]
+        # Set some chromosomes to NA for NON-TF genes (genes 10-14)
+        # Note: genes 0-9 are TFs and would get "both" regardless of chromosome
+        na_genes = mdata.mod["rna"].var_names[10:15]
         mdata.mod["rna"].var.loc[na_genes, "chromosome"] = pd.NA
 
         # Should not raise an error
         ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"])
 
-        # NA chromosomes should be assigned to train (not test)
+        # NA chromosomes should be assigned to train (not test) for non-TFs
         assert (mdata.mod["rna"].var.loc[na_genes, "split"] == "train").all()
 
-        # Other chromosomes should still be split correctly
+        # chr7 genes (30-39) are non-TFs, should be split="test"
         chr7_genes = mdata.mod["rna"].var[mdata.mod["rna"].var["chromosome"] == "chr7"].index
         assert (mdata.mod["rna"].var.loc[chr7_genes, "split"] == "test").all()
+
+    def test_split_features_keep_tfs_in_both_default(self, sample_rna, sample_atac):
+        """Test that keep_tfs_in_both=True (default) assigns TFs to split='both'."""
+        mdata = ds.pp.create_mudata(rna=sample_rna, atac=sample_atac)
+
+        del mdata.mod["atac"].var["split"]
+        del mdata.mod["rna"].var["split"]
+
+        # sample_rna has is_tf column with first 10 genes marked as TFs
+        # and chr7 has 10 genes (indices 30-39), some of which are NOT TFs
+        ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"])
+
+        rna_var = mdata.mod["rna"].var
+
+        # All TFs should have split="both"
+        tf_mask = rna_var["is_tf"]
+        assert (rna_var.loc[tf_mask, "split"] == "both").all()
+
+        # Non-TFs should have "train" or "test" (not "both")
+        non_tf_mask = ~rna_var["is_tf"]
+        assert rna_var.loc[non_tf_mask, "split"].isin(["train", "test"]).all()
+
+        # No in_both_splits column (legacy column removed)
+        assert "in_both_splits" not in rna_var.columns
+
+    def test_split_features_keep_tfs_in_both_false(self, sample_rna, sample_atac):
+        """Test that keep_tfs_in_both=False does strict chromosome splitting."""
+        mdata = ds.pp.create_mudata(rna=sample_rna, atac=sample_atac)
+
+        del mdata.mod["atac"].var["split"]
+        del mdata.mod["rna"].var["split"]
+
+        ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"], keep_tfs_in_both=False)
+
+        # Should only have "train" and "test", no "both"
+        assert set(mdata.mod["rna"].var["split"].cat.categories) == {"train", "test"}
+        assert "both" not in mdata.mod["rna"].var["split"].values
+
+        # No in_both_splits column
+        assert "in_both_splits" not in mdata.mod["rna"].var.columns
+
+    def test_split_features_keep_tfs_counts_correctly(self, sample_rna, sample_atac):
+        """Test that TFs get split='both' regardless of chromosome."""
+        mdata = ds.pp.create_mudata(rna=sample_rna, atac=sample_atac)
+
+        del mdata.mod["atac"].var["split"]
+        del mdata.mod["rna"].var["split"]
+
+        # Manually mark some genes on chr7 as TFs to test the overlap
+        # sample_rna: genes 30-39 are on chr7, genes 40-49 are on chr11
+        # By default, only genes 0-9 are TFs (on chr1)
+        # Let's also mark gene 30 (on chr7) as a TF
+        mdata.mod["rna"].var.loc["Gene_30", "is_tf"] = True
+
+        ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"])
+
+        # Gene_30 is on chr7 but is a TF, so should have split="both"
+        assert mdata.mod["rna"].var.loc["Gene_30", "split"] == "both"
+
+        # Gene_31 is on chr7 and is NOT a TF, so should have split="test"
+        assert mdata.mod["rna"].var.loc["Gene_31", "split"] == "test"
+
+        # Gene_0 is on chr1 and is a TF, so should have split="both"
+        assert mdata.mod["rna"].var.loc["Gene_0", "split"] == "both"
+
+        # Gene_40 is on chr11 (train chromosome) and is NOT a TF, so split="train"
+        assert mdata.mod["rna"].var.loc["Gene_40", "split"] == "train"
 
 
 class TestFilterRegionsByCelltype:

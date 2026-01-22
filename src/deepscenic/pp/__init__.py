@@ -158,13 +158,22 @@ def split_cells(
 def split_features_by_chromosome(
     mdata: md.MuData,
     test_chromosomes: list[str] = DEFAULT_TEST_CHROMOSOMES,
+    keep_tfs_in_both: bool = True,
     inplace: bool = True,
 ) -> md.MuData | None:
     """
-    Split features (genes/regions) by chromosome. Adds a 'split' column to both `atac.var` and `rna.var` inside `mdata` object.
+    Split features (genes/regions) by chromosome for evaluation.
+
+    Adds a 'split' column to both `atac.var` and `rna.var` inside `mdata` object.
+    When ``keep_tfs_in_both=True`` (default), TFs get ``split='both'`` to indicate
+    they should be included in both train and test views.
+
+    Note: This split is primarily for **evaluation purposes**. Training uses all
+    features regardless of their split assignment. The split enables evaluation
+    on held-out chromosomes to assess generalization.
 
     Expects `mdata["rna"].var` to contain "chromosome" column.
-    Run `ds.pp.add_gene_annotation` first to asign gene positions based on TSS.
+    Run `ds.pp.add_gene_annotation` first to assign gene positions based on TSS.
 
     Parameters
     ----------
@@ -172,6 +181,11 @@ def split_features_by_chromosome(
         Input multimodal data
     test_chromosomes
         Chromosomes for test set
+    keep_tfs_in_both
+        If True (default), transcription factors get ``split='both'`` regardless
+        of their chromosome location. This ensures all TFs are available as
+        encoder input in both train and test views.
+        Set to False for strict chromosome-only splitting.
     inplace
         Whether to modify in-place
 
@@ -188,30 +202,55 @@ def split_features_by_chromosome(
             return "train"  # Unannotated features go to train (matches legacy behavior)
         return "test" if chrom in test_chromosomes else "train"
 
+    # ATAC: strict chromosome-based split (no "both" - regions are never shared)
     atac = mdata.mod["atac"]
     atac.var["split"] = pd.Categorical(
         [_assign_split(c) for c in atac.var["chromosome"]],
         categories=["train", "test"],
     )
 
+    # RNA: chromosome-based split with optional TF handling
     rna = mdata.mod["rna"]
-    if "chromosome" in rna.var.columns:
-        rna.var["split"] = pd.Categorical(
-            [_assign_split(c) for c in rna.var["chromosome"]],
-            categories=["train", "test"],
-        )
-        # Warn about unannotated genes
-        n_unannotated = rna.var["chromosome"].isna().sum()
-        if n_unannotated > 0:
-            log.info(f"{n_unannotated} genes without chromosome annotation assigned to 'train' split")
-    else:
+    if "chromosome" not in rna.var.columns:
         raise ValueError(
             "Expects 'chromosome' column in rna.var. Run `ds.pp.add_gene_annotation` first to annotate gene positions based on TSS."
         )
 
+    # Initial chromosome-based assignment
+    splits = [_assign_split(c) for c in rna.var["chromosome"]]
+
+    # Override TFs to "both" if requested
+    if keep_tfs_in_both and "is_tf" in rna.var.columns:
+        tf_mask = rna.var["is_tf"].fillna(False)
+        splits = ["both" if tf_mask.iloc[i] else splits[i] for i in range(len(splits))]
+        n_tfs = tf_mask.sum()
+        log.info(f"{n_tfs} TFs assigned to 'both' splits")
+
+        rna.var["split"] = pd.Categorical(splits, categories=["train", "test", "both"])
+    else:
+        rna.var["split"] = pd.Categorical(splits, categories=["train", "test"])
+        if keep_tfs_in_both and "is_tf" not in rna.var.columns:
+            log.warning(
+                "keep_tfs_in_both=True but 'is_tf' column not found in rna.var. "
+                "Run `ds.pp.mark_tfs` first to mark transcription factors."
+            )
+
+    # Remove legacy in_both_splits column if it exists
+    if "in_both_splits" in rna.var.columns:
+        del rna.var["in_both_splits"]
+
+    # Warn about unannotated genes
+    n_unannotated = rna.var["chromosome"].isna().sum()
+    if n_unannotated > 0:
+        log.info(f"{n_unannotated} genes without chromosome annotation assigned to 'train' split")
+
+    # Log summary
     n_atac_test = (atac.var["split"] == "test").sum()
     n_rna_test = (rna.var["split"] == "test").sum()
+    n_rna_both = (rna.var["split"] == "both").sum() if "both" in rna.var["split"].cat.categories else 0
     log.info(f"Split features by chromosome: {n_atac_test} ATAC regions, {n_rna_test} genes in test set")
+    if n_rna_both > 0:
+        log.info(f"  ({n_rna_both} TFs assigned to 'both' splits)")
 
     if not inplace:
         return mdata

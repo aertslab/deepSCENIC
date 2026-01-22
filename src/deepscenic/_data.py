@@ -144,6 +144,10 @@ def get_split(
     """
     Get a specific cell x feature split from MuData.
 
+    For features, this handles the "both" category: features with ``split='both'``
+    are included in both "train" and "test" feature views. This is used for TFs
+    which need to be available as encoder input regardless of chromosome.
+
     Parameters
     ----------
     mdata
@@ -174,11 +178,12 @@ def get_split(
     else:
         cell_mask = mdata.obs["split"] == cells
 
-    # Feature mask
+    # Feature mask - handle "both" category
     if features == "all":
         feature_mask = np.ones(adata.n_vars, dtype=bool)
     else:
-        feature_mask = adata.var["split"] == features
+        # Include features with split==features OR split=="both"
+        feature_mask = adata.var["split"].isin([features, "both"])
 
     return adata[cell_mask][:, feature_mask].copy()
 
@@ -299,13 +304,17 @@ class TrainingView:
     # R2G matrices (computed on-demand from feature splits)
     @property
     def r2g_train(self):
-        """R2G penalty matrix for train split (computed on-demand)."""
+        """R2G penalty matrix for train split (computed on-demand).
+
+        Includes regions with split=="train" and genes with split=="train" or "both".
+        """
         if "r2g_train" not in self._cache:
             full_r2g = self._mdata.uns["r2g"]["matrix"]
 
-            # Get boolean masks from feature splits
+            # Include regions with split=="train" (no "both" for ATAC)
             train_region_mask = self._mdata["atac"].var["split"] == "train"
-            train_gene_mask = self._mdata["rna"].var["split"] == "train"
+            # Include genes with split=="train" OR split=="both"
+            train_gene_mask = self._mdata["rna"].var["split"].isin(["train", "both"])
 
             # Subset the sparse matrix
             self._cache["r2g_train"] = full_r2g[train_region_mask.values][:, train_gene_mask.values]
@@ -313,13 +322,17 @@ class TrainingView:
 
     @property
     def r2g_test(self):
-        """R2G penalty matrix for test split (computed on-demand)."""
+        """R2G penalty matrix for test split (computed on-demand).
+
+        Includes regions with split=="test" and genes with split=="test" or "both".
+        """
         if "r2g_test" not in self._cache:
             full_r2g = self._mdata.uns["r2g"]["matrix"]
 
-            # Get boolean masks from feature splits
+            # Include regions with split=="test" (no "both" for ATAC)
             test_region_mask = self._mdata["atac"].var["split"] == "test"
-            test_gene_mask = self._mdata["rna"].var["split"] == "test"
+            # Include genes with split=="test" OR split=="both"
+            test_gene_mask = self._mdata["rna"].var["split"].isin(["test", "both"])
 
             # Subset the sparse matrix
             self._cache["r2g_test"] = full_r2g[test_region_mask.values][:, test_gene_mask.values]
