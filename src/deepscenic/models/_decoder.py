@@ -62,13 +62,13 @@ class GenerativeNetATAC(nn.Module):
     """Per-region MLP decoder for ATAC reconstruction.
 
     Decodes region activity to chromatin accessibility.
-    Uses standard Linear layers (not PositiveLinear) like legacy.
+    Uses PositiveLinear layers (positive-constrained weights) like legacy.
 
     Architecture:
         (n_cells, n_regions, 1)
-        → Linear(1, hidden) → Tanh
-        → Linear(hidden, hidden) → Tanh
-        → Linear(hidden, 1)
+        → PositiveLinear(1, hidden) → Tanh
+        → PositiveLinear(hidden, hidden) → Tanh
+        → PositiveLinear(hidden, 1)
         → x_rec (n_cells, n_regions)
 
     Parameters
@@ -76,19 +76,22 @@ class GenerativeNetATAC(nn.Module):
     n_hidden
         Hidden layer dimension (default: 128)
     use_bias
-        Whether to use bias in output layer (for binary accessibility)
+        Whether to use bias in ALL layers (for binary accessibility).
+        When True, all PositiveLinear layers have bias enabled.
     """
 
     def __init__(self, n_hidden: int = 128, use_bias: bool = False) -> None:
         super().__init__()
         self.n_hidden = n_hidden
 
+        # Use PositiveLinear like legacy GenerativeNet
+        # When use_bias=True (binary ATAC), ALL layers have bias (matching legacy)
         self.mlp = nn.Sequential(
-            nn.Linear(1, n_hidden),
+            PositiveLinear(1, n_hidden, bias=use_bias),
             nn.Tanh(),
-            nn.Linear(n_hidden, n_hidden),
+            PositiveLinear(n_hidden, n_hidden, bias=use_bias),
             nn.Tanh(),
-            nn.Linear(n_hidden, 1, bias=use_bias),
+            PositiveLinear(n_hidden, 1, bias=use_bias),
         )
 
     def forward(self, z: Tensor) -> Tensor:

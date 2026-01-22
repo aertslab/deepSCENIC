@@ -258,14 +258,16 @@ class DeepSCENICVAE(nn.Module):
         # Region activity → gene signal via E2 (scatter_add for memory efficiency)
         z_rna = self._region_to_gene(enh_act)
 
+        # Apply batch correction BEFORE decoders (legacy behavior: additive correction to latent)
+        if self.n_batches > 0 and batch_id is not None:
+            enh_act_batch = self.batch_layer_atac(torch.cat([batch_id, enh_act], dim=1))
+            enh_act = enh_act + enh_act_batch
+            z_rna_batch = self.batch_layer_rna(torch.cat([batch_id, z_rna], dim=1))
+            z_rna = z_rna + z_rna_batch
+
         # Decoders
         x_rna_rec = self.decoder_rna(z_rna)
         x_atac_rec = self.decoder_atac(enh_act)
-
-        # Apply batch correction if enabled
-        if self.n_batches > 0 and batch_id is not None:
-            x_atac_rec = self.batch_layer_atac(torch.cat([batch_id, x_atac_rec], dim=1))
-            x_rna_rec = self.batch_layer_rna(torch.cat([batch_id, x_rna_rec], dim=1))
 
         return VAEOutput(
             x_rna_rec=x_rna_rec,
