@@ -643,6 +643,7 @@ def train(
                     r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                     x_rna_ppi=output.x_rna_ppi,
                     gene_indices=vae.gene_indices,  # type: ignore[arg-type]
+                    region_indices=vae.region_indices,  # type: ignore[arg-type]
                     loss_rna=config.loss_rna,
                     loss_atac=config.loss_atac,
                     beta=config.beta,

@@ -138,7 +138,7 @@ class TrainingConfig:
 
     # Loss types
     loss_rna: str = "mae"  # 'mse', 'mae', 'cosine'
-    loss_atac: str = "cos"  # 'mse', 'mae', 'bce', 'cosine'
+    loss_atac: str = "cosine"  # 'mse', 'mae', 'bce', 'cosine'
     dropout_mask_rna: bool = False
     dropout_mask_atac: bool = False
 
