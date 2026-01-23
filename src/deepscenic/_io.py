@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import anndata as ad
 import mudata as md
@@ -13,16 +12,12 @@ import pandas as pd
 
 from ._data import validate_schema
 
-if TYPE_CHECKING:
-    pass
-
 __all__ = ["read", "read_bed", "write"]
 
 log = logging.getLogger("deepscenic.io")
 
 md.set_options(pull_on_update=False)  # adopt new mudata behaviour
 
-# Enable nullable string serialization (supported in anndata >= 0.11)
 ad.settings.allow_write_nullable_strings = True
 
 
@@ -56,9 +51,9 @@ def read(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> mdata = ds.read("my_dataset.h5mu")  # doctest: +SKIP
-    >>> mdata  # doctest: +SKIP
-    MuData object with n_obs x n_vars = 39470 x 455165
+    >>> mdata = ds.read("my_dataset.h5mu")
+    >>> mdata
+      MuData object with n_obs x n_vars = 39470 x 455165
       rna: 39470 x 16437
       atac: 39470 x 438728
     """
@@ -151,7 +146,7 @@ def write(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> ds.write(mdata, "processed_dataset.h5mu")  # doctest: +SKIP
+    >>> ds.write(mdata, "processed_dataset.h5mu")
     """
     path = Path(path)
 
@@ -226,23 +221,22 @@ def read_bed(
     Basic usage without validation:
 
     >>> import deepscenic as ds
-    >>> regions = ds.read_bed("peaks.bed")  # doctest: +SKIP
-    >>> regions.head()  # doctest: +SKIP
-       chromosome  start    end          region
+    >>> regions = ds.read_bed("peaks.bed")
+    >>> regions.head()
+    chromosome  start    end          region
     0        chr1   1000   2000  chr1:1000-2000
     1        chr1   3000   4000  chr1:3000-4000
 
     With chromosome validation:
 
-    >>> annot, chromsizes = ds.fetch_gene_annotation("mmusculus")  # doctest: +SKIP
-    >>> regions = ds.read_bed("peaks.bed", chromsizes=chromsizes)  # doctest: +SKIP
-    # Regions on unknown chromosomes or out of bounds are filtered
+    >>> annot, chromsizes = ds.fetch_gene_annotation("mmusculus")
+    >>> regions = ds.read_bed("peaks.bed", chromsizes=chromsizes)    # Regions on unknown chromosomes or out of bounds are filtered
 
     Get list of region strings:
 
-    >>> regions_list = regions["region"].tolist()  # doctest: +SKIP
-    >>> len(regions_list)  # doctest: +SKIP
-    1234
+    >>> regions_list = regions["region"].tolist()
+    >>> len(regions_list)
+        1234
     """
     bed_file = Path(bed_file)
 

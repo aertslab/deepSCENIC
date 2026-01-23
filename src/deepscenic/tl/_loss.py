@@ -227,12 +227,13 @@ def compute_total_loss(
     # Reconstruction losses - filter both prediction and target to TRAIN features
     # This ensures reconstruction loss only evaluates on held-in features,
     # while E2 sparsity loss still applies to ALL links (including to test genes).
-    loss_rec_rna = reconstruction_loss(
-        x_rna_rec[:, gene_indices], x_rna[:, gene_indices], loss_rna, dropout_mask_rna
-    ) * rna_tau
-    loss_rec_atac = reconstruction_loss(
-        x_atac_rec[:, region_indices], x_atac[:, region_indices], loss_atac, dropout_mask_atac
-    ) * atac_tau
+    loss_rec_rna = (
+        reconstruction_loss(x_rna_rec[:, gene_indices], x_rna[:, gene_indices], loss_rna, dropout_mask_rna) * rna_tau
+    )
+    loss_rec_atac = (
+        reconstruction_loss(x_atac_rec[:, region_indices], x_atac[:, region_indices], loss_atac, dropout_mask_atac)
+        * atac_tau
+    )
 
     # KL divergence
     loss_kl = kl_divergence(mu, logvar) * beta
@@ -248,8 +249,6 @@ def compute_total_loss(
         loss_ppi = torch.tensor(0.0, device=x_rna.device)
 
     # Total loss for backpropagation
-    # Note: PPI loss is computed for logging but excluded from total to match legacy
-    # behavior where it was calculated but commented out of the loss sum.
     total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse
     if include_e1_sparsity:
         total = total + loss_e1_sparse

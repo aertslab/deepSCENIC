@@ -7,14 +7,11 @@ import logging
 import re
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import pandas as pd
 import pooch
 import requests
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = ["fetch_tf_collection", "fetch_gene_annotation", "clear_cache", "get_cache_info"]
 

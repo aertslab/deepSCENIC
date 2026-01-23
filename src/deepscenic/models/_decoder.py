@@ -62,7 +62,6 @@ class GenerativeNetATAC(nn.Module):
     """Per-region MLP decoder for ATAC reconstruction.
 
     Decodes region activity to chromatin accessibility.
-    Uses PositiveLinear layers (positive-constrained weights) like legacy.
 
     Architecture:
         (n_cells, n_regions, 1)
@@ -84,8 +83,6 @@ class GenerativeNetATAC(nn.Module):
         super().__init__()
         self.n_hidden = n_hidden
 
-        # Use PositiveLinear like legacy GenerativeNet
-        # When use_bias=True (binary ATAC), ALL layers have bias (matching legacy)
         self.mlp = nn.Sequential(
             PositiveLinear(1, n_hidden, bias=use_bias),
             nn.Tanh(),

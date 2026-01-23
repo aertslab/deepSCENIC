@@ -401,11 +401,11 @@ def add_gene_annotation(
         if col in ("chromosome", "strand"):
             # String columns
             adata.var[col] = pd.array([pd.NA] * len(adata.var), dtype="string")
-            adata.var.loc[genes_in_data, col] = values.astype("string").values
+            adata.var.loc[genes_in_data, col] = values.astype("string").values  # type: ignore
         elif col in ("tss", "start", "end"):
             # Integer columns
             adata.var[col] = pd.array([pd.NA] * len(adata.var), dtype="Int64")
-            adata.var.loc[genes_in_data, col] = values.astype("Int64").values
+            adata.var.loc[genes_in_data, col] = values.astype("Int64").values  # type: ignore
 
     log.info(f"Added {columns} to {len(genes_in_data)} / {len(adata.var)} genes")
     if n_missing > 0:

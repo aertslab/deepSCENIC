@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.nn.init import _calculate_fan_in_and_fan_out, _no_grad_uniform_
-
-if TYPE_CHECKING:
-    pass
 
 
 def _pos_xavier_uniform(tensor: Tensor, gain: float = 1.0) -> Tensor:

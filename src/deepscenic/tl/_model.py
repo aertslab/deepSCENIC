@@ -159,12 +159,11 @@ class DeepSCENICModel:
         --------
         Loading a model trained with default Enformer:
 
-        >>> model = DeepSCENICModel.load("model.pt")  # doctest: +SKIP
-
+        >>> model = DeepSCENICModel.load("model.pt")
         Loading a model trained with custom sequence model:
 
         >>> custom = MySequenceModel()  # Same architecture as training
-        >>> model = DeepSCENICModel.load("model.pt", sequence_model=custom)  # doctest: +SKIP
+        >>> model = DeepSCENICModel.load("model.pt", sequence_model=custom)
         """
         from ..models import DeepSCENICVAE, MotifNet
 
@@ -294,10 +293,10 @@ class PretrainedModel:
 
     Examples
     --------
-    >>> pretrained = ds.tl.pretrain(mdata, epochs=100)  # doctest: +SKIP
-    >>> pretrained.save("pretrained.pt")  # doctest: +SKIP
-    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")  # doctest: +SKIP
-    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
+    >>> pretrained = ds.tl.pretrain(mdata, epochs=100)
+    >>> pretrained.save("pretrained.pt")
+    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)
     """
 
     tf2rnet: MotifNet
@@ -451,8 +450,8 @@ def load_pretrained(
 
     Examples
     --------
-    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")  # doctest: +SKIP
-    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
+    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)
     """
     return PretrainedModel.load(path, device=device, sequence_model=sequence_model)
 
@@ -714,7 +713,9 @@ def load_legacy_model(
     expected_keys = set(vae.state_dict().keys())
     ignored_keys = [k for k in vae_state.keys() if k not in expected_keys]
     if ignored_keys:
-        log.info(f"  Ignoring {len(ignored_keys)} unused legacy keys: {ignored_keys[:3]}{'...' if len(ignored_keys) > 3 else ''}")
+        log.info(
+            f"  Ignoring {len(ignored_keys)} unused legacy keys: {ignored_keys[:3]}{'...' if len(ignored_keys) > 3 else ''}"
+        )
 
     vae.load_state_dict(vae_state, strict=False)
     vae.to(device)

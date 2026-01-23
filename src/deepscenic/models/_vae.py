@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 import torch
 from torch import Tensor, nn
@@ -11,9 +10,6 @@ from torch import Tensor, nn
 from ._decoder import GenerativeNet, GenerativeNetATAC
 from ._encoder import InferenceNet
 from ._ppi import PPIgnn, build_ppi_batch, extract_tf_weights
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass
@@ -161,7 +157,7 @@ class DeepSCENICVAE(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def _region_to_gene(self, enh_act: Tensor) -> Tensor:
-        """Compute region→gene signal using scatter_add (memory efficient).
+        """Compute region→gene signal using scatter_add (more memory efficient).
 
         Equivalent to enh_act @ E2 where E2 is a sparse (n_regions, n_genes) matrix,
         but avoids materializing any dense matrices during forward or backward.
@@ -180,8 +176,8 @@ class DeepSCENICVAE(nn.Module):
         device = enh_act.device
 
         # r2g_indices: (2, n_links) - row 0 = region indices, row 1 = gene indices
-        region_idx = self.r2g_indices[0]  # (n_links,)
-        gene_idx = self.r2g_indices[1]  # (n_links,)
+        region_idx = self.r2g_indices[0]  # (n_links,) # type: ignore
+        gene_idx = self.r2g_indices[1]  # (n_links,) # type: ignore
         weights = self.adj_E2.abs()  # (n_links,)
 
         # Gather region activities for each link and weight them
