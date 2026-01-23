@@ -6,7 +6,7 @@ from deepscenic._data import TrainingView, get_split
 class TestGetSplit:
     """Tests for get_split function.
 
-    With the new split='both' for TFs:
+    With the split='both' for TFs:
     - sample_rna: 50 genes total
       - Genes 0-9 (10): TFs with split='both'
       - Genes 10-29 (20): non-TFs with split='train'
@@ -77,7 +77,7 @@ class TestGetSplit:
 class TestTrainingView:
     """Tests for TrainingView class.
 
-    With the new split='both' for TFs:
+    With the split='both' for TFs:
     - rna_train: 40 genes (10 both + 30 train)
     - rna_test: 20 genes (10 both + 10 test)
     - r2g_train: 20 regions × 40 genes
