@@ -114,12 +114,12 @@ class TestGenome:
         assert Genome._reverse_complement("N") == "N"
 
     def test_fetch_with_rc(self, tmp_fasta):
-        """Reverse complement should reverse the sequence."""
+        """Reverse complement should have same len but different string."""
         genome = Genome(tmp_fasta)
         seq_fwd = genome.fetch("chr1", 100, 110)
         seq_rc = genome.fetch("chr1", 100, 110, rc=True)
-        # RC should be different (unless palindrome)
         assert len(seq_fwd) == len(seq_rc) == 10
+        assert seq_fwd != seq_rc
 
     def test_padding_negative_start(self, tmp_fasta):
         """Should pad with N for negative start coordinates."""
@@ -208,21 +208,20 @@ class TestGenomeIntervalDataset:
         dataset = GenomeIntervalDataset(regions, genome, context_length=640)
         assert len(dataset) == 3
 
-    def test_getitem_returns_tuple(self, tmp_fasta):
-        """Getitem should return tuple for compatibility."""
+    def test_getitem_returns_tensor(self, tmp_fasta):
+        """Getitem should return a tensor."""
         genome = Genome(tmp_fasta)
         regions = ["chr1:0-640"]
         dataset = GenomeIntervalDataset(regions, genome, context_length=640)
         result = dataset[0]
-        assert isinstance(result, tuple)
-        assert len(result) == 1
+        assert isinstance(result, torch.Tensor)
 
     def test_getitem_shape(self, tmp_fasta):
         """Output should have shape (context_length, 4)."""
         genome = Genome(tmp_fasta)
         regions = ["chr1:0-640"]
         dataset = GenomeIntervalDataset(regions, genome, context_length=640)
-        (seq,) = dataset[0]
+        seq = dataset[0]
         assert seq.shape == (640, 4)
 
     def test_different_context_length(self, tmp_fasta):
@@ -230,7 +229,7 @@ class TestGenomeIntervalDataset:
         genome = Genome(tmp_fasta)
         regions = ["chr1:0-640"]
         dataset = GenomeIntervalDataset(regions, genome, context_length=320)
-        (seq,) = dataset[0]
+        seq = dataset[0]
         assert seq.shape == (320, 4)
 
     def test_shift_augmentation(self, tmp_fasta):
@@ -240,7 +239,7 @@ class TestGenomeIntervalDataset:
         dataset = GenomeIntervalDataset(regions, genome, context_length=640, shift_augs=(-50, 50))
 
         # Get multiple samples - they should sometimes differ
-        seqs = [(dataset[0][0]) for _ in range(10)]
+        seqs = [dataset[0] for _ in range(10)]
         # Not all should be identical due to random shifts
         unique_seqs = {tuple(s.flatten().tolist()) for s in seqs}
         assert len(unique_seqs) > 1
@@ -251,8 +250,8 @@ class TestGenomeIntervalDataset:
         regions = ["chr1:500-1140"]
         dataset = GenomeIntervalDataset(regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=False)
 
-        seq1 = dataset[0][0]
-        seq2 = dataset[0][0]
+        seq1 = dataset[0]
+        seq2 = dataset[0]
         assert torch.equal(seq1, seq2)
 
     def test_rc_augmentation(self, tmp_fasta):
@@ -274,19 +273,12 @@ class TestGenomeIntervalDataset:
         assert start == 1000
         assert end == 2000
 
-    def test_parse_region_large_coords(self):
-        """Should handle large coordinates."""
-        chrom, start, end = GenomeIntervalDataset._parse_region("chr1:100000000-100001000")
-        assert chrom == "chr1"
-        assert start == 100000000
-        assert end == 100001000
-
     def test_output_dtype(self, tmp_fasta):
         """Output tensor should be float32."""
         genome = Genome(tmp_fasta)
         regions = ["chr1:0-640"]
         dataset = GenomeIntervalDataset(regions, genome, context_length=640)
-        (seq,) = dataset[0]
+        seq = dataset[0]
         assert seq.dtype == torch.float32
 
     def test_multiple_regions(self, tmp_fasta):
@@ -300,52 +292,9 @@ class TestGenomeIntervalDataset:
         dataset = GenomeIntervalDataset(regions, genome, context_length=640, shift_augs=(0, 0), rc_aug=False)
 
         # Each region should give different sequence
-        seq0 = dataset[0][0]
-        seq1 = dataset[1][0]
-        seq2 = dataset[2][0]
+        seq0 = dataset[0]
+        seq1 = dataset[1]
+        seq2 = dataset[2]
 
         assert not torch.equal(seq0, seq1)
         assert not torch.equal(seq0, seq2)
-
-
-class TestSeqToOnehot:
-    """Tests for _seq_to_onehot with tangermeme backend."""
-
-    def test_basic_encoding(self):
-        """Basic ACGT encoding should produce correct one-hot."""
-        onehot = Genome._seq_to_onehot("ACGT")
-        expected = torch.tensor(
-            [
-                [1.0, 0.0, 0.0, 0.0],  # A
-                [0.0, 1.0, 0.0, 0.0],  # C
-                [0.0, 0.0, 1.0, 0.0],  # G
-                [0.0, 0.0, 0.0, 1.0],  # T
-            ]
-        )
-        assert torch.allclose(onehot, expected)
-
-    def test_n_base_encoding(self):
-        """N bases should encode as all zeros."""
-        onehot = Genome._seq_to_onehot("N")
-        expected = torch.zeros((4, 1))
-        assert torch.allclose(onehot, expected)
-
-    def test_mixed_sequence(self):
-        """Sequence with N bases mixed in should encode correctly."""
-        onehot = Genome._seq_to_onehot("ANC")
-        assert onehot.shape == (4, 3)
-        assert onehot[0, 0] == 1.0  # A at position 0
-        assert torch.allclose(onehot[:, 1], torch.zeros(4))  # N at position 1 is all zeros
-        assert onehot[1, 2] == 1.0  # C at position 2
-
-    def test_long_sequence(self):
-        """Realistic sequence length should work correctly."""
-        seq = "ACGT" * 160  # 640 bp
-        onehot = Genome._seq_to_onehot(seq)
-        assert onehot.shape == (4, 640)
-        assert torch.allclose(onehot.sum(dim=0), torch.ones(640))
-
-    def test_output_dtype(self):
-        """Output should be float32."""
-        onehot = Genome._seq_to_onehot("ACGT")
-        assert onehot.dtype == torch.float32

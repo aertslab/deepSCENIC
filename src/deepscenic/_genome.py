@@ -6,13 +6,9 @@ import logging
 import random
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import torch
 from torch.utils.data import Dataset
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = [
     "Genome",
@@ -24,7 +20,7 @@ __all__ = [
 
 log = logging.getLogger("deepscenic.genome")
 
-# Module-level global genome (CREsted-style singleton pattern)
+# Module-level global genome
 _genome: Genome | None = None
 
 
@@ -51,20 +47,14 @@ class Genome:
     Register a genome globally for use across deepSCENIC:
 
     >>> import deepscenic as ds
-    >>> ds.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
+    >>> ds.register_genome("/path/to/hg38.fa")
     >>> # Now training and other functions will use this genome automatically
-    >>> model = ds.tl.train(mdata, epochs=100)  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, epochs=100)
 
     Create a Genome instance directly:
-
-    >>> genome = ds.Genome("/path/to/hg38.fa")  # doctest: +SKIP
-    >>> seq = genome.fetch("chr1", 1000, 2000)  # doctest: +SKIP
-    >>> onehot = genome.fetch_onehot("chr1", 1000, 2000)  # doctest: +SKIP
-
-    Notes
-    -----
-    The FASTA file must be indexed with ``samtools faidx`` before use.
-    The index file (.fai) should be in the same directory as the FASTA.
+    >>> genome = ds.Genome("/path/to/hg38.fa")
+    >>> seq = genome.fetch("chr1", 1000, 2000)
+    >>> onehot = genome.fetch_onehot("chr1", 1000, 2000)
     """
 
     def __init__(self, fasta_file: str | Path) -> None:
@@ -113,8 +103,8 @@ class Genome:
 
         Examples
         --------
-        >>> genome = ds.Genome("/path/to/hg38.fa")  # doctest: +SKIP
-        >>> genome.fetch("chr1", 1000, 1010)  # doctest: +SKIP
+        >>> genome = ds.Genome("/path/to/hg38.fa")
+        >>> genome.fetch("chr1", 1000, 1010)
         'ACGTACGTAC'
         """
         chrom_len = len(self._fasta[chrom])
@@ -166,9 +156,9 @@ class Genome:
 
         Examples
         --------
-        >>> genome = ds.Genome("/path/to/hg38.fa")  # doctest: +SKIP
-        >>> onehot = genome.fetch_onehot("chr1", 1000, 1640)  # doctest: +SKIP
-        >>> onehot.shape  # doctest: +SKIP
+        >>> genome = ds.Genome("/path/to/hg38.fa")
+        >>> onehot = genome.fetch_onehot("chr1", 1000, 1640)
+        >>> onehot.shape
         torch.Size([4, 640])
         """
         seq = self.fetch(chrom, start, end, rc=rc)
@@ -203,7 +193,7 @@ class Genome:
     def _seq_to_onehot(seq: str) -> torch.Tensor:
         """Convert DNA sequence to one-hot encoding.
 
-        Uses tangermeme's optimized encoding with numba-compiled backend.
+        Uses tangermeme's encoding with numba-compiled backend.
 
         Parameters
         ----------
@@ -252,7 +242,7 @@ class GenomeIntervalDataset(Dataset):
     Examples
     --------
     >>> import deepscenic as ds
-    >>> genome = ds.Genome("/path/to/hg38.fa")  # doctest: +SKIP
+    >>> genome = ds.Genome("/path/to/hg38.fa")
     >>> regions = ["chr1:1000-1640", "chr1:2000-2640", "chr1:3000-3640"]
     >>> dataset = ds.GenomeIntervalDataset(
     ...     regions=regions,
@@ -260,11 +250,11 @@ class GenomeIntervalDataset(Dataset):
     ...     context_length=640,
     ...     shift_augs=(-3, 3),
     ...     rc_aug=True,
-    ... )  # doctest: +SKIP
-    >>> len(dataset)  # doctest: +SKIP
+    ... )
+    >>> len(dataset)
     3
-    >>> (seq,) = dataset[0]  # doctest: +SKIP
-    >>> seq.shape  # doctest: +SKIP
+    >>> (seq,) = dataset[0]
+    >>> seq.shape
     torch.Size([640, 4])
     """
 
@@ -307,7 +297,7 @@ class GenomeIntervalDataset(Dataset):
         """Return the number of regions in the dataset."""
         return len(self.regions)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor]:
+    def __getitem__(self, idx: int) -> torch.Tensor:
         """Get one-hot encoded sequence for region.
 
         Parameters
@@ -317,9 +307,8 @@ class GenomeIntervalDataset(Dataset):
 
         Returns
         -------
-        tuple[torch.Tensor]
-            Tuple containing one-hot encoded sequence with shape
-            (context_length, 4), matching Enformer's expected input format.
+        torch.Tensor
+            One-hot encoded sequence with shape (context_length, 4).
         """
         chrom, start, end = self._parsed_regions[idx]
 
@@ -343,7 +332,7 @@ class GenomeIntervalDataset(Dataset):
         onehot = self.genome.fetch_onehot(chrom, seq_start, seq_end, rc=rc)
 
         # Transpose to (context_length, 4) for Enformer compatibility
-        return (onehot.T,)
+        return onehot.T
 
 
 def register_genome(fasta_file: str | Path | Genome) -> None:
@@ -361,9 +350,9 @@ def register_genome(fasta_file: str | Path | Genome) -> None:
     Examples
     --------
     >>> import deepscenic as ds
-    >>> ds.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
+    >>> ds.register_genome("/path/to/hg38.fa")
     >>> # Now all functions will use this genome
-    >>> model = ds.tl.train(mdata, epochs=100)  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, epochs=100)
     """
     global _genome
 
@@ -391,9 +380,9 @@ def get_genome() -> Genome:
     Examples
     --------
     >>> import deepscenic as ds
-    >>> ds.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
-    >>> genome = ds.get_genome()  # doctest: +SKIP
-    >>> genome.chromosomes[:3]  # doctest: +SKIP
+    >>> ds.register_genome("/path/to/hg38.fa")
+    >>> genome = ds.get_genome()
+    >>> genome.chromosomes[:3]
     ['chr1', 'chr2', 'chr3']
     """
     if _genome is None:

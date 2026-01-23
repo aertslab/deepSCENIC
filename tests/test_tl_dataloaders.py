@@ -4,10 +4,9 @@ import random
 
 import numpy as np
 import pytest
-import torch
 
 from deepscenic._genome import clear_genome, register_genome
-from deepscenic.tl._dataloaders import CellDataset, collate_cell_batch
+from deepscenic.tl._dataloaders import CellDataset
 
 
 class TestCellDataset:
@@ -42,43 +41,6 @@ class TestCellDataset:
         assert len(dataset) == 100
         item = dataset[0]
         assert item["rna"].shape == (50,)
-
-
-class TestCollateCellBatch:
-    """Tests for collate_cell_batch function."""
-
-    def test_collates_rna_atac(self):
-        """Should stack rna and atac tensors."""
-        batch = [
-            {"rna": torch.randn(50), "atac": torch.randn(200), "idx": torch.tensor(0)},
-            {"rna": torch.randn(50), "atac": torch.randn(200), "idx": torch.tensor(1)},
-        ]
-        result = collate_cell_batch(batch)
-
-        assert result["rna"].shape == (2, 50)
-        assert result["atac"].shape == (2, 200)
-        assert result["idx"].shape == (2,)
-
-    def test_collates_batch_id(self):
-        """Should include batch_id when present."""
-        batch = [
-            {
-                "rna": torch.randn(50),
-                "atac": torch.randn(200),
-                "idx": torch.tensor(0),
-                "batch_id": torch.tensor([1.0, 0.0, 0.0]),
-            },
-            {
-                "rna": torch.randn(50),
-                "atac": torch.randn(200),
-                "idx": torch.tensor(1),
-                "batch_id": torch.tensor([0.0, 1.0, 0.0]),
-            },
-        ]
-        result = collate_cell_batch(batch)
-
-        assert "batch_id" in result
-        assert result["batch_id"].shape == (2, 3)
 
 
 class TestBuildCellDataloader:
@@ -184,7 +146,7 @@ class TestBuildSequenceDataloader:
         )
 
         batch = next(iter(loader))
-        (seqs,), indices = batch
+        seqs, indices = batch
         # Shape is (batch, context_length, 4) - batch=2, context_length=640, channels=4
         assert seqs.shape[0] == 2
         assert seqs.shape[-2] == 640
@@ -204,7 +166,7 @@ class TestBuildSequenceDataloader:
         )
 
         batch = next(iter(loader))
-        (seqs,), indices = batch
+        seqs, indices = batch
         # Shape is (batch, context_length, 4)
         assert seqs.shape[-2] == 320
 
@@ -223,7 +185,7 @@ class TestBuildSequenceDataloader:
         )
 
         batch = next(iter(loader))
-        (seqs,), indices = batch
+        seqs, indices = batch
         assert len(indices) == 3
         assert set(indices.tolist()) == {0, 1, 2}
 

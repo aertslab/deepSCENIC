@@ -88,7 +88,8 @@ def _get_sequence_embeddings(
     torch.Tensor
         Flattened embeddings with shape (batch, bottleneck_size * emb_len).
     """
-    with torch.amp.autocast("cuda", enabled=True):
+    use_autocast = torch.cuda.is_available() and sequences.is_cuda
+    with torch.amp.autocast("cuda", enabled=use_autocast):
         if _is_enformer(model):
             # Enformer returns (batch, emb_len, bottleneck_size)
             output = model(sequences, return_only_embeddings=True)
@@ -114,7 +115,7 @@ def _init_e1_cache(
     adj_E1 = torch.zeros(n_regions, tf2rnet.n_tfs, device=device)
 
     with torch.no_grad():
-        for (sequences,), seq_idx in tqdm(seq_dataloader, desc="Initializing E1"):
+        for sequences, seq_idx in tqdm(seq_dataloader, desc="Initializing E1"):
             sequences = sequences.to(device)
             emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
             tf_pred = tf2rnet(emb)
@@ -207,26 +208,23 @@ def train(
     Examples
     --------
     Simple training with defaults:
-
     >>> import deepscenic as ds
-    >>> ds.genome.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
-    >>> mdata = ds.read("preprocessed.h5mu")  # doctest: +SKIP
-    >>> model = ds.tl.train(mdata, epochs=100, device="cuda")  # doctest: +SKIP
+    >>> ds.genome.register_genome("/path/to/hg38.fa")
+    >>> mdata = ds.read("preprocessed.h5mu")
+    >>> model = ds.tl.train(mdata, epochs=100, device="cuda")
 
     Training with pretrained model:
-
-    >>> pretrained = ds.tl.pretrain(mdata, epochs=50)  # doctest: +SKIP
-    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
+    >>> pretrained = ds.tl.pretrain(mdata, epochs=50)
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)
 
     Training with custom sequence model:
-
     >>> from deepscenic.tl import TrainingConfig
     >>> config = TrainingConfig(
     ...     sequence_model=my_custom_model,
     ...     bottleneck_size=256,
     ...     emb_len=60,
-    ... )  # doctest: +SKIP
-    >>> model = ds.tl.train(mdata, config=config)  # doctest: +SKIP
+    ... )
+    >>> model = ds.tl.train(mdata, config=config)
     """
     # Build config: start from provided config or defaults, then override with explicit params
     if config is not None:
@@ -292,16 +290,10 @@ def train(
 
     # Validate split columns exist
     if "split" not in rna.var.columns:
-        raise ValueError(
-            "RNA modality missing 'split' column in var. "
-            "Run ds.pp.split_features_by_chromosome() first."
-        )
+        raise ValueError("RNA modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
     atac = mdata.mod["atac"]
     if "split" not in atac.var.columns:
-        raise ValueError(
-            "ATAC modality missing 'split' column in var. "
-            "Run ds.pp.split_features_by_chromosome() first."
-        )
+        raise ValueError("ATAC modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
 
     # Compute gene_indices for reconstruction loss: only TRAIN genes (split='train' or 'both')
     # This matches legacy behavior where reconstruction loss only evaluates on train features,
@@ -310,7 +302,7 @@ def train(
     # Include genes with split='train' or 'both' (TFs get 'both' by default)
     train_gene_mask = gene_split.isin(["train", "both"])
     gene_indices = torch.tensor(np.where(train_gene_mask)[0])
-    log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train + both splits)")
+    log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train + 'both' splits)")
 
     # Compute region_indices for ATAC reconstruction loss: only TRAIN regions
     region_split = atac.var["split"]
@@ -524,10 +516,10 @@ def train(
             if epoch >= warmup_vae:
                 # Get next sequence batch (cycle if exhausted)
                 try:
-                    (sequences,), seq_idx = next(seq_iterator)
+                    sequences, seq_idx = next(seq_iterator)
                 except StopIteration:
                     seq_iterator = iter(train_seq_loader)
-                    (sequences,), seq_idx = next(seq_iterator)
+                    sequences, seq_idx = next(seq_iterator)
 
                 sequences = sequences.to(device)
 
@@ -666,7 +658,7 @@ def train(
                 break
 
         # Best checkpoint saving
-        if save_best_checkpoints and val_loss < best_loss:
+        if save_best_checkpoints and (val_loss < best_loss) and (checkpoint_dir is not None):
             best_loss = val_loss
             best_path = Path(checkpoint_dir) / "best.pt"
             best_path.parent.mkdir(parents=True, exist_ok=True)
@@ -790,8 +782,8 @@ def finetune(
 
     Examples
     --------
-    >>> model = ds.tl.train(mdata, epochs=100)  # doctest: +SKIP
-    >>> model = ds.tl.finetune(model, mdata, epochs=10000, lr=1e-6)  # doctest: +SKIP
+    >>> model = ds.tl.train(mdata, epochs=100)
+    >>> model = ds.tl.finetune(model, mdata, epochs=10000, lr=1e-6)
     """
     # Build config
     if config is not None:
@@ -968,7 +960,7 @@ def finetune(
             best_loss = val_loss
             best_e2 = vae.adj_E2.data.clone()
             # Save best checkpoint
-            if save_best_checkpoints:
+            if save_best_checkpoints and (checkpoint_dir is not None):
                 best_path = Path(checkpoint_dir) / "finetune_best.pt"
                 best_path.parent.mkdir(parents=True, exist_ok=True)
                 torch.save(
@@ -1075,8 +1067,8 @@ def pretrain(
 
     Examples
     --------
-    >>> pretrained = ds.tl.pretrain(mdata, epochs=100)  # doctest: +SKIP
-    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)  # doctest: +SKIP
+    >>> pretrained = ds.tl.pretrain(mdata, epochs=100)
+    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)
     """
     # Build config
     if config is not None:
@@ -1156,7 +1148,7 @@ def pretrain(
         n_batches = 0
 
         pbar = tqdm(seq_loader, desc=f"Pretrain {epoch + 1}/{epochs}")
-        for (sequences,), _ in pbar:
+        for sequences, _ in pbar:
             sequences = sequences.to(device)
 
             optimizer.zero_grad()
