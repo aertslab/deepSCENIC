@@ -23,14 +23,18 @@ def to_latent(
     split: str | None = None,
 ) -> dict[str, np.ndarray]:
     """
-    Extract embeddings from trained model.
+    Extract latent embeddings from trained model.
+
+    Runs the model encoder on RNA expression to extract TF activity,
+    enhancer activity, and gene regulatory signals. Only RNA data is
+    required - ATAC reconstruction is predicted from the latent space.
 
     Parameters
     ----------
     model
         Trained DeepSCENICModel
     mdata
-        MuData with RNA + ATAC data
+        MuData with RNA modality (ATAC not required for inference)
     batch_size
         Cells per batch for inference
     device
@@ -62,20 +66,16 @@ def to_latent(
     else:
         model.to(device)
 
-    # Get data
+    # Get RNA data (ATAC not needed for inference)
     if split is not None:
         mask = mdata.obs["split"] == split
         rna = mdata.mod["rna"][mask].X
-        atac = mdata.mod["atac"][mask].X
     else:
         rna = mdata.mod["rna"].X
-        atac = mdata.mod["atac"].X
 
     # Convert sparse to dense
     if issparse(rna):
         rna = rna.toarray()
-    if issparse(atac):
-        atac = atac.toarray()
 
     n_cells = rna.shape[0]
 
