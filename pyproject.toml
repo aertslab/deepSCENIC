@@ -34,6 +34,7 @@ dependencies = [
     "numpy>=1.23",
     "pandas>=2.0",
     "scipy>=1.10",
+    "scikit-image>=0.20",
     "scikit-learn>=1.2",
 
     # scverse ecosystem
