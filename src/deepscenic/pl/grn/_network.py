@@ -83,9 +83,7 @@ def network_grn(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
-    >>> ds.pl.network_grn(model, top_k=15)  # doctest: +SKIP
-    """
+    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.network_grn(model, top_k=15)    """
     from deepscenic.tl import get_tf_targets
 
     # Build network
@@ -228,9 +226,7 @@ def network_tf_targets(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
-    >>> ds.pl.network_tf_targets(model, "SOX2", top_k=20)  # doctest: +SKIP
-    """
+    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.network_tf_targets(model, "SOX2", top_k=20)    """
     from deepscenic.tl import get_tf_targets
 
     targets = get_tf_targets(model, tf, threshold=threshold, top_k=top_k)
@@ -341,9 +337,7 @@ def network_gene_regulators(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
-    >>> ds.pl.network_gene_regulators(model, "NANOG")  # doctest: +SKIP
-    """
+    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.network_gene_regulators(model, "NANOG")    """
     from deepscenic.tl import get_gene_regulators
 
     regulators = get_gene_regulators(model, gene, threshold=threshold, top_k=top_k)

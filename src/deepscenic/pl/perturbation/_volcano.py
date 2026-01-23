@@ -72,9 +72,7 @@ def volcano_perturbation(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> results = ds.tl.perturb_tf(model, mdata, "SOX2")  # doctest: +SKIP
-    >>> ds.pl.volcano_perturbation(results)  # doctest: +SKIP
-    """
+    >>> results = ds.tl.perturb_tf(model, mdata, "SOX2")    >>> ds.pl.volcano_perturbation(results)    """
     df = results.copy()
 
     # Compute -log10(pval)

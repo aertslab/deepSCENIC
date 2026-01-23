@@ -62,10 +62,9 @@ def validate_schema(
     --------
     >>> import deepscenic as ds
     >>> # Validate for training (strict)
-    >>> ds.validate_schema(mdata, mode="training", strict=True)  # doctest: +SKIP
-
+    >>> ds.validate_schema(mdata, mode="training", strict=True)
     >>> # Validate for inference (RNA-only OK)
-    >>> ds.validate_schema(mdata, mode="inference")  # doctest: +SKIP
+    >>> ds.validate_schema(mdata, mode="inference")
     """
     issues = []
 
@@ -166,9 +165,9 @@ def get_split(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> mdata = ds.read("dataset.h5mu")  # doctest: +SKIP
-    >>> rna_train = ds.get_split(mdata, "rna", cells="train", features="train")  # doctest: +SKIP
-    >>> rna_e2 = ds.get_split(mdata, "rna", cells="train", features="test")  # doctest: +SKIP
+    >>> mdata = ds.read("dataset.h5mu")
+    >>> rna_train = ds.get_split(mdata, "rna", cells="train", features="train")
+    >>> rna_e2 = ds.get_split(mdata, "rna", cells="train", features="test")
     """
     adata = mdata.mod[modality]
 
@@ -226,11 +225,11 @@ class TrainingView:
     Examples
     --------
     >>> import deepscenic as ds
-    >>> mdata = ds.read("dataset.h5mu")  # doctest: +SKIP
-    >>> view = ds.TrainingView(mdata)  # doctest: +SKIP
-    >>> view.rna_train.shape  # doctest: +SKIP
+    >>> mdata = ds.read("dataset.h5mu")
+    >>> view = ds.TrainingView(mdata)
+    >>> view.rna_train.shape
     (31576, 12832)
-    >>> view.r2g_train.shape  # doctest: +SKIP
+    >>> view.r2g_train.shape
     (438728, 12832)
     """
 

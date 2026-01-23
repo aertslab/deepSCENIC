@@ -66,8 +66,7 @@ def ism_heatmap(
     >>> import numpy as np
     >>> import deepscenic as ds
     >>> ism_scores = np.random.randn(100, 4)
-    >>> ds.pl.ism_heatmap(ism_scores)  # doctest: +SKIP
-    """
+    >>> ds.pl.ism_heatmap(ism_scores)    """
     # Ensure shape is (4, seq_len) for heatmap
     if ism_scores.shape[1] == 4 and ism_scores.shape[0] != 4:
         ism_scores = ism_scores.T

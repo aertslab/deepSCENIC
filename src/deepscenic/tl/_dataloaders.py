@@ -149,7 +149,8 @@ def build_sequence_dataloader(
     balance_dars: bool = False,
     dar_indices: NDArray | None = None,
 ) -> DataLoader:
-    """Build dataloader for DNA sequences.
+    """
+    Build dataloader for DNA sequences.
 
     Parameters
     ----------
@@ -158,7 +159,7 @@ def build_sequence_dataloader(
         Typically from ``mdata.mod["atac"].var_names``.
     genome
         Genome instance for sequence extraction. If None, uses the
-        globally registered genome from ``ds.genome.register_genome()``.
+        globally registered genome from ``ds.register_genome()``.
     batch_size
         Sequences per batch.
     shuffle
@@ -184,12 +185,12 @@ def build_sequence_dataloader(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> ds.genome.register_genome("/path/to/hg38.fa")  # doctest: +SKIP
-    >>> regions = mdata.mod["atac"].var_names.tolist()  # doctest: +SKIP
+    >>> ds.genome.register_genome("/path/to/hg38.fa")
+    >>> regions = mdata.mod["atac"].var_names.tolist()
     >>> loader = ds.tl._dataloaders.build_sequence_dataloader(
     ...     regions=regions,
     ...     batch_size=1000,
-    ... )  # doctest: +SKIP
+    ... )
     """
     from .._genome import GenomeIntervalDataset, get_genome
 
@@ -222,26 +223,3 @@ def build_sequence_dataloader(
         num_workers=num_workers,
         pin_memory=True,
     )
-
-
-def collate_cell_batch(batch: list[dict]) -> dict[str, torch.Tensor]:
-    """Collate function for cell batches.
-
-    Parameters
-    ----------
-    batch
-        List of dictionaries from CellDataset.
-
-    Returns
-    -------
-    dict[str, torch.Tensor]
-        Batched tensors.
-    """
-    result = {
-        "rna": torch.stack([item["rna"] for item in batch]),
-        "atac": torch.stack([item["atac"] for item in batch]),
-        "idx": torch.stack([item["idx"] for item in batch]),
-    }
-    if "batch_id" in batch[0]:
-        result["batch_id"] = torch.stack([item["batch_id"] for item in batch])
-    return result

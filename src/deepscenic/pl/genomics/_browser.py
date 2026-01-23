@@ -90,8 +90,7 @@ def genome_browser(
     >>> import deepscenic as ds
     >>> ds.pl.genome_browser(
     ...     mdata, chrom="chr1", start=1000, end=5000
-    ... )  # doctest: +SKIP
-    """
+    ... )    """
     import pandas as pd
 
     # Extract data from mdata if provided

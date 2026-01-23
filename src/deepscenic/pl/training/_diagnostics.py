@@ -155,9 +155,7 @@ def sparsity_histogram(
 
     Examples
     --------
-    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
-    >>> ds.pl.sparsity_histogram(model)  # doctest: +SKIP
-    """
+    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.sparsity_histogram(model)    """
     import torch
 
     with torch.no_grad():
@@ -253,9 +251,7 @@ def latent_umap(
 
     Examples
     --------
-    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
-    >>> ds.pl.latent_umap(model, mdata, color="celltype")  # doctest: +SKIP
-    """
+    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.latent_umap(model, mdata, color="celltype")    """
     import torch
     from sklearn.preprocessing import StandardScaler
 
@@ -382,9 +378,7 @@ def enhancer_activity_histogram(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
-    >>> ds.pl.enhancer_activity_histogram(model, mdata)  # doctest: +SKIP
-    """
+    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.enhancer_activity_histogram(model, mdata)    """
     import torch
 
     # Get enhancer activity from model forward pass
@@ -497,9 +491,7 @@ def tf_activity_clustermap(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> model = ds.tl.load_model("model.pt")  # doctest: +SKIP
-    >>> ds.pl.tf_activity_clustermap(model, mdata, groupby="celltype")  # doctest: +SKIP
-    """
+    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.tf_activity_clustermap(model, mdata, groupby="celltype")    """
     import pandas as pd
     import seaborn as sns
     import torch

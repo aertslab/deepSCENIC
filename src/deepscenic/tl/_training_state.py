@@ -87,8 +87,7 @@ class TrainingConfig:
     Using default Enformer:
 
     >>> config = TrainingConfig(epochs=100)
-    >>> model = ds.tl.train(mdata, config=config)  # doctest: +SKIP
-
+    >>> model = ds.tl.train(mdata, config=config)
     Using a custom sequence model:
 
     >>> import torch
@@ -111,8 +110,7 @@ class TrainingConfig:
     ...     emb_len=60,
     ...     seq_len=640,
     ... )
-    >>> model = ds.tl.train(mdata, config=config)  # doctest: +SKIP
-    """
+    >>> model = ds.tl.train(mdata, config=config)    """
 
     # Training
     epochs: int = 100
@@ -298,8 +296,7 @@ class PretrainConfig:
     Examples
     --------
     >>> config = PretrainConfig(epochs=100, lr=1e-4)
-    >>> pretrained = ds.tl.pretrain(mdata, config=config)  # doctest: +SKIP
-    """
+    >>> pretrained = ds.tl.pretrain(mdata, config=config)    """
 
     epochs: int = 100
     batch_size: int = 256
@@ -357,8 +354,7 @@ class FinetuneConfig:
     Examples
     --------
     >>> config = FinetuneConfig(epochs=10000, lr=1e-6)
-    >>> model = ds.tl.finetune(model, mdata, config=config)  # doctest: +SKIP
-    """
+    >>> model = ds.tl.finetune(model, mdata, config=config)    """
 
     epochs: int = 10000
     batch_size: int = 64
