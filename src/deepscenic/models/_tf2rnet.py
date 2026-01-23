@@ -6,7 +6,7 @@ from torch import Tensor, nn
 
 
 class MotifNet(nn.Module):
-    """Context head for Enformer embeddings → TF binding predictions.
+    """Context head for sequence embeddings (usually from Enformer) → TF binding predictions.
 
     Lightweight architecture that processes Enformer's output embeddings
     to predict TF binding strength per region.
@@ -23,9 +23,9 @@ class MotifNet(nn.Module):
     n_tfs
         Number of transcription factors to predict
     bottleneck_size
-        Enformer embedding dimension (default: 3072)
+        Sequence model embedding dimension (default: 3072, from Enformer)
     emb_len
-        Enformer output sequence length (default: 5)
+        Enformer output sequence length (default: 5, from Enformer)
 
     Examples
     --------
