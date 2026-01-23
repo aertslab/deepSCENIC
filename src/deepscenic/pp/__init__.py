@@ -8,11 +8,6 @@ import pandas as pd
 from anndata import AnnData
 from sklearn.model_selection import train_test_split
 
-from .._constants import (
-    DEFAULT_CELL_SPLIT_SEED,
-    DEFAULT_CELL_TEST_FRACTION,
-    DEFAULT_TEST_CHROMOSOMES,
-)
 from .basic import add_gene_annotation, filter_regions_by_celltype, mark_dars, mark_tfs, remove_zero_variance_genes
 from .ppi import build_ppi_network, load_string_ppi
 from .search_space import compute_r2g_penalty
@@ -103,8 +98,8 @@ def _parse_region_coordinates(adata: AnnData) -> None:
 
 def split_cells(
     mdata: md.MuData,
-    test_fraction: float = DEFAULT_CELL_TEST_FRACTION,
-    seed: int = DEFAULT_CELL_SPLIT_SEED,
+    test_fraction: float = 0.2,
+    seed: int = 42,
     stratify_key: str | None = None,
     inplace: bool = True,
 ) -> md.MuData | None:
@@ -157,7 +152,7 @@ def split_cells(
 
 def split_features_by_chromosome(
     mdata: md.MuData,
-    test_chromosomes: list[str] = DEFAULT_TEST_CHROMOSOMES,
+    test_chromosomes: list[str] = ["chr7", "chr11", "chr18", "chr19"],
     keep_tfs_in_both: bool = True,
     inplace: bool = True,
 ) -> md.MuData | None:
@@ -200,7 +195,7 @@ def split_features_by_chromosome(
     # Helper to handle NA chromosome values (genes without annotation)
     def _assign_split(chrom: str) -> str:
         if pd.isna(chrom):
-            return "train"  # Unannotated features go to train (matches legacy behavior)
+            return "train"  # Unannotated features go to train
         return "test" if chrom in test_chromosomes else "train"
 
     # ATAC: strict chromosome-based split (no "both" - regions are never shared)

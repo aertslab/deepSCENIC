@@ -8,8 +8,6 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
-from .._constants import DEFAULT_R2G_MAX_DISTANCE, DEFAULT_R2G_SIGMA
-
 if TYPE_CHECKING:
     import mudata as md
 
@@ -132,8 +130,8 @@ def _compute_r2g_matrix(
 def compute_r2g_penalty(
     mdata: md.MuData,
     gene_annotation: pd.DataFrame | None = None,
-    max_distance: int = DEFAULT_R2G_MAX_DISTANCE,
-    sigma: int = DEFAULT_R2G_SIGMA,
+    max_distance: int = 1_000_000,
+    sigma: int = 100_000,
     method: Literal["gaussian", "linear"] = "gaussian",
     filter_to_rna_genes: bool = True,
     key_added: str = "r2g",
