@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 import numpy as np
 import torch
@@ -10,9 +10,41 @@ from scipy.sparse import issparse
 from tqdm.auto import tqdm
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     import mudata as md
 
     from ._model import DeepSCENICModel
+
+
+@overload
+def simulate_perturbation(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    tf_name: str,
+    level: float = ...,
+    n_iter: int = ...,
+    batch_size: int = ...,
+    device: str | torch.device | None = ...,
+    split: str | None = ...,
+    clip_percentile: float = ...,
+    return_intermediate: Literal[False] = ...,
+) -> np.ndarray: ...
+
+
+@overload
+def simulate_perturbation(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    tf_name: str,
+    level: float = ...,
+    n_iter: int = ...,
+    batch_size: int = ...,
+    device: str | torch.device | None = ...,
+    split: str | None = ...,
+    clip_percentile: float = ...,
+    return_intermediate: Literal[True] = ...,
+) -> dict[int, np.ndarray]: ...
 
 
 def simulate_perturbation(
@@ -24,7 +56,9 @@ def simulate_perturbation(
     batch_size: int = 256,
     device: str | torch.device | None = None,
     split: str | None = None,
-) -> np.ndarray:
+    clip_percentile: float = 99.9,
+    return_intermediate: bool = False,
+) -> np.ndarray | dict[int, np.ndarray]:
     """
     Simulate TF knockdown/overexpression.
 
@@ -49,17 +83,29 @@ def simulate_perturbation(
         Device for computation
     split
         If specified, only process cells from this split
+    clip_percentile
+        Percentile for clipping perturbed values (default: 99.9)
+    return_intermediate
+        If True, return logFC at each iteration for convergence analysis
 
     Returns
     -------
-    np.ndarray
-        Log fold change predictions (n_cells, n_genes)
+    np.ndarray | dict[int, np.ndarray]
+        If return_intermediate=False: Log fold change predictions (n_cells, n_genes)
+        If return_intermediate=True: Dict mapping iteration (1-indexed) to logFC array
 
     Examples
     --------
     >>> model = ds.tl.load_model("model.pt")
     >>> logFC = ds.tl.simulate_perturbation(model, mdata, tf_name="SOX10", level=0)
     >>> # logFC contains predicted expression changes for all genes
+
+    >>> # Check convergence across iterations
+    >>> logFC_trace = ds.tl.simulate_perturbation(
+    ...     model, mdata, tf_name="SOX10", return_intermediate=True
+    ... )
+    >>> for i, logFC in logFC_trace.items():
+    ...     print(f"Iteration {i}: mean |logFC| = {np.abs(logFC).mean():.4f}")
     """
     model.eval()
 
@@ -86,8 +132,12 @@ def simulate_perturbation(
 
     n_cells = rna.shape[0]
 
-    # Output array
-    logFC_all = []
+    # Compute clipping threshold from original data
+    clip_max = np.percentile(rna, clip_percentile)
+
+    # Output arrays
+    logFC_per_iter: dict[int, list[np.ndarray]] = {i: [] for i in range(1, n_iter + 1)}
+    logFC_all: list[np.ndarray] = []
 
     # Process in batches
     with torch.no_grad():
@@ -97,7 +147,7 @@ def simulate_perturbation(
 
             x_rna = torch.FloatTensor(batch_rna).to(device)
 
-            # Get original z_rna (baseline)
+            # Get original z_rna (baseline gene regulatory signal)
             output_orig = model.vae(
                 x_rna,
                 model.adj_E1,
@@ -109,11 +159,15 @@ def simulate_perturbation(
             # Create perturbed expression matrix
             perturbed_rna = x_rna.clone()
 
+            # TF index in full gene matrix
+            tf_gene_idx = model.vae.tf_indices[tf_idx]  # type: ignore[index]
+
+            # Initialize logFC_decoded for edge case of n_iter=0
+            logFC_decoded = torch.zeros_like(x_rna)
+
             # Iterate to steady state
-            for _ in range(n_iter):
+            for iter_num in range(1, n_iter + 1):
                 # Set TF expression to perturbation level
-                # TF index in full gene matrix
-                tf_gene_idx = model.vae.tf_indices[tf_idx]  # type: ignore[index]
                 perturbed_rna[:, tf_gene_idx] = level
 
                 # Forward pass with perturbed input
@@ -124,20 +178,60 @@ def simulate_perturbation(
                     use_mean=True,
                 )
 
-                # Decode to get expression changes
-                x_rna_rec_orig = model.vae.decoder_rna(z_rna_orig)
-                x_rna_rec_pert = model.vae.decoder_rna(output_pert.z_rna)
+                # Compute logFC in latent space, then decode the DIFFERENCE
+                # This matches legacy: decode(z_pert - z_orig), NOT decode(z_pert) - decode(z_orig)
+                logFC_latent = output_pert.z_rna - z_rna_orig
+                logFC_decoded = model.vae.decoder_rna(logFC_latent)
 
-                # Update perturbed matrix for next iteration
-                # Use original + decoded change
-                perturbed_rna = x_rna + (x_rna_rec_pert - x_rna_rec_orig)
+                # Store intermediate if requested
+                if return_intermediate:
+                    logFC_per_iter[iter_num].append(logFC_decoded.cpu().numpy())
+
+                # Update perturbed matrix: original + decoded fold change
+                perturbed_rna = x_rna + logFC_decoded
+
+                # Clip to valid range [0, p99]
+                perturbed_rna = torch.clamp(perturbed_rna, 0, clip_max)
+
+                # Re-enforce TF perturbation level after clipping
                 perturbed_rna[:, tf_gene_idx] = level
 
-            # Final logFC (in expression space)
-            logFC_final = (x_rna_rec_pert - x_rna_rec_orig).cpu().numpy()
-            logFC_all.append(logFC_final)
+            # Final logFC
+            logFC_all.append(logFC_decoded.cpu().numpy())
 
+    if return_intermediate:
+        return {i: np.concatenate(logFC_per_iter[i], axis=0) for i in range(1, n_iter + 1)}
     return np.concatenate(logFC_all, axis=0)
+
+
+@overload
+def simulate_multi_perturbation(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    tf_names: list[str],
+    levels: list[float] | None = ...,
+    n_iter: int = ...,
+    batch_size: int = ...,
+    device: str | torch.device | None = ...,
+    split: str | None = ...,
+    clip_percentile: float = ...,
+    return_intermediate: Literal[False] = ...,
+) -> np.ndarray: ...
+
+
+@overload
+def simulate_multi_perturbation(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    tf_names: list[str],
+    levels: list[float] | None = ...,
+    n_iter: int = ...,
+    batch_size: int = ...,
+    device: str | torch.device | None = ...,
+    split: str | None = ...,
+    clip_percentile: float = ...,
+    return_intermediate: Literal[True] = ...,
+) -> dict[int, np.ndarray]: ...
 
 
 def simulate_multi_perturbation(
@@ -149,7 +243,9 @@ def simulate_multi_perturbation(
     batch_size: int = 256,
     device: str | torch.device | None = None,
     split: str | None = None,
-) -> np.ndarray:
+    clip_percentile: float = 99.9,
+    return_intermediate: bool = False,
+) -> np.ndarray | dict[int, np.ndarray]:
     """
     Simulate simultaneous perturbation of multiple TFs.
 
@@ -171,11 +267,16 @@ def simulate_multi_perturbation(
         Device for computation
     split
         If specified, only process cells from this split
+    clip_percentile
+        Percentile for clipping perturbed values (default: 99.9)
+    return_intermediate
+        If True, return logFC at each iteration for convergence analysis
 
     Returns
     -------
-    np.ndarray
-        Log fold change predictions (n_cells, n_genes)
+    np.ndarray | dict[int, np.ndarray]
+        If return_intermediate=False: Log fold change predictions (n_cells, n_genes)
+        If return_intermediate=True: Dict mapping iteration (1-indexed) to logFC array
     """
     model.eval()
 
@@ -208,7 +309,13 @@ def simulate_multi_perturbation(
         rna = rna.toarray()
 
     n_cells = rna.shape[0]
-    logFC_all = []
+
+    # Compute clipping threshold from original data
+    clip_max = np.percentile(rna, clip_percentile)
+
+    # Output arrays
+    logFC_per_iter: dict[int, list[np.ndarray]] = {i: [] for i in range(1, n_iter + 1)}
+    logFC_all: list[np.ndarray] = []
 
     with torch.no_grad():
         for i in tqdm(range(0, n_cells, batch_size), desc="Simulating multi-perturbation"):
@@ -217,7 +324,7 @@ def simulate_multi_perturbation(
 
             x_rna = torch.FloatTensor(batch_rna).to(device)
 
-            # Get original
+            # Get original z_rna (baseline)
             output_orig = model.vae(
                 x_rna,
                 model.adj_E1,
@@ -229,12 +336,17 @@ def simulate_multi_perturbation(
             # Create perturbed expression matrix
             perturbed_rna = x_rna.clone()
 
+            # Get TF gene indices
+            tf_gene_indices = [model.vae.tf_indices[tf_idx] for tf_idx in tf_indices]  # type: ignore[index]
+
+            # Initialize logFC_decoded for edge case of n_iter=0
+            logFC_decoded = torch.zeros_like(x_rna)
+
             # Iterate to steady state
-            for _ in range(n_iter):
+            for iter_num in range(1, n_iter + 1):
                 # Set all TF expressions to perturbation levels
-                for tf_idx, level in zip(tf_indices, levels, strict=False):
-                    tf_gene_idx = model.vae.tf_indices[tf_idx]  # type: ignore[index]
-                    perturbed_rna[:, tf_gene_idx] = level
+                for tf_gene_idx, lv in zip(tf_gene_indices, levels, strict=False):
+                    perturbed_rna[:, tf_gene_idx] = lv
 
                 output_pert = model.vae(
                     perturbed_rna,
@@ -243,15 +355,26 @@ def simulate_multi_perturbation(
                     use_mean=True,
                 )
 
-                x_rna_rec_orig = model.vae.decoder_rna(z_rna_orig)
-                x_rna_rec_pert = model.vae.decoder_rna(output_pert.z_rna)
+                # Compute logFC in latent space, then decode the DIFFERENCE
+                logFC_latent = output_pert.z_rna - z_rna_orig
+                logFC_decoded = model.vae.decoder_rna(logFC_latent)
 
-                perturbed_rna = x_rna + (x_rna_rec_pert - x_rna_rec_orig)
-                for tf_idx, level in zip(tf_indices, levels, strict=False):
-                    tf_gene_idx = model.vae.tf_indices[tf_idx]  # type: ignore[index]
-                    perturbed_rna[:, tf_gene_idx] = level
+                # Store intermediate if requested
+                if return_intermediate:
+                    logFC_per_iter[iter_num].append(logFC_decoded.cpu().numpy())
 
-            logFC_final = (x_rna_rec_pert - x_rna_rec_orig).cpu().numpy()
-            logFC_all.append(logFC_final)
+                # Update perturbed matrix
+                perturbed_rna = x_rna + logFC_decoded
 
+                # Clip to valid range
+                perturbed_rna = torch.clamp(perturbed_rna, 0, clip_max)
+
+                # Re-enforce TF perturbation levels
+                for tf_gene_idx, lv in zip(tf_gene_indices, levels, strict=False):
+                    perturbed_rna[:, tf_gene_idx] = lv
+
+            logFC_all.append(logFC_decoded.cpu().numpy())
+
+    if return_intermediate:
+        return {i: np.concatenate(logFC_per_iter[i], axis=0) for i in range(1, n_iter + 1)}
     return np.concatenate(logFC_all, axis=0)

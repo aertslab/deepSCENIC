@@ -38,6 +38,26 @@ class TestSimulatePerturbation:
                 device="cpu",
             )
 
+    def test_return_intermediate(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
+        """Should return dict of iterations when return_intermediate=True."""
+        n_iter = 3
+        result = simulate_perturbation(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            tf_name="TF0",
+            level=0.0,
+            n_iter=n_iter,
+            batch_size=4,
+            device="cpu",
+            return_intermediate=True,
+        )
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {1, 2, 3}
+        d = minimal_dims
+        n_cells = d["n_cells"] * 2
+        for i in range(1, n_iter + 1):
+            assert result[i].shape == (n_cells, d["n_genes"])
+
 
 class TestSimulateMultiPerturbation:
     """Tests for simulate_multi_perturbation function."""
@@ -95,3 +115,22 @@ class TestSimulateMultiPerturbation:
                 batch_size=4,
                 device="cpu",
             )
+
+    def test_return_intermediate(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
+        """Should return dict of iterations when return_intermediate=True."""
+        n_iter = 3
+        result = simulate_multi_perturbation(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            tf_names=["TF0", "TF1"],
+            n_iter=n_iter,
+            batch_size=4,
+            device="cpu",
+            return_intermediate=True,
+        )
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {1, 2, 3}
+        d = minimal_dims
+        n_cells = d["n_cells"] * 2
+        for i in range(1, n_iter + 1):
+            assert result[i].shape == (n_cells, d["n_genes"])
