@@ -489,9 +489,9 @@ def load_legacy_model(
     tf2rnet_path: str | Path,
     enformer_path: str | Path,
     mdata: "MuData",
-    e1_path: str | Path,
+    e1_path: str | Path | None = None,
     *,
-    device: str = "cpu",
+    device: str = "cuda",
 ) -> DeepSCENICModel:
     """
     Load legacy deepSCENIC model (3 separate .pth files) into unified format.
@@ -515,8 +515,9 @@ def load_legacy_model(
         - ``mdata.uns['r2g']`` (from ds.pp.compute_r2g_penalty())
         - Optionally ``mdata.uns['ppi_*']`` for PPI (from ds.pp.build_ppi_network())
     e1_path
-        Path to pre-computed E1 matrix (E1.pkl). This is the TF-to-region
-        binding matrix extracted during legacy training.
+        Path to pre-computed E1 matrix (E1.pkl). If None, reconstructs E1 by
+        running Enformer + MotifNet inference on all regions. This requires
+        a genome to be registered via ``ds.register_genome()``.
     device
         Device to load model to
 
@@ -536,6 +537,17 @@ def load_legacy_model(
     ...     enformer_path="results/best_model_tf2r_encoder.pth",
     ...     mdata=mdata,
     ...     e1_path="results/E1.pkl",
+    ... )
+
+    Reconstruct E1 from model weights (slower, requires registered genome):
+
+    >>> ds.register_genome("/path/to/hg38.fa")
+    >>> model = ds.tl.load_legacy_model(
+    ...     vae_path="results/best_model.pth",
+    ...     tf2rnet_path="results/best_model_tf2r.pth",
+    ...     enformer_path="results/best_model_tf2r_encoder.pth",
+    ...     mdata=mdata,
+    ...     e1_path=None,  # Reconstruct from model
     ... )
 
     Save in new format:
@@ -563,7 +575,6 @@ def load_legacy_model(
     vae_path = Path(vae_path)
     tf2rnet_path = Path(tf2rnet_path)
     enformer_path = Path(enformer_path)
-    e1_path = Path(e1_path)
 
     # =========================================================================
     # Step 1: Extract data from h5mu
@@ -732,17 +743,68 @@ def load_legacy_model(
     log.info(f"  Enformer loaded (epoch {enf_ckpt.get('epoch', 'unknown')})")
 
     # =========================================================================
-    # Step 6: Load E1 matrix from pickle
+    # Step 6: Load or reconstruct E1 matrix
     # =========================================================================
-    e1_path = Path(e1_path)
-    if not e1_path.exists():
-        raise FileNotFoundError(f"E1 file not found: {e1_path}")
+    if e1_path is not None:
+        # Load from pickle file
+        e1_path = Path(e1_path)
+        if not e1_path.exists():
+            raise FileNotFoundError(f"E1 file not found: {e1_path}")
 
-    log.info(f"Loading E1 from {e1_path}...")
-    e1_df = pd.read_pickle(e1_path)
-    # E1.pkl is (n_tfs, n_regions), we need (n_regions, n_tfs)
-    adj_E1 = torch.tensor(e1_df.values.T, dtype=torch.float32, device=device)
-    log.info(f"  E1 shape: {adj_E1.shape}")
+        log.info(f"Loading E1 from {e1_path}...")
+        e1_df = pd.read_pickle(e1_path)
+        # E1.pkl is (n_tfs, n_regions), we need (n_regions, n_tfs)
+        adj_E1 = torch.tensor(e1_df.values.T, dtype=torch.float32, device=device)
+        log.info(f"  E1 shape: {adj_E1.shape}")
+    else:
+        # Reconstruct from model weights
+        from tqdm import tqdm
+
+        from ._dataloaders import build_sequence_dataloader
+        from .._genome import get_genome
+
+        log.info("Reconstructing E1 matrix from model weights...")
+        log.info("  (This may take a while - running all regions through Enformer)")
+
+        # Check genome is registered
+        try:
+            genome = get_genome()
+        except RuntimeError:
+            raise ValueError(
+                "No E1 path provided and no genome registered. Either:\n"
+                "  1. Provide e1_path to load pre-computed E1 matrix, OR\n"
+                "  2. Register genome with ds.register_genome('/path/to/genome.fa')"
+            )
+
+        # Build sequence dataloader (no augmentation for inference)
+        seq_loader = build_sequence_dataloader(
+            regions=region_names,
+            genome=genome,
+            batch_size=1000,
+            shuffle=False,
+            shift_augs=(0, 0),  # No augmentation
+            rc_aug=False,
+            context_length=640,  # Legacy default
+            num_workers=4,
+        )
+
+        # Compute E1
+        adj_E1 = torch.zeros(n_regions, n_tfs, device=device)
+        enformer.eval()
+        tf2rnet.eval()
+
+        with torch.no_grad():
+            for sequences, seq_idx in tqdm(seq_loader, desc="Computing E1"):
+                sequences = sequences.to(device)
+                # Get embeddings from Enformer
+                emb = enformer(sequences, return_only_embeddings=True)
+                # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
+                emb = emb.reshape(emb.shape[0], -1).float()
+                # Get TF predictions from MotifNet
+                tf_pred = tf2rnet(emb)
+                adj_E1[seq_idx] = tf_pred
+
+        log.info(f"  E1 shape: {adj_E1.shape}")
 
     # =========================================================================
     # Step 7: Package into DeepSCENICModel
