@@ -186,7 +186,12 @@ class TestComputeR2GPenalty:
         atac.obs_names = sample_rna.obs_names
         atac.var_names = ["chr1:0-640", "chr2:0-640"]
 
-        mdata = ds.pp.create_mudata(rna=sample_rna, atac=atac)
+        # Create RNA with genes that match the annotation
+        rna = sc.AnnData(np.random.randn(n_cells, 2))
+        rna.obs_names = sample_rna.obs_names
+        rna.var_names = ["GeneA", "GeneB"]
+
+        mdata = ds.pp.create_mudata(rna=rna, atac=atac)
 
         genes = pd.DataFrame(
             {
@@ -211,7 +216,12 @@ class TestComputeR2GPenalty:
         atac.obs_names = sample_rna.obs_names
         atac.var_names = ["chr1:0-640", "chr1: 999000-999640"]
 
-        mdata = ds.pp.create_mudata(rna=sample_rna, atac=atac)
+        # Create RNA with the gene we're testing
+        rna = sc.AnnData(np.random.randn(n_cells, 1))
+        rna.obs_names = sample_rna.obs_names
+        rna.var_names = ["geneA"]
+
+        mdata = ds.pp.create_mudata(rna=rna, atac=atac)
 
         genes = pd.DataFrame(
             {
@@ -247,7 +257,12 @@ class TestComputeR2GPenalty:
         atac.obs_names = sample_rna.obs_names
         atac.var_names = ["chr1:0-640", "chr1:100000-100640", "chr1:200000-200640"]
 
-        mdata = ds.pp.create_mudata(rna=sample_rna, atac=atac)
+        # Create RNA with the gene we're testing
+        rna = sc.AnnData(np.random.randn(n_cells, 1))
+        rna.obs_names = sample_rna.obs_names
+        rna.var_names = ["TestGene"]
+
+        mdata = ds.pp.create_mudata(rna=rna, atac=atac)
 
         genes = pd.DataFrame(
             {
@@ -301,23 +316,35 @@ class TestComputeR2GPenalty:
         genes.set_index("genenames", inplace=True)
         ds.pp.compute_r2g_penalty(mdata, genes, max_distance=50000)
 
-        # Should only have 2 genes (those in RNA)
-        assert len(mdata.uns["r2g"]["gene_names"]) == 2
+        # Legacy behavior: TFs are kept (10), non-TFs only if annotated (2)
+        # sample_rna has 10 TFs (Gene_0-9), but only Gene_0 and Gene_1 have annotation
+        # Non-TF genes without annotation are removed
+        n_tfs = 10  # All TFs kept
+        n_annotated_non_tfs = 0  # Gene_0, Gene_1 are TFs, no non-TF genes with annotation
+        expected_genes = n_tfs + n_annotated_non_tfs
+        assert len(mdata.uns["r2g"]["gene_names"]) == expected_genes
+
+        # Genes in RNA with annotation should be in r2g
         assert "Gene_0" in mdata.uns["r2g"]["gene_names"]
         assert "Gene_1" in mdata.uns["r2g"]["gene_names"]
-        assert "NotInRNA_A" not in mdata.uns["r2g"]["gene_names"]
 
-    def test_compute_r2g_penalty_filters_rna_to_r2g_genes(self, sample_rna):
-        """Test that RNA modality is filtered to R2G genes + TFs."""
+        # Genes NOT in RNA should NOT be in r2g (even if in annotation)
+        assert "NotInRNA_A" not in mdata.uns["r2g"]["gene_names"]
+        assert "NotInRNA_B" not in mdata.uns["r2g"]["gene_names"]
+
+        # 6 links should be stored (3 regions × 2 annotated genes within distance)
+        assert mdata.uns["r2g"]["matrix"].nnz == 6
+
+    def test_compute_r2g_penalty_reorders_rna_genes(self, sample_rna):
+        """Test that non-TF genes without annotation are removed (legacy behavior)."""
         n_cells = sample_rna.n_obs
         atac = sc.AnnData(np.random.rand(n_cells, 3))
         atac.obs_names = sample_rna.obs_names
         atac.var_names = ["chr1:0-640", "chr1:1000-1640", "chr1:2000-2640"]
 
         mdata = ds.pp.create_mudata(rna=sample_rna, atac=atac)
-        original_n_genes = mdata.mod["rna"].n_vars
 
-        # Remove is_tf column to test pure R2G filtering
+        # Remove is_tf column to test behavior without TFs
         del mdata.mod["rna"].var["is_tf"]
 
         # Annotation only covers 2 of the 50 genes in sample_rna
@@ -332,13 +359,17 @@ class TestComputeR2GPenalty:
 
         ds.pp.compute_r2g_penalty(mdata, genes, max_distance=50000)
 
-        # Without is_tf column, RNA should be filtered to only annotated genes
+        # Legacy behavior: Without TFs, only genes with annotation are kept
         assert mdata.mod["rna"].n_vars == 2
-        assert mdata.mod["rna"].n_vars < original_n_genes
-        assert list(mdata.mod["rna"].var_names) == ["Gene_0", "Gene_1"]
+
+        # Only annotated genes should be present
+        assert set(mdata.mod["rna"].var_names) == {"Gene_0", "Gene_1"}
 
         # R2G gene_names should match RNA var_names exactly
         assert mdata.uns["r2g"]["gene_names"] == list(mdata.mod["rna"].var_names)
+
+        # 6 links stored (3 regions × 2 annotated genes within distance)
+        assert mdata.uns["r2g"]["matrix"].nnz == 6
 
     def test_compute_r2g_penalty_no_matching_genes_raises(self, sample_rna):
         """Test error when no annotation genes match RNA genes."""
@@ -362,8 +393,8 @@ class TestComputeR2GPenalty:
         with pytest.raises(ValueError, match="No genes from annotation found"):
             ds.pp.compute_r2g_penalty(mdata, genes)
 
-    def test_compute_r2g_penalty_keeps_tfs_without_annotation(self, sample_rna):
-        """Test that TFs are kept even if they lack chromosome annotation."""
+    def test_compute_r2g_penalty_reorders_tfs_first(self, sample_rna):
+        """Test that TFs come first and are kept even without annotation (legacy behavior)."""
         n_cells = sample_rna.n_obs
         atac = sc.AnnData(np.random.rand(n_cells, 3))
         atac.obs_names = sample_rna.obs_names
@@ -388,27 +419,33 @@ class TestComputeR2GPenalty:
         )
         genes.set_index("genenames", inplace=True)
 
-        original_n_genes = mdata.mod["rna"].n_vars
         ds.pp.compute_r2g_penalty(mdata, genes, max_distance=50000)
 
-        # Gene_2 (TF without annotation) should be kept
-        assert "Gene_2" in mdata.mod["rna"].var_names
-
-        # Gene_0 and Gene_1 (annotated) should be kept
-        assert "Gene_0" in mdata.mod["rna"].var_names
-        assert "Gene_1" in mdata.mod["rna"].var_names
-
-        # Non-TF genes without annotation should be removed
-        # (Gene_3 through Gene_49 are not TFs and not in annotation)
-        assert mdata.mod["rna"].n_vars < original_n_genes
-
-        # Should have exactly 3 genes: Gene_0, Gene_1 (annotated) + Gene_2 (TF)
+        # Legacy behavior: TFs are kept (even without annotation), non-TFs only if annotated
+        # 3 TFs + 0 non-TF genes with annotation = 3 genes
         assert mdata.mod["rna"].n_vars == 3
 
-        # R2G gene_names should only have annotated genes (not Gene_2)
+        # All TFs should be present and come first
+        assert "Gene_0" in mdata.mod["rna"].var_names
+        assert "Gene_1" in mdata.mod["rna"].var_names
+        assert "Gene_2" in mdata.mod["rna"].var_names
+
+        # TFs should be at the beginning (first 3 positions)
+        tf_genes = list(mdata.mod["rna"].var_names[:3])
+        assert set(tf_genes) == {"Gene_0", "Gene_1", "Gene_2"}
+
+        # R2G gene_names should include TFs (even without annotation)
         assert "Gene_0" in mdata.uns["r2g"]["gene_names"]
         assert "Gene_1" in mdata.uns["r2g"]["gene_names"]
-        assert "Gene_2" not in mdata.uns["r2g"]["gene_names"]
+        assert "Gene_2" in mdata.uns["r2g"]["gene_names"]  # TF without annotation still in r2g
+        assert len(mdata.uns["r2g"]["gene_names"]) == 3
+
+        # tf_order should be stored in uns
+        assert "tf_order" in mdata.mod["rna"].uns
+        assert set(mdata.mod["rna"].uns["tf_order"]) == {"Gene_0", "Gene_1", "Gene_2"}
+
+        # 6 links stored (3 regions × 2 annotated genes within distance)
+        assert mdata.uns["r2g"]["matrix"].nnz == 6
 
 
 class TestCreateMuData:

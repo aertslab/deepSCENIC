@@ -484,6 +484,167 @@ def load_model(
     return DeepSCENICModel.load(path, device=device, sequence_model=sequence_model)
 
 
+def load_legacy_data(
+    rna_path: str | Path,
+    atac_path: str | Path,
+    r2g_path: str | Path | None = None,
+    tf_path: str | Path | None = None,
+    n_tfs: int | None = None,
+) -> "MuData":
+    """
+    Load legacy training data files into MuData format for loading legacy models.
+
+    Legacy deepSCENIC models were trained with separate .h5ad and .npz files.
+    This function loads those files and creates a MuData with the exact
+    structure needed to load the corresponding legacy model.
+
+    Parameters
+    ----------
+    rna_path
+        Path to RNA AnnData file. For model loading, use the training file
+        (e.g., ``raw_exprMat_train.h5ad``). For inference on all cells,
+        use the full file (e.g., ``raw_exprMat.h5ad``).
+    atac_path
+        Path to ATAC AnnData file. For model loading, use the training file
+        (e.g., ``fragment_matrix_train.h5ad``). For inference on all cells,
+        use the full file (e.g., ``fragment_matrix.h5ad``).
+    r2g_path
+        Path to r2g penalty matrix (e.g., ``r2gpenalty_train.npz``).
+        Required for model loading. Can be omitted for inference-only use.
+    tf_path
+        Path to TF list file (e.g., ``TFs.txt``), one TF name per line.
+        If None, uses ``n_tfs`` to mark the first N genes as TFs.
+    n_tfs
+        Number of TFs (first N genes are TFs). Only used if ``tf_path`` is None.
+        Legacy format always has TFs as the first genes in the RNA data.
+
+    Returns
+    -------
+    MuData with:
+        - 'rna' modality with 'is_tf' column in var
+        - 'atac' modality with parsed coordinates
+        - 'r2g' in uns with matrix and metadata (if r2g_path provided)
+
+    Examples
+    --------
+    >>> # Load legacy training data (for model loading)
+    >>> mdata_train = ds.tl.load_legacy_data(
+    ...     rna_path="MM_lines/raw_exprMat_train.h5ad",
+    ...     atac_path="MM_lines/fragment_matrix_train.h5ad",
+    ...     r2g_path="MM_lines/r2gpenalty_train.npz",
+    ...     tf_path="MM_lines/TFs.txt",
+    ... )
+    >>> model = ds.tl.load_legacy_model(..., mdata=mdata_train, ...)
+
+    >>> # Load full data (for inference on all cells)
+    >>> mdata_full = ds.tl.load_legacy_data(
+    ...     rna_path="MM_lines/raw_exprMat.h5ad",
+    ...     atac_path="MM_lines/fragment_matrix.h5ad",
+    ...     tf_path="MM_lines/TFs.txt",
+    ...     # r2g_path not needed for inference
+    ... )
+
+    See Also
+    --------
+    load_legacy_model : Load legacy model using the MuData from this function
+    """
+    import mudata as md
+    import scanpy as sc
+    from scipy import sparse
+
+    # Load RNA and ATAC data
+    log.info(f"Loading RNA data from {rna_path}")
+    rna = sc.read_h5ad(rna_path)
+    log.info(f"  RNA: {rna.n_obs} cells × {rna.n_vars} genes")
+
+    log.info(f"Loading ATAC data from {atac_path}")
+    atac = sc.read_h5ad(atac_path)
+    log.info(f"  ATAC: {atac.n_obs} cells × {atac.n_vars} regions")
+
+    # Load r2g penalty matrix (optional)
+    r2g_loaded = None
+    if r2g_path is not None:
+        log.info(f"Loading R2G matrix from {r2g_path}")
+        r2g_loaded = sparse.load_npz(r2g_path)
+        log.info(f"  R2G: {r2g_loaded.shape[0]} regions × {r2g_loaded.shape[1]} genes, {r2g_loaded.nnz} links")
+
+        # Validate dimensions
+        if r2g_loaded.shape[0] != atac.n_vars:
+            raise ValueError(
+                f"R2G matrix rows ({r2g_loaded.shape[0]}) != ATAC regions ({atac.n_vars}). "
+                "Make sure you're using matching legacy files."
+            )
+        if r2g_loaded.shape[1] != rna.n_vars:
+            raise ValueError(
+                f"R2G matrix columns ({r2g_loaded.shape[1]}) != RNA genes ({rna.n_vars}). "
+                "Make sure you're using matching legacy files."
+            )
+    else:
+        log.info("  R2G matrix not provided (inference-only mode)")
+
+    # Mark TFs
+    if tf_path is not None:
+        # Load TF list from file
+        tf_path = Path(tf_path)
+        with open(tf_path) as f:
+            tf_names = [line.strip() for line in f if line.strip()]
+        log.info(f"  Loaded {len(tf_names)} TFs from {tf_path}")
+
+        # Mark TFs in RNA var
+        rna.var["is_tf"] = rna.var_names.isin(tf_names)
+        n_tfs_found = rna.var["is_tf"].sum()
+        log.info(f"  Marked {n_tfs_found} TFs in RNA data")
+    elif n_tfs is not None:
+        # Use first N genes as TFs (legacy format)
+        log.info(f"  Marking first {n_tfs} genes as TFs")
+        is_tf_values = [True] * n_tfs + [False] * (rna.n_vars - n_tfs)
+        rna.var["is_tf"] = is_tf_values
+    else:
+        raise ValueError("Either tf_path or n_tfs must be provided")
+
+    # Parse ATAC region coordinates if not already present
+    if "chromosome" not in atac.var.columns:
+        log.info("  Parsing ATAC region coordinates...")
+        # Parse region names like "chr1:1000-2000"
+        coords = []
+        for region in atac.var_names:
+            if ":" in region and "-" in region:
+                chrom, pos = region.split(":")
+                start, end = pos.split("-")
+                coords.append({"chromosome": chrom, "start": int(start), "end": int(end)})
+            else:
+                coords.append({"chromosome": None, "start": None, "end": None})
+        coord_df = pd.DataFrame(coords, index=atac.var_names)
+        atac.var["chromosome"] = coord_df["chromosome"]
+        atac.var["start"] = coord_df["start"]
+        atac.var["end"] = coord_df["end"]
+
+    # Create MuData
+    log.info("Creating MuData...")
+    mdata = md.MuData({"rna": rna, "atac": atac})
+
+    # Store r2g in uns (matching format from compute_r2g_penalty)
+    if r2g_loaded is not None:
+        mdata.uns["r2g"] = {
+            "matrix": r2g_loaded.tocsr(),  # Ensure CSR format
+            "config": {
+                "n_links": r2g_loaded.nnz,
+                "source": "legacy",
+            },
+            "region_names": atac.var_names.tolist(),
+            "gene_names": rna.var_names.tolist(),
+        }
+
+    # Store TF order in rna.uns (first n_tfs genes)
+    tf_mask = rna.var["is_tf"].values
+    tf_names_list = rna.var_names[tf_mask].tolist()
+    mdata.mod["rna"].uns["tf_order"] = tf_names_list
+
+    log.info(f"Created MuData: {mdata['rna'].n_vars} genes, {mdata['atac'].n_vars} regions, {len(tf_names_list)} TFs")
+
+    return mdata
+
+
 def load_legacy_model(
     vae_path: str | Path,
     tf2rnet_path: str | Path,

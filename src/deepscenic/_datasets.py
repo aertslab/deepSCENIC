@@ -378,6 +378,10 @@ def _fetch_chromsizes_and_filter(
     assembled_molecules = assembly_report["Sequence-Name"].tolist()
     log.info(f"Found {len(assembled_molecules)} assembled chromosomes")
 
+    # Convert chromosome column to string for comparison
+    # (Ensembl returns mixed types: int for 1-22, str for X/Y/MT)
+    annot["Chromosome"] = annot["Chromosome"].astype(str)
+
     # Filter annotation to assembled chromosomes
     annot = pd.DataFrame(annot[annot["Chromosome"].isin(assembled_molecules)].copy())
 

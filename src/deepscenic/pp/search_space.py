@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -10,6 +11,8 @@ from scipy.sparse import csr_matrix
 
 if TYPE_CHECKING:
     import mudata as md
+
+log = logging.getLogger(__name__)
 
 
 def _normalize_column_name(df: pd.DataFrame, options: list[str]) -> str | None:
@@ -143,6 +146,10 @@ def compute_r2g_penalty(
     For each region-gene pair within max_distance, compute a penalty
     value where 0 = very close (no penalty), 1 = far (high penalty).
 
+    This function also reorders the RNA modality to place TFs first
+    (matching legacy behavior), which ensures TF indices are simply
+    [0, 1, 2, ..., n_tfs-1] during training.
+
     Parameters
     ----------
     mdata
@@ -167,9 +174,9 @@ def compute_r2g_penalty(
         Penalty function.
     filter_to_rna_genes
         If True (default), filter gene_annotation to only include genes
-        present in the RNA modality. This ensures the R2G matrix columns
-        match the genes in the training data. Set to False to include all
-        genes from the annotation. Ignored when gene_annotation is None.
+        present in the RNA modality. This ensures only RNA genes are used
+        when computing links. Set to False to include all genes from the
+        annotation. Ignored when gene_annotation is None.
     key_added
         Key in ``mdata.uns`` to store results.
     inplace
@@ -182,10 +189,15 @@ def compute_r2g_penalty(
     Stores
     ------
     mdata.uns[key_added] : dict
-        - 'matrix': sparse penalty matrix (n_regions x n_genes)
+        - 'matrix': sparse penalty matrix (n_regions x n_genes), where n_genes
+          is TFs + non-TF genes with annotation. TFs without annotation have
+          empty columns (0 links). Non-TF genes without annotation are removed.
         - 'config': computation parameters (max_distance, sigma, method, n_links, density)
         - 'region_names': ordered region names (list)
-        - 'gene_names': ordered gene names (list)
+        - 'gene_names': ordered gene names (list), TFs first then other genes
+
+    mdata.mod["rna"].uns["tf_order"] : list
+        List of TF gene names in their new order (first n_tfs genes)
 
     Notes
     -----
@@ -193,6 +205,11 @@ def compute_r2g_penalty(
         penalty = 1 - exp(-d^2 / (2*sigma^2))
 
     Where d is distance from region center to gene TSS.
+
+    The RNA modality is reordered and filtered to match legacy behavior:
+    - All TFs are kept (first n_tfs genes), even without annotation (0 links)
+    - Non-TF genes are only kept if they have annotation
+    This ensures TF indices are [0, ..., n_tfs-1] during training.
 
     Examples
     --------
@@ -278,40 +295,98 @@ def compute_r2g_penalty(
         genes = genes.dropna()
 
     # Compute matrix using internal function
+    # This only includes genes that have chromosome/tss annotation
     r2g_matrix, config = _compute_r2g_matrix(regions, genes, max_distance, sigma, method)
 
-    # Filter RNA modality to genes in R2G matrix, but ALWAYS keep TFs
-    # TFs are needed as encoder input even if they lack chromosome annotation
-    # This matches legacy behavior where TFs are added to R2G with zero links
-    r2g_gene_set = set(genes.index)
+    # Get computed gene names (those with annotation)
+    computed_gene_names = genes.index.tolist()
+    genes_with_annotation = set(computed_gene_names)
+
+    # Build final gene order: TFs first, then other genes WITH ANNOTATION (legacy behavior)
+    # - All TFs are kept (even without annotation, they get 0 links)
+    # - Non-TF genes are only kept if they have annotation
+    # This ensures TF indices are simply [0, 1, 2, ..., n_tfs-1] after reordering
     rna = mdata.mod["rna"]
+    all_gene_names = list(rna.var_names)
 
-    # Determine which genes to keep: R2G genes + all TFs
     if "is_tf" in rna.var.columns:
-        tf_mask = rna.var["is_tf"].fillna(False)
-        genes_to_keep = [g for g in rna.var_names if g in r2g_gene_set or tf_mask[g]]
-        n_tfs_without_r2g = sum(1 for g in rna.var_names if tf_mask[g] and g not in r2g_gene_set)
+        tf_mask = rna.var["is_tf"].fillna(False).values
+        tf_genes = [g for i, g in enumerate(all_gene_names) if tf_mask[i]]
+        # Only keep non-TF genes that have annotation (legacy behavior)
+        non_tf_genes = [g for i, g in enumerate(all_gene_names) if not tf_mask[i] and g in genes_with_annotation]
     else:
-        genes_to_keep = [g for g in rna.var_names if g in r2g_gene_set]
-        n_tfs_without_r2g = 0
+        tf_genes = []
+        # Only keep genes that have annotation
+        non_tf_genes = [g for g in all_gene_names if g in genes_with_annotation]
 
-    n_removed = rna.n_vars - len(genes_to_keep)
+    # Final gene order: TFs first, then non-TFs with annotation
+    final_gene_order = tf_genes + non_tf_genes
 
-    if n_removed > 0:
-        msg = f"Filtering RNA modality to {len(genes_to_keep)} genes"
-        if n_tfs_without_r2g > 0:
-            msg += f" ({n_tfs_without_r2g} TFs kept without R2G links)"
-        msg += f" ({n_removed} non-TF genes without annotation removed)"
-        print(msg)
-        # Filter RNA in-place within MuData
-        mdata.mod["rna"] = rna[:, genes_to_keep].copy()
+    # Build mapping for final gene order
+    final_gene_to_idx = {g: i for i, g in enumerate(final_gene_order)}
+
+    # Expand r2g matrix to include ALL genes from RNA modality
+    # Genes without annotation will have 0 links (empty columns)
+    n_regions = len(regions)
+    n_genes_final = len(final_gene_order)
+
+    # Convert to COO for efficient iteration and remapping
+    r2g_coo = r2g_matrix.tocoo()
+
+    new_rows = []
+    new_cols = []
+    new_data = []
+
+    for row, col, val in zip(r2g_coo.row, r2g_coo.col, r2g_coo.data, strict=False):
+        # Get the gene name from the computed matrix
+        gene_name = computed_gene_names[col]
+
+        # Map to the new column index in final gene order
+        if gene_name in final_gene_to_idx:
+            new_rows.append(row)
+            new_cols.append(final_gene_to_idx[gene_name])
+            new_data.append(val)
+
+    # Create expanded sparse matrix with all genes
+    r2g_expanded = csr_matrix(
+        (new_data, (new_rows, new_cols)),
+        shape=(n_regions, n_genes_final),
+    )
+
+    # Update config with new stats
+    config["n_links"] = len(new_data)
+    config["density"] = (
+        len(new_data) / (n_regions * n_genes_final) if (n_regions * n_genes_final) > 0 else 0
+    )
+
+    # Log TFs without annotation and removed non-TF genes
+    tfs_without_annotation = [g for g in tf_genes if g not in genes_with_annotation]
+    tf_set = set(tf_genes)
+    n_removed_non_tfs = len([g for g in all_gene_names
+                            if g not in tf_set and g not in genes_with_annotation])
+
+    if tfs_without_annotation:
+        log.info(f"{len(tfs_without_annotation)} TFs without annotation will have 0 links")
+    if n_removed_non_tfs > 0:
+        log.info(f"Removed {n_removed_non_tfs} non-TF genes without annotation from RNA modality")
+
+    # Reorder RNA modality to match final_gene_order (TFs first)
+    # This is critical because training uses rna.var_names order
+    mdata.mod["rna"] = rna[:, final_gene_order].copy()
+
+    # Store TF order in uns for easy access during training
+    mdata.mod["rna"].uns["tf_order"] = tf_genes
+
+    log.info(
+        f"Reordered RNA modality: {len(tf_genes)} TFs first, then {len(non_tf_genes)} other genes"
+    )
 
     # Store in MuData
     mdata.uns[key_added] = {
-        "matrix": r2g_matrix,
+        "matrix": r2g_expanded,
         "config": config,
         "region_names": regions.index.tolist(),
-        "gene_names": genes.index.tolist(),
+        "gene_names": final_gene_order,  # TFs first, then others
     }
 
     return None if inplace else mdata

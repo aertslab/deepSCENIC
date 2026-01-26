@@ -11,6 +11,7 @@ from ._inference import to_latent
 from ._model import (
     DeepSCENICModel,
     PretrainedModel,
+    load_legacy_data,
     load_legacy_model,
     load_model,
     load_pretrained,
@@ -36,6 +37,7 @@ __all__ = [
     "PretrainedModel",
     "load_model",
     "load_pretrained",
+    "load_legacy_data",
     "load_legacy_model",
     # Config
     "PretrainConfig",
