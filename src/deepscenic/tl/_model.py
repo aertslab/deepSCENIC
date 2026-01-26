@@ -18,6 +18,8 @@ from ._training_state import PretrainConfig, TrainingConfig, TrainingHistory
 log = logging.getLogger("deepscenic.tl")
 
 if TYPE_CHECKING:
+    from mudata import MuData
+
     from ..models import DeepSCENICVAE, MotifNet
 
 
@@ -486,31 +488,17 @@ def load_legacy_model(
     vae_path: str | Path,
     tf2rnet_path: str | Path,
     enformer_path: str | Path,
-    *,
-    # Data paths for architecture reconstruction
-    rna_path: str | Path,
-    atac_path: str | Path,
-    r2g_path: str | Path,
-    tf_list_path: str | Path,
-    # Pre-computed E1 matrix (required)
+    mdata: "MuData",
     e1_path: str | Path,
-    # Optional: PPI data
-    ppi_data: pd.DataFrame | None = None,
-    ppi_confidence: float = 0.5,
-    species: str = "human",
-    # Loading options
+    *,
     device: str = "cpu",
 ) -> DeepSCENICModel:
     """
     Load legacy deepSCENIC model (3 separate .pth files) into unified format.
 
-    Legacy models were saved as three separate checkpoint files:
-    - best_model.pth: VAE (InferenceNet + Decoders + adj_E2 + PPIgnn)
-    - best_model_tf2r.pth: MotifNet context head
-    - best_model_tf2r_encoder.pth: Enformer (finetuned)
-
-    This function reconstructs the model architecture from the data files
-    and loads the state dicts.
+    Legacy models were saved as three separate checkpoint files. This function
+    reconstructs the model architecture from preprocessed h5mu data and loads
+    the legacy weights.
 
     Parameters
     ----------
@@ -520,43 +508,39 @@ def load_legacy_model(
         Path to MotifNet checkpoint (e.g., best_model_tf2r.pth)
     enformer_path
         Path to Enformer checkpoint (e.g., best_model_tf2r_encoder.pth)
-    rna_path
-        Path to RNA h5ad file (e.g., raw_exprMat_train.h5ad)
-    atac_path
-        Path to ATAC h5ad file (e.g., fragment_matrix_train.h5ad)
-    r2g_path
-        Path to r2g penalty matrix (e.g., r2gpenalty_train.npz)
-    tf_list_path
-        Path to TF list file (e.g., TFs.txt)
+    mdata
+        Preprocessed MuData with RNA and ATAC modalities. Must have:
+
+        - ``mdata['rna'].var['is_tf']`` column (from ds.pp.mark_tfs())
+        - ``mdata.uns['r2g']`` (from ds.pp.compute_r2g_penalty())
+        - Optionally ``mdata.uns['ppi_*']`` for PPI (from ds.pp.build_ppi_network())
     e1_path
         Path to pre-computed E1 matrix (E1.pkl). This is the TF-to-region
         binding matrix extracted during legacy training.
-    ppi_data
-        Optional PPI interaction DataFrame. If None, PPI is disabled.
-    ppi_confidence
-        Confidence threshold for PPI filtering.
-    species
-        Species for gene name formatting ('human' or 'mouse').
     device
-        Device to load model to.
+        Device to load model to
 
     Returns
     -------
     DeepSCENICModel
-        Loaded model ready for inference.
+        Loaded model ready for inference
 
     Examples
     --------
+    Load with pre-computed E1:
+
+    >>> mdata = ds.read("preprocessed.h5mu")
     >>> model = ds.tl.load_legacy_model(
     ...     vae_path="results/best_model.pth",
     ...     tf2rnet_path="results/best_model_tf2r.pth",
     ...     enformer_path="results/best_model_tf2r_encoder.pth",
-    ...     rna_path="data/raw_exprMat_train.h5ad",
-    ...     atac_path="data/fragment_matrix_train.h5ad",
-    ...     r2g_path="data/r2gpenalty_train.npz",
-    ...     tf_list_path="data/TFs.txt",
+    ...     mdata=mdata,
     ...     e1_path="results/E1.pkl",
     ... )
+
+    Save in new format:
+
+    >>> model.save("converted_model.pt")
 
     Notes
     -----
@@ -573,43 +557,31 @@ def load_legacy_model(
     load_model : Load new format model
     extract_grn : Extract GRN matrices from loaded model
     """
-    import scanpy as sc
-    from scipy.sparse import load_npz
-
     from ..models import DeepSCENICVAE, MotifNet
 
     # Convert paths to Path objects
     vae_path = Path(vae_path)
     tf2rnet_path = Path(tf2rnet_path)
     enformer_path = Path(enformer_path)
-    rna_path = Path(rna_path)
-    atac_path = Path(atac_path)
-    r2g_path = Path(r2g_path)
-    tf_list_path = Path(tf_list_path)
+    e1_path = Path(e1_path)
 
     # =========================================================================
-    # Step 1: Load data to extract dimensions and indices
+    # Step 1: Extract data from h5mu
     # =========================================================================
-    log.info("Loading data files...")
+    log.info("Extracting data from h5mu...")
 
-    # Load RNA data
-    adata_rna = sc.read_h5ad(rna_path)
-    gene_names = adata_rna.var_names.tolist()
+    # Get gene and region names
+    gene_names = mdata["rna"].var_names.tolist()
+    region_names = mdata["atac"].var_names.tolist()
     n_genes = len(gene_names)
-
-    # Load ATAC data
-    adata_atac = sc.read_h5ad(atac_path)
-    region_names = adata_atac.var_names.tolist()
     n_regions = len(region_names)
 
-    # Load TF list
-    with open(tf_list_path) as f:
-        tf_list = [line.strip() for line in f if line.strip()]
-
-    # Get TF indices (TFs that exist in RNA data)
-    tf_mask = adata_rna.var_names.isin(tf_list)
+    # TF indices from is_tf column
+    if "is_tf" not in mdata["rna"].var.columns:
+        raise ValueError("mdata missing 'is_tf' column - run ds.pp.mark_tfs() first")
+    tf_mask = mdata["rna"].var["is_tf"].values
     tf_indices = torch.tensor(np.where(tf_mask)[0], dtype=torch.long)
-    tf_names = adata_rna.var_names[tf_mask].tolist()
+    tf_names = mdata["rna"].var_names[tf_mask].tolist()
     n_tfs = len(tf_names)
 
     log.info(f"  RNA: {n_genes} genes, ATAC: {n_regions} regions, TFs: {n_tfs}")
@@ -619,8 +591,10 @@ def load_legacy_model(
     # Region indices (which regions to reconstruct) - use all regions for legacy models
     region_indices = torch.arange(n_regions, dtype=torch.long)
 
-    # Load r2g sparse matrix
-    r2g_sparse = load_npz(r2g_path)
+    # Get r2g from uns
+    if "r2g" not in mdata.uns:
+        raise ValueError("mdata missing 'r2g' - run ds.pp.compute_r2g_penalty() first")
+    r2g_sparse = mdata.uns["r2g"]["matrix"]
     r2g_coo = r2g_sparse.tocoo()
     r2g_indices = torch.tensor(np.vstack([r2g_coo.row, r2g_coo.col]), dtype=torch.long)
     r2g_distances = torch.tensor(r2g_coo.data, dtype=torch.float32)
@@ -628,24 +602,20 @@ def load_legacy_model(
     log.info(f"  R2G links: {r2g_indices.shape[1]}")
 
     # =========================================================================
-    # Step 2: Build PPI network (if data provided)
+    # Step 2: Get PPI from h5mu (if present)
     # =========================================================================
-    use_ppi = ppi_data is not None
+    use_ppi = "ppi_edge_index" in mdata.uns
     ppi_edge_index = None
     ppi_genes_idx = None
     ppi_tfs_idx_keys = None
     ppi_tfs_idx_values = None
 
     if use_ppi:
-        log.info("Building PPI network...")
-        ppi_edge_index, ppi_genes_idx, ppi_tfs_idx_keys, ppi_tfs_idx_values = _build_ppi_indices(
-            adata_rna,
-            ppi_data,
-            tf_names,
-            ppi_confidence,
-            species,
-        )
-        log.info(f"  PPI: {ppi_edge_index.shape[1]} edges, {len(ppi_genes_idx)} genes")
+        ppi_edge_index = torch.tensor(mdata.uns["ppi_edge_index"], dtype=torch.long)
+        ppi_genes_idx = torch.tensor(mdata.uns["ppi_genes_idx"], dtype=torch.long)
+        ppi_tfs_idx_keys = torch.tensor(mdata.uns["ppi_tfs_idx_keys"], dtype=torch.long)
+        ppi_tfs_idx_values = torch.tensor(mdata.uns["ppi_tfs_idx_values"], dtype=torch.long)
+        log.info(f"  PPI: {ppi_edge_index.shape[1]} edges from h5mu")
 
     # =========================================================================
     # Step 3: Construct VAE and load state dict
@@ -797,88 +767,6 @@ def load_legacy_model(
 
     log.info("Legacy model loaded successfully!")
     return model
-
-
-def _build_ppi_indices(
-    adata_rna,
-    ppi_data: pd.DataFrame,
-    tf_names: list[str],
-    confidence_threshold: float,
-    species: str,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Build PPI indices from interaction data."""
-    import networkx as nx
-
-    ppi = ppi_data.copy()
-
-    # Standardize column names
-    if "Source" not in ppi.columns:
-        # Try common column names
-        for src_col in ["protein1", "source", "gene1", "proteinA"]:
-            if src_col in ppi.columns:
-                ppi = ppi.rename(columns={src_col: "Source"})
-                break
-    if "Target" not in ppi.columns:
-        for tgt_col in ["protein2", "target", "gene2", "proteinB"]:
-            if tgt_col in ppi.columns:
-                ppi = ppi.rename(columns={tgt_col: "Target"})
-                break
-
-    # Filter by confidence if column exists
-    for conf_col in ["Conn", "confidence", "combined_score", "score"]:
-        if conf_col in ppi.columns:
-            ppi = ppi[ppi[conf_col] >= confidence_threshold]
-            break
-
-    # Format gene names based on species
-    if species == "mouse":
-        ppi["Source"] = ppi["Source"].apply(lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper())
-        ppi["Target"] = ppi["Target"].apply(lambda x: x[0].upper() + x[1:].lower() if len(x) > 1 else x.upper())
-
-    # Filter to genes in data
-    all_genes = set(adata_rna.var_names)
-    ppi = ppi[ppi["Source"] != ppi["Target"]]  # Remove self-loops
-    ppi = ppi[ppi["Source"].isin(all_genes)]
-    ppi = ppi[ppi["Target"].isin(all_genes)]
-
-    if len(ppi) == 0:
-        raise ValueError("No PPI edges remain after filtering")
-
-    # Build graph
-    G = nx.from_pandas_edgelist(ppi, "Source", "Target")
-    G.add_nodes_from(all_genes)  # Add isolated nodes
-
-    node_list = list(G.nodes())
-    node_to_idx = {gene: i for i, gene in enumerate(node_list)}
-
-    # Convert to edge index
-    G_directed = G.to_directed()
-    n_edges = G_directed.number_of_edges()
-    edge_index = torch.empty((2, n_edges), dtype=torch.long)
-    for i, (src, dst) in enumerate(G_directed.edges()):
-        edge_index[0, i] = node_to_idx[src]
-        edge_index[1, i] = node_to_idx[dst]
-
-    # Get gene indices in RNA data
-    ppi_genes_idx = torch.tensor(
-        [adata_rna.var_names.get_loc(gene) for gene in node_list if gene in adata_rna.var_names],
-        dtype=torch.long,
-    )
-
-    # Map TFs to PPI positions
-    tf_to_order = {tf: i for i, tf in enumerate(tf_names)}
-    ppi_tfs_idx_keys_list: list[int] = []
-    ppi_tfs_idx_values_list: list[int] = []
-
-    for ppi_idx, gene in enumerate(node_list):
-        if gene in tf_to_order:
-            ppi_tfs_idx_keys_list.append(ppi_idx)
-            ppi_tfs_idx_values_list.append(tf_to_order[gene])
-
-    ppi_tfs_idx_keys = torch.tensor(ppi_tfs_idx_keys_list, dtype=torch.long)
-    ppi_tfs_idx_values = torch.tensor(ppi_tfs_idx_values_list, dtype=torch.long)
-
-    return edge_index, ppi_genes_idx, ppi_tfs_idx_keys, ppi_tfs_idx_values
 
 
 def _map_legacy_motifnet_state_dict(state_dict: dict) -> dict:
