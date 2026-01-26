@@ -22,15 +22,19 @@ def loss_curves(
     history: pd.DataFrame | dict | DeepSCENICModel,
     *,
     metrics: list[str] | None = None,
-    ax: Axes | None = None,
     show: bool | None = None,
     save: str | bool | None = None,
     return_fig: bool = False,
-    figsize: tuple[float, float] = (10, 6),
+    figsize: tuple[float, float] | None = None,
     log_scale: bool = True,
-) -> Axes | Figure | None:
+    ncols: int = 3,
+) -> Figure | None:
     """
-    Plot training loss curves.
+    Plot training loss curves with one subplot per metric.
+
+    Each metric gets its own subplot, with train and test curves shown together.
+    This makes it easier to compare train/test performance and identify issues
+    like overfitting.
 
     Parameters
     ----------
@@ -38,8 +42,6 @@ def loss_curves(
         Training history as DataFrame, dict, or DeepSCENICModel containing history.
     metrics
         Specific metrics to plot. If None, plot all available.
-    ax
-        Pre-existing axes for the plot.
     show
         Whether to display the figure.
     save
@@ -47,13 +49,16 @@ def loss_curves(
     return_fig
         Whether to return the Figure object.
     figsize
-        Figure dimensions as (width, height).
+        Figure dimensions as (width, height). If None, auto-calculated based on
+        number of metrics.
     log_scale
         Whether to use logarithmic scale for y-axis.
+    ncols
+        Number of columns in subplot grid.
 
     Returns
     -------
-    Axes, Figure, or None depending on show and return_fig parameters.
+    Figure or None depending on show and return_fig parameters.
 
     Examples
     --------
@@ -76,40 +81,95 @@ def loss_curves(
         history = history.history.to_dict()
 
     # Flatten nested dict structure if needed (train/test split)
+    train_metrics: dict[str, list[float]] = {}
+    test_metrics: dict[str, list[float]] = {}
+
     if isinstance(history, dict) and "train" in history:
-        flat: dict[str, list[float]] = {}
-        for key, values in history.get("train", {}).items():
-            flat[f"train_{key}"] = values
-        for key, values in history.get("test", {}).items():
-            flat[f"test_{key}"] = values
-        history = flat
+        train_metrics = history.get("train", {})
+        test_metrics = history.get("test", {})
+    elif isinstance(history, dict):
+        # Already flat dict with train_/test_ prefixes
+        for key, values in history.items():
+            if key.startswith("train_"):
+                train_metrics[key[6:]] = values
+            elif key.startswith("test_"):
+                test_metrics[key[5:]] = values
+            elif key != "epoch":
+                train_metrics[key] = values
+    elif isinstance(history, pd.DataFrame):
+        for col in history.columns:
+            if col.startswith("train_"):
+                train_metrics[col[6:]] = history[col].tolist()
+            elif col.startswith("test_"):
+                test_metrics[col[5:]] = history[col].tolist()
+            elif col != "epoch":
+                train_metrics[col] = history[col].tolist()
 
-    if isinstance(history, dict):
-        history = pd.DataFrame(history)
+    # Get all unique metric names
+    all_metric_names = set(train_metrics.keys()) | set(test_metrics.keys())
 
-    if metrics is None:
-        metrics = [c for c in history.columns if c != "epoch"]
+    if metrics is not None:
+        all_metric_names = {m for m in all_metric_names if m in metrics}
 
-    fig, ax = setup_axes(ax, figsize=figsize)
+    if not all_metric_names:
+        raise ValueError("No metrics found in history")
 
-    for metric in metrics:
-        if metric in history.columns:
-            ax.plot(history[metric], label=metric)
+    # Sort metrics for consistent ordering
+    metric_names = sorted(all_metric_names)
+    n_metrics = len(metric_names)
 
-    ax.set_xlabel("Epoch")
-    ax.set_ylabel("Loss")
-    ax.set_title("Training History")
-    ax.legend()
+    # Calculate grid layout
+    nrows = (n_metrics + ncols - 1) // ncols
 
-    if log_scale:
-        ax.set_yscale("log")
+    # Auto-calculate figsize if not provided
+    if figsize is None:
+        figsize = (4 * ncols, 3 * nrows)
 
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
+
+    for idx, metric in enumerate(metric_names):
+        row, col = idx // ncols, idx % ncols
+        ax = axes[row, col]
+
+        has_data = False
+
+        # Plot train curve
+        if metric in train_metrics:
+            ax.plot(train_metrics[metric], label="train", color=COLORS.get("tf", "#1f77b4"))
+            has_data = True
+
+        # Plot test curve
+        if metric in test_metrics:
+            ax.plot(
+                test_metrics[metric],
+                label="test",
+                color=COLORS.get("gene", "#ff7f0e"),
+                linestyle="--",
+            )
+            has_data = True
+
+        if has_data:
+            ax.set_xlabel("Epoch")
+            ax.set_ylabel("Loss")
+            ax.set_title(metric)
+            ax.legend(loc="upper right", fontsize=8)
+
+            if log_scale:
+                ax.set_yscale("log")
+
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+
+    # Hide unused subplots
+    for idx in range(n_metrics, nrows * ncols):
+        row, col = idx // ncols, idx % ncols
+        axes[row, col].set_visible(False)
+
+    plt.tight_layout()
     savefig_or_show("loss_curves", show=show, save=save)
 
     if return_fig:
         return fig
-    if show is False:
-        return ax
     return None
 
 
@@ -262,6 +322,9 @@ def latent_umap(
 
     # Get latent representations
     with torch.no_grad():
+        # Get device from model
+        device = model.adj_E1.device
+
         # Get TF expression from RNA modality
         rna_data = mdata.mod["rna"].X
         if hasattr(rna_data, "toarray"):
@@ -272,7 +335,7 @@ def latent_umap(
         tf_expression = rna_data[:, tf_indices]
 
         # Pass through encoder to get latent (returns z, mu, logvar)
-        tf_tensor = torch.FloatTensor(tf_expression)
+        tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
         _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
         z_tf = mu.squeeze(-1).cpu().numpy()
 
@@ -383,6 +446,9 @@ def enhancer_activity_histogram(
 
     # Get enhancer activity from model forward pass
     with torch.no_grad():
+        # Get device from model
+        device = model.adj_E1.device
+
         rna_data = mdata.mod["rna"].X
         if hasattr(rna_data, "toarray"):
             rna_data = rna_data.toarray()
@@ -392,7 +458,7 @@ def enhancer_activity_histogram(
         tf_expression = rna_data[:, tf_indices]
 
         # Enhancer activity = TF expression @ E1
-        tf_tensor = torch.FloatTensor(tf_expression)
+        tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
 
         # Get z_tf from encoder
         _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
@@ -498,6 +564,9 @@ def tf_activity_clustermap(
 
     # Get TF activity from model
     with torch.no_grad():
+        # Get device from model
+        device = model.adj_E1.device
+
         rna_data = mdata.mod["rna"].X
         if hasattr(rna_data, "toarray"):
             rna_data = rna_data.toarray()
@@ -506,7 +575,7 @@ def tf_activity_clustermap(
         tf_expression = rna_data[:, tf_indices]
 
         # Get z_tf from encoder
-        tf_tensor = torch.FloatTensor(tf_expression)
+        tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
         _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
         z_tf = mu.squeeze(-1).cpu().numpy()
 
