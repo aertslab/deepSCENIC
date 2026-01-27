@@ -484,6 +484,203 @@ def load_model(
     return DeepSCENICModel.load(path, device=device, sequence_model=sequence_model)
 
 
+def load_model_from_checkpoint(
+    checkpoint_path: str | Path,
+    mdata: MuData,
+    *,
+    sequence_model_path: str | Path | None = None,
+    device: str = "cpu",
+    sequence_model: nn.Module | None = None,
+) -> DeepSCENICModel:
+    """
+    Load a model from a training checkpoint for inference.
+
+    Use this when training was interrupted and you only have checkpoints.
+    Requires the original MuData to reconstruct model metadata and architecture.
+
+    Parameters
+    ----------
+    checkpoint_path
+        Path to checkpoint file (e.g., checkpoint_dir/best.pt or checkpoint_dir/epoch_10.pt)
+    mdata
+        Original MuData used for training. Required to extract metadata
+        (gene names, TF names, region names) and architecture parameters.
+    sequence_model_path
+        Path to sequence_model.pt file containing Enformer/TF2rNet state.
+        If None, looks in same directory as checkpoint.
+    device
+        Device to load model to
+    sequence_model
+        Custom sequence model instance. Required if training used a custom
+        sequence model instead of Enformer.
+
+    Returns
+    -------
+    DeepSCENICModel
+        Reconstructed model ready for inference
+
+    Examples
+    --------
+    Loading from an interrupted training run:
+
+    >>> model = ds.tl.load_model_from_checkpoint(
+    ...     "checkpoints/best.pt",
+    ...     mdata,  # Original training data
+    ... )
+    >>> model.save("recovered_model.pt")  # Save as full model
+
+    With explicit sequence model path:
+
+    >>> model = ds.tl.load_model_from_checkpoint(
+    ...     "checkpoints/epoch_50.pt",
+    ...     mdata,
+    ...     sequence_model_path="checkpoints/sequence_model.pt",
+    ... )
+    """
+    import numpy as np
+
+    from ..models import DeepSCENICVAE, MotifNet
+    from ._training_state import Checkpoint
+
+    checkpoint_path = Path(checkpoint_path)
+    checkpoint = Checkpoint.load(checkpoint_path, map_location=device)
+    config = checkpoint.config
+
+    # Extract metadata from mdata (same as train() does)
+    rna = mdata.mod["rna"]
+    tf_mask = rna.var["is_tf"]
+    tf_names = rna.var_names[tf_mask].tolist()
+    gene_names = list(rna.var_names)
+    region_names = list(mdata.mod["atac"].var_names)
+
+    n_tfs = len(tf_names)
+    n_genes = len(gene_names)
+    n_regions = len(region_names)
+
+    # Compute TF indices from is_tf mask
+    tf_indices = torch.tensor(np.where(tf_mask)[0])
+
+    # Compute gene_indices for reconstruction loss
+    gene_split = rna.var["split"]
+    train_gene_mask = gene_split.isin(["train", "both"])
+    gene_indices = torch.tensor(np.where(train_gene_mask)[0])
+
+    # Compute region_indices for ATAC reconstruction loss
+    atac = mdata.mod["atac"]
+    region_split = atac.var["split"]
+    train_region_mask = region_split == "train"
+    region_indices = torch.tensor(np.where(train_region_mask)[0])
+
+    # Get r2g sparse matrix info
+    r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
+    r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]))
+    r2g_distances = torch.tensor(r2g_coo.data).float()
+
+    # Get PPI info if present
+    ppi_edge_index = None
+    ppi_genes_idx = None
+    ppi_tfs_idx_keys = None
+    ppi_tfs_idx_values = None
+    use_ppi = config.use_ppi and "ppi_edge_index" in mdata.uns
+
+    if use_ppi:
+        ppi_edge_index = torch.tensor(mdata.uns["ppi_edge_index"])
+        ppi_genes_idx = torch.tensor(mdata.uns["ppi_genes_idx"])
+        ppi_tfs_idx_keys = torch.tensor(mdata.uns["ppi_tfs_idx_keys"])
+        ppi_tfs_idx_values = torch.tensor(mdata.uns["ppi_tfs_idx_values"])
+
+    # Batch correction
+    n_batches = 0
+    if config.batch_key is not None:
+        n_batches = int(mdata.obs[config.batch_key].nunique())
+
+    # Reconstruct VAE
+    vae = DeepSCENICVAE(
+        n_tfs=n_tfs,
+        n_genes=n_genes,
+        n_regions=n_regions,
+        r2g_indices=r2g_indices,
+        r2g_distances=r2g_distances,
+        tf_indices=tf_indices,
+        gene_indices=gene_indices,
+        region_indices=region_indices,
+        ppi_edge_index=ppi_edge_index,
+        ppi_genes_idx=ppi_genes_idx,
+        ppi_tfs_idx_keys=ppi_tfs_idx_keys,
+        ppi_tfs_idx_values=ppi_tfs_idx_values,
+        n_hidden=config.n_hidden,
+        use_ppi=use_ppi,
+        binary_atac=config.binary_atac,
+        n_batches=n_batches,
+    )
+    vae.load_state_dict(checkpoint.vae_state_dict)
+    vae.to(device)
+    vae.eval()
+
+    # Reconstruct MotifNet
+    tf2rnet = MotifNet(
+        n_tfs=n_tfs,
+        bottleneck_size=config.bottleneck_size,
+        emb_len=config.emb_len,
+    )
+
+    # Initialize sequence model
+    if sequence_model is not None:
+        seq_model = sequence_model
+    else:
+        from enformer_pytorch import Enformer
+
+        seq_model = Enformer.from_pretrained(
+            "EleutherAI/enformer-official-rough",
+            target_length=-1,
+        )
+
+    # Load sequence model state: from checkpoint or from sequence_model.pt
+    if checkpoint.enformer_state_dict is not None:
+        # Old-style checkpoint with sequence model included
+        seq_model.load_state_dict(checkpoint.enformer_state_dict)
+        tf2rnet.load_state_dict(checkpoint.tf2rnet_state_dict)
+    else:
+        # Look for sequence_model.pt
+        if sequence_model_path is None:
+            sequence_model_path = checkpoint_path.parent / "sequence_model.pt"
+
+        sequence_model_path = Path(sequence_model_path)
+        if sequence_model_path.exists():
+            seq_data = torch.load(sequence_model_path, map_location=device)
+            seq_model.load_state_dict(seq_data["enformer_state_dict"])
+            tf2rnet.load_state_dict(seq_data["tf2rnet_state_dict"])
+            log.info(f"Loaded sequence model from {sequence_model_path}")
+        else:
+            raise ValueError(
+                f"Checkpoint does not contain sequence model state and "
+                f"sequence_model.pt not found at {sequence_model_path}. "
+                f"Provide sequence_model_path parameter."
+            )
+
+    tf2rnet.to(device)
+    tf2rnet.eval()
+    seq_model.to(device)
+    seq_model.eval()
+
+    log.info(
+        f"Loaded model from checkpoint {checkpoint_path}: "
+        f"{n_genes} genes, {n_tfs} TFs, {n_regions} regions"
+    )
+
+    return DeepSCENICModel(
+        vae=vae,
+        tf2rnet=tf2rnet,
+        enformer=seq_model,
+        adj_E1=checkpoint.adj_E1.to(device),
+        config=config,
+        tf_names=tf_names,
+        gene_names=gene_names,
+        region_names=region_names,
+        history=checkpoint.history,
+    )
+
+
 def load_legacy_data(
     rna_path: str | Path,
     atac_path: str | Path,

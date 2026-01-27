@@ -118,8 +118,8 @@ class TestHistorySaveLoad:
             data = torch.load(path)
 
             assert "history" in data
-            assert data["history"]["train"]["loss"] == [1.0, 0.8]
-            assert data["history"]["test"]["loss"] == [1.1, 0.9]
+            assert data["history"]["train"]["total"] == [1.0, 0.8]
+            assert data["history"]["val"]["total"] == [1.1, 0.9]
 
     def test_save_omits_history_when_none(self, mock_vae, mock_tf2rnet, mock_adj_E1, minimal_dims):
         """Save should not include history key when None."""
