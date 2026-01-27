@@ -212,10 +212,10 @@ def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
 
     # Create sample history
     history = TrainingHistory()
-    history.log("train", {"loss": 1.0, "rec_rna": 0.5})
-    history.log("train", {"loss": 0.8, "rec_rna": 0.4})
-    history.log("test", {"loss": 1.1})
-    history.log("test", {"loss": 0.9})
+    history.log("train", {"total": 1.0, "rna_recon": 0.5})
+    history.log("train", {"total": 0.8, "rna_recon": 0.4})
+    history.log("val", {"total": 1.1})
+    history.log("val", {"total": 0.9})
 
     return DeepSCENICModel(
         vae=mock_vae,

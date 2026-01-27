@@ -14,6 +14,7 @@ from ._model import (
     load_legacy_data,
     load_legacy_model,
     load_model,
+    load_model_from_checkpoint,
     load_pretrained,
 )
 from ._perturbation import simulate_multi_perturbation, simulate_perturbation
@@ -36,6 +37,7 @@ __all__ = [
     "DeepSCENICModel",
     "PretrainedModel",
     "load_model",
+    "load_model_from_checkpoint",
     "load_pretrained",
     "load_legacy_data",
     "load_legacy_model",
