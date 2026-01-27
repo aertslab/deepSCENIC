@@ -215,9 +215,7 @@ def compute_total_loss(
     use_ppi
         Whether PPI is being used
     include_e1_sparsity
-        Whether to include E1 sparsity in the total loss. Set to False
-        before warmup_grn to match legacy behavior where E1 sparsity is
-        only applied after the GRN warmup phase.
+        Whether to include E1 sparsity in the total loss.
 
     Returns
     -------
@@ -255,10 +253,58 @@ def compute_total_loss(
 
     return {
         "total": total,
-        "rec_rna": loss_rec_rna.detach(),
-        "rec_atac": loss_rec_atac.detach(),
-        "kl": loss_kl.detach(),
-        "e1_sparse": loss_e1_sparse.detach(),
-        "e2_sparse": loss_e2_sparse.detach(),
-        "ppi": loss_ppi.detach(),
+        "rna_recon": loss_rec_rna.detach(),
+        "atac_recon": loss_rec_atac.detach(),
+        "kl_div": loss_kl.detach(),
+        "e1_l1": loss_e1_sparse.detach(),
+        "e2_l1": loss_e2_sparse.detach(),
+        "ppi_reg": loss_ppi.detach(),
+    }
+
+
+def compute_test_chromosome_loss(
+    x_atac: Tensor,
+    x_atac_rec_test: Tensor,
+    adj_E1_test: Tensor,
+    test_region_indices: Tensor,
+    loss_atac: str,
+    alpha: float,
+    atac_tau: float,
+) -> dict[str, Tensor]:
+    """Compute ATAC reconstruction loss on test chromosomes.
+
+    Parameters
+    ----------
+    x_atac
+        Ground truth ATAC (n_cells, n_all_regions)
+    x_atac_rec_test
+        Reconstructed ATAC for test regions (n_cells, n_test_regions)
+    adj_E1_test
+        E1 matrix for test regions (n_test_regions, n_tfs)
+    test_region_indices
+        Global indices of test regions
+    loss_atac
+        ATAC loss type: 'mse', 'mae', 'bce', 'cosine'
+    alpha
+        E1 sparsity weight
+    atac_tau
+        ATAC reconstruction weight
+
+    Returns
+    -------
+    dict with keys: total, rec_atac, e1_sparse
+    """
+    # Extract ground truth for test regions
+    x_atac_test = x_atac[:, test_region_indices]
+
+    # ATAC reconstruction loss
+    loss_rec_atac = reconstruction_loss(x_atac_rec_test, x_atac_test, loss_atac) * atac_tau
+
+    # E1 sparsity on test E1
+    loss_e1_sparse = e1_sparsity_loss(adj_E1_test) * alpha
+
+    return {
+        "total": loss_rec_atac + loss_e1_sparse,
+        "atac_recon": loss_rec_atac.detach(),
+        "e1_l1": loss_e1_sparse.detach(),
     }

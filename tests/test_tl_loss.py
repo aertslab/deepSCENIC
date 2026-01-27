@@ -206,12 +206,12 @@ class TestComputeTotalLoss:
         result = compute_total_loss(**loss_inputs)
         assert isinstance(result, dict)
         assert "total" in result
-        assert "rec_rna" in result
-        assert "rec_atac" in result
-        assert "kl" in result
-        assert "e1_sparse" in result
-        assert "e2_sparse" in result
-        assert "ppi" in result
+        assert "rna_recon" in result
+        assert "atac_recon" in result
+        assert "kl_div" in result
+        assert "e1_l1" in result
+        assert "e2_l1" in result
+        assert "ppi_reg" in result
 
     def test_gradient_flows_through_total(self, loss_inputs):
         """Gradients should flow through total loss."""
@@ -223,18 +223,18 @@ class TestComputeTotalLoss:
     def test_no_ppi_loss_when_disabled(self, loss_inputs):
         """PPI loss should be zero when use_ppi=False."""
         result = compute_total_loss(**loss_inputs, use_ppi=False)
-        assert torch.isclose(result["ppi"], torch.tensor(0.0))
+        assert torch.isclose(result["ppi_reg"], torch.tensor(0.0))
 
     def test_ppi_excluded_from_total(self, loss_inputs):
         """PPI loss should be computed for logging but excluded from total."""
         result = compute_total_loss(**loss_inputs, use_ppi=True)
 
         # PPI should be computed and non-zero
-        assert result["ppi"] > 0
+        assert result["ppi_reg"] > 0
 
         # Total should NOT include PPI (matching legacy behavior)
         expected_total = (
-            result["rec_rna"] + result["rec_atac"] + result["kl"] + result["e1_sparse"] + result["e2_sparse"]
+            result["rna_recon"] + result["atac_recon"] + result["kl_div"] + result["e1_l1"] + result["e2_l1"]
         )
         assert torch.isclose(result["total"], expected_total, rtol=1e-4)
 
@@ -244,11 +244,11 @@ class TestComputeTotalLoss:
         result_without = compute_total_loss(**loss_inputs, include_e1_sparsity=False)
 
         # E1 sparsity should still be computed for logging
-        assert result_without["e1_sparse"] > 0
+        assert result_without["e1_l1"] > 0
 
         # Total should differ by the E1 sparsity amount
         diff = result_with["total"] - result_without["total"]
-        expected_diff = result_with["e1_sparse"]
+        expected_diff = result_with["e1_l1"]
         assert torch.isclose(diff, expected_diff, rtol=1e-4)
 
     def test_e1_sparsity_zero_in_total_when_disabled(self, loss_inputs):
@@ -259,10 +259,10 @@ class TestComputeTotalLoss:
         result = compute_total_loss(**loss_inputs, include_e1_sparsity=False, alpha=1.0)
 
         # E1 sparsity should be 10.0 (mean of all 10s) times alpha
-        assert torch.isclose(result["e1_sparse"], torch.tensor(10.0))
+        assert torch.isclose(result["e1_l1"], torch.tensor(10.0))
 
         # But total should NOT include this when disabled
         # Verify by checking total equals sum of other components
         # Note: PPI is computed for logging but excluded from total
-        expected_total = result["rec_rna"] + result["rec_atac"] + result["kl"] + result["e2_sparse"]
+        expected_total = result["rna_recon"] + result["atac_recon"] + result["kl_div"] + result["e2_l1"]
         assert torch.isclose(result["total"], expected_total, rtol=1e-4)
