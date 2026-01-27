@@ -1,5 +1,6 @@
 """Tests for genome module."""
 
+import pickle
 import random
 
 import pytest
@@ -146,6 +147,41 @@ class TestGenome:
         # First 5 positions are N, should be all zeros
         n_region = onehot[:, :5]
         assert torch.allclose(n_region, torch.zeros((4, 5)))
+
+    def test_pickle_roundtrip(self, tmp_fasta):
+        """Genome should be pickle-safe for multiprocessing DataLoader."""
+        genome = Genome(tmp_fasta)
+
+        # Access cached properties to populate the cache (simulates register_genome behavior)
+        _ = genome._has_chr_prefix
+        _ = genome._chrom_map
+        _ = genome.chromosomes
+
+        # Pickle and unpickle
+        pickled = pickle.dumps(genome)
+        restored = pickle.loads(pickled)
+
+        # Verify basic attributes preserved
+        assert restored.fasta_file == genome.fasta_file
+        assert restored.name == genome.name
+
+        # Verify functionality works after unpickling
+        assert restored.chromosomes == genome.chromosomes
+        seq_orig = genome.fetch("chr1", 100, 200)
+        seq_restored = restored.fetch("chr1", 100, 200)
+        assert seq_orig == seq_restored
+
+    def test_pickle_without_cached_properties(self, tmp_fasta):
+        """Genome should pickle even without cached properties accessed."""
+        genome = Genome(tmp_fasta)
+
+        # Don't access any cached properties - pickle fresh instance
+        pickled = pickle.dumps(genome)
+        restored = pickle.loads(pickled)
+
+        # Should work after restore
+        seq = restored.fetch("chr1", 0, 100)
+        assert len(seq) == 100
 
 
 class TestGenomeRegistration:

@@ -63,12 +63,75 @@ class Genome:
             raise FileNotFoundError(f"FASTA file not found: {self.fasta_file}")
         self.name = self.fasta_file.stem
 
+    def __getstate__(self) -> dict:
+        """Prepare for pickling - exclude pyfaidx.Fasta (not pickle-safe)."""
+        state = self.__dict__.copy()
+        # Remove cached properties that contain unpicklable objects
+        state.pop("_fasta", None)
+        state.pop("_chrom_map", None)
+        state.pop("_has_chr_prefix", None)
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore from pickling - cached properties will be recreated on first access."""
+        self.__dict__.update(state)
+
     @cached_property
     def _fasta(self):
         """Lazy-load FASTA file using pyfaidx."""
         import pyfaidx
 
         return pyfaidx.Fasta(str(self.fasta_file))
+
+    @cached_property
+    def _has_chr_prefix(self) -> bool:
+        """Check if FASTA chromosomes use 'chr' prefix."""
+        chroms = list(self._fasta.keys())
+        # Check if any standard chromosome has chr prefix
+        return any(c.startswith("chr") for c in chroms if c.lstrip("chr") in ("1", "2", "X", "Y"))
+
+    @cached_property
+    def _chrom_map(self) -> dict[str, str]:
+        """Build mapping from query chromosome names to FASTA chromosome names.
+
+        Handles chr prefix mismatches automatically.
+        """
+        fasta_chroms = set(self._fasta.keys())
+        chrom_map = {}
+
+        for chrom in fasta_chroms:
+            # Map exact match
+            chrom_map[chrom] = chrom
+
+            # Map with/without chr prefix
+            if chrom.startswith("chr"):
+                chrom_map[chrom[3:]] = chrom  # "1" -> "chr1"
+            else:
+                chrom_map[f"chr{chrom}"] = chrom  # "chr1" -> "1"
+
+        return chrom_map
+
+    def _normalize_chrom(self, chrom: str) -> str:
+        """Normalize chromosome name to match FASTA convention.
+
+        Parameters
+        ----------
+        chrom
+            Input chromosome name (e.g., "chr1" or "1").
+
+        Returns
+        -------
+        str
+            Chromosome name as it appears in the FASTA file.
+
+        Raises
+        ------
+        KeyError
+            If chromosome cannot be found in FASTA (even with prefix normalization).
+        """
+        if chrom in self._chrom_map:
+            return self._chrom_map[chrom]
+        raise KeyError(f"Chromosome '{chrom}' not found in {self.fasta_file} (tried with/without 'chr' prefix)")
 
     @property
     def chromosomes(self) -> list[str]:
@@ -107,6 +170,8 @@ class Genome:
         >>> genome.fetch("chr1", 1000, 1010)
         'ACGTACGTAC'
         """
+        # Normalize chromosome name (handles chr prefix mismatch)
+        chrom = self._normalize_chrom(chrom)
         chrom_len = len(self._fasta[chrom])
 
         # Calculate padding for out-of-bounds coordinates
@@ -361,7 +426,9 @@ def register_genome(fasta_file: str | Path | Genome) -> None:
     else:
         _genome = Genome(fasta_file)
 
-    log.info(f"Registered genome: {_genome.name} ({_genome.fasta_file})")
+    # Log chromosome naming convention
+    chr_style = "with 'chr' prefix" if _genome._has_chr_prefix else "without 'chr' prefix"
+    log.info(f"Registered genome: {_genome.name} ({_genome.fasta_file}), chromosomes {chr_style}")
 
 
 def get_genome() -> Genome:
