@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import mudata as md
     from numpy.typing import NDArray
 
-    from .._genome import Genome
+    from .._genome import Genome, GenomeIntervalDataset
 
 
 class CellDataset(Dataset):
@@ -215,11 +215,76 @@ def build_sequence_dataloader(
         sampler = WeightedRandomSampler(weights, len(dataset))  # type: ignore
         shuffle = False
 
+    # Force num_workers=0 for sequence dataloaders - pyfaidx file handles
+    # don't survive multiprocessing reliably, causing corrupted sequences
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle if sampler is None else False,
         sampler=sampler,
-        num_workers=num_workers,
+        num_workers=0,
         pin_memory=True,
     )
+
+
+def build_test_sequence_dataloader(
+    mdata: md.MuData,
+    genome: Genome | None = None,
+    batch_size: int = 1000,
+    *,
+    context_length: int,
+    num_workers: int = 0,
+) -> tuple[DataLoader, torch.Tensor]:
+    """Build dataloader for TEST region sequences (no augmentation).
+
+    Parameters
+    ----------
+    mdata
+        MuData with split column in atac.var
+    genome
+        Genome instance (uses global if None)
+    batch_size
+        Sequences per batch
+    context_length
+        Sequence length for model
+    num_workers
+        DataLoader workers
+
+    Returns
+    -------
+    tuple[DataLoader, torch.Tensor]
+        - DataLoader yielding (sequence, local_idx) tuples
+        - test_region_indices: tensor mapping local idx to global region idx
+    """
+    from .._genome import GenomeIntervalDataset, get_genome
+
+    if genome is None:
+        genome = get_genome()
+
+    # Get test region mask and indices
+    atac_var = mdata.mod["atac"].var
+    test_mask = atac_var["split"] == "test"
+    test_region_indices = torch.tensor(np.where(test_mask)[0])
+    test_region_names = mdata.mod["atac"].var_names[test_mask].tolist()
+
+    # Build dataset WITHOUT augmentation
+    ds = GenomeIntervalDataset(
+        regions=test_region_names,
+        genome=genome,
+        context_length=context_length,
+        shift_augs=(0, 0),  # No augmentation
+        rc_aug=False,  # No reverse complement
+    )
+    dataset = SequenceDatasetWithIndex(ds)
+
+    # Force num_workers=0 for sequence dataloaders - pyfaidx file handles
+    # don't survive multiprocessing reliably, causing corrupted sequences
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=False,  # Deterministic for evaluation
+        num_workers=0,
+        pin_memory=True,
+    )
+
+    return dataloader, test_region_indices
