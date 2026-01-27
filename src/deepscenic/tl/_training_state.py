@@ -24,14 +24,8 @@ class TrainingConfig:
         Cells per batch.
     seq_batch_size
         Sequences per batch.
-    warmup_vae
-        Epochs before enabling TF2rNet.
-    warmup_grn
-        Epochs before enabling PPI.
-    lr_vae
-        Learning rate for VAE.
-    lr_tf2rnet
-        Learning rate for TF2rNet.
+    lr
+        Learning rate.
     lr_ppi
         Learning rate for PPI network.
     weight_decay
@@ -117,13 +111,8 @@ class TrainingConfig:
     batch_size: int = 64
     seq_batch_size: int = 1000
 
-    # Warmup
-    warmup_vae: int = 0
-    warmup_grn: int = 0
-
     # Learning rates
-    lr_vae: float = 1e-4
-    lr_tf2rnet: float = 1e-4
+    lr: float = 1e-4
     lr_ppi: float = 1e-3
     weight_decay: float = 0.0
 
@@ -157,7 +146,7 @@ class TrainingConfig:
     balance_class: bool = False
     class_key: str | None = None
     balance_dars: bool = False  # Whether to upweight DARs in sequence sampling
-    num_workers: int = 0  # Number of data loading workers
+    num_workers: int = 0  # Number of data loading workers for cell dataloader
 
     # Sequence model
     bottleneck_size: int = 3072
@@ -179,14 +168,26 @@ class TrainingConfig:
 
 @dataclass
 class TrainingHistory:
-    """Container for training metrics history."""
+    """Container for training metrics history.
+
+    Splits:
+    - train: Training metrics (train cells, train features)
+    - val: Validation metrics (test cells, train features)
+    - val_chrom: Chromosome generalization (test cells, test features)
+    """
 
     train: dict[str, list[float]] = field(default_factory=dict)
-    test: dict[str, list[float]] = field(default_factory=dict)
+    val: dict[str, list[float]] = field(default_factory=dict)
+    val_chrom: dict[str, list[float]] = field(default_factory=dict)
 
     def log(self, split: str, metrics: dict[str, float]) -> None:
         """Log metrics for a split."""
-        storage = self.train if split == "train" else self.test
+        if split == "train":
+            storage = self.train
+        elif split == "val_chrom":
+            storage = self.val_chrom
+        else:
+            storage = self.val
         for key, value in metrics.items():
             if key not in storage:
                 storage[key] = []
@@ -194,14 +195,19 @@ class TrainingHistory:
 
     def to_dict(self) -> dict[str, dict[str, list[float]]]:
         """Convert to dictionary."""
-        return {"train": self.train, "test": self.test}
+        return {
+            "train": self.train,
+            "val": self.val,
+            "val_chrom": self.val_chrom,
+        }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> TrainingHistory:
         """Create from dictionary."""
         history = cls()
         history.train = d.get("train", {})
-        history.test = d.get("test", {})
+        history.val = d.get("val", {})
+        history.val_chrom = d.get("val_chrom", {})
         return history
 
 
@@ -221,6 +227,7 @@ class Checkpoint:
     history: TrainingHistory
     config: TrainingConfig
     adj_E1: torch.Tensor
+    adj_E1_test: torch.Tensor | None = None
     best_loss: float = float("inf")
 
     def save(self, path: str | Path) -> None:
@@ -236,6 +243,7 @@ class Checkpoint:
                 "history": self.history.to_dict(),
                 "config": self.config.to_dict(),
                 "adj_E1": self.adj_E1,
+                "adj_E1_test": self.adj_E1_test,
                 "best_loss": self.best_loss,
             },
             path,
@@ -257,6 +265,7 @@ class Checkpoint:
             history=history,
             config=config,
             adj_E1=data["adj_E1"],
+            adj_E1_test=data.get("adj_E1_test"),
             best_loss=data.get("best_loss", float("inf")),
         )
 
@@ -304,7 +313,7 @@ class PretrainConfig:
     weight_decay: float = 0.0
     alpha: float = 1e-2
     device: str = "cuda"
-    num_workers: int = 0
+    num_workers: int = 0  # Number of data loading workers for cell dataloader
     bottleneck_size: int = 3072
     emb_len: int = 5
     seq_len: int = 640
@@ -365,7 +374,7 @@ class FinetuneConfig:
     loss_rna: str = "mse"
     dropout_mask_rna: bool = False
     device: str = "cuda"
-    num_workers: int = 0
+    num_workers: int = 0  # Number of data loading workers for cell dataloader
     batch_key: str | None = None
 
     def to_dict(self) -> dict[str, Any]:

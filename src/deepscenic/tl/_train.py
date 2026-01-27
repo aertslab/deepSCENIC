@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -13,9 +15,9 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 from tqdm.auto import tqdm
 
 from ..models import DeepSCENICVAE, MotifNet
-from ._dataloaders import build_cell_dataloader, build_sequence_dataloader
+from ._dataloaders import build_cell_dataloader, build_sequence_dataloader, build_test_sequence_dataloader
 from ._logging import get_logger
-from ._loss import compute_total_loss, e1_sparsity_loss
+from ._loss import compute_test_chromosome_loss, compute_total_loss, e1_sparsity_loss
 from ._model import DeepSCENICModel, PretrainedModel
 from ._training_state import (
     Checkpoint,
@@ -30,6 +32,65 @@ if TYPE_CHECKING:
     import mudata as md
 
 log = logging.getLogger("deepscenic.tl")
+
+# Global thread pool for async checkpoint saving (single worker to serialize saves)
+_checkpoint_executor: ThreadPoolExecutor | None = None
+
+
+def _get_checkpoint_executor() -> ThreadPoolExecutor:
+    """Get or create the global checkpoint executor."""
+    global _checkpoint_executor
+    if _checkpoint_executor is None:
+        _checkpoint_executor = ThreadPoolExecutor(max_workers=1)
+    return _checkpoint_executor
+
+
+def _save_checkpoint_async(checkpoint: Checkpoint, path: Path) -> None:
+    """Save checkpoint asynchronously in a background thread.
+
+    The checkpoint data is already deep-copied before this function is called,
+    so it's safe to save in the background while training continues.
+    """
+    checkpoint.save(path)
+
+
+def _save_sequence_model_state(
+    sequence_model: torch.nn.Module,
+    tf2rnet: torch.nn.Module,
+    checkpoint_dir: Path,
+) -> Path:
+    """Save sequence model state once at training start.
+
+    This enables checkpoint storage optimization: individual checkpoints
+    skip the large Enformer state dict, and resume logic loads from this
+    one-time file instead.
+
+    Parameters
+    ----------
+    sequence_model
+        Sequence embedding model (Enformer or custom).
+    tf2rnet
+        MotifNet model.
+    checkpoint_dir
+        Directory to save the sequence model state.
+
+    Returns
+    -------
+    Path
+        Path to the saved file.
+    """
+    seq_model_path = checkpoint_dir / "sequence_model.pt"
+    if not seq_model_path.exists():
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(
+            {
+                "enformer_state_dict": sequence_model.state_dict(),
+                "tf2rnet_state_dict": tf2rnet.state_dict(),
+            },
+            seq_model_path,
+        )
+        log.info(f"Saved sequence model state to {seq_model_path}")
+    return seq_model_path
 
 
 def _init_enformer(device: str, emb_len: int) -> torch.nn.Module:
@@ -88,16 +149,14 @@ def _get_sequence_embeddings(
     torch.Tensor
         Flattened embeddings with shape (batch, bottleneck_size * emb_len).
     """
-    use_autocast = torch.cuda.is_available() and sequences.is_cuda
-    with torch.amp.autocast("cuda", enabled=use_autocast):
-        if _is_enformer(model):
-            # Enformer returns (batch, emb_len, bottleneck_size)
-            output = model(sequences, return_only_embeddings=True)
-            # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
-            return output.reshape(-1, bottleneck_size * emb_len).float()  # type: ignore[no-any-return]
-        else:
-            # Custom models return flat embeddings directly
-            return model(sequences).float()  # type: ignore[no-any-return]
+    if _is_enformer(model):
+        # Enformer returns (batch, emb_len, bottleneck_size)
+        output = model(sequences, return_only_embeddings=True)
+        # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
+        return output.reshape(-1, bottleneck_size * emb_len).float()  # type: ignore[no-any-return]
+    else:
+        # Custom models return flat embeddings directly
+        return model(sequences).float()  # type: ignore[no-any-return]
 
 
 def _init_e1_cache(
@@ -124,17 +183,112 @@ def _init_e1_cache(
     return adj_E1
 
 
+def _init_e1_test_cache(
+    sequence_model: torch.nn.Module,
+    tf2rnet: MotifNet,
+    test_seq_dataloader: torch.utils.data.DataLoader,
+    device: str,
+    config: TrainingConfig | PretrainConfig,
+) -> torch.Tensor:
+    """Initialize E1 cache for TEST regions (no augmentation)."""
+    sequence_model.eval()
+    tf2rnet.eval()
+
+    n_test_regions = len(test_seq_dataloader.dataset)  # type: ignore[arg-type]
+    adj_E1_test = torch.zeros(n_test_regions, tf2rnet.n_tfs, device=device)
+
+    with torch.no_grad():
+        for sequences, local_idx in tqdm(test_seq_dataloader, desc="Caching E1 (test)"):
+            sequences = sequences.to(device)
+            emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
+            tf_pred = tf2rnet(emb)
+            adj_E1_test[local_idx] = tf_pred
+
+    return adj_E1_test
+
+
+def _evaluate_test_chromosomes(
+    vae: DeepSCENICVAE,
+    adj_E1_test: torch.Tensor,
+    test_region_indices: torch.Tensor,
+    test_cell_loader: torch.utils.data.DataLoader,
+    device: str,
+    config: TrainingConfig,
+    use_ppi: bool = True,
+) -> dict[str, float]:
+    """Evaluate ATAC reconstruction on test chromosomes.
+
+    Computes TF activity from encoder (with PPI modulation if enabled),
+    then predicts ATAC for test regions using adj_E1_test.
+
+    This matches legacy behavior where the full VAE forward pass (including
+    PPI network) is used to compute test chromosome ATAC reconstruction.
+    """
+    vae.eval()
+    metrics: dict[str, float] = {"total": 0.0, "atac_recon": 0.0, "e1_l1": 0.0}
+    n_batches = 0
+
+    with torch.no_grad():
+        for batch in test_cell_loader:
+            x_rna = batch["rna"].to(device)
+            x_atac = batch["atac"].to(device)
+
+            # Extract TF expression
+            x_rna_tfs = x_rna[:, vae.tf_indices]
+
+            # Apply PPI modulation if enabled (matches legacy vae.predict behavior)
+            if vae.use_ppi and use_ppi and vae.ppi is not None:
+                from ..models._ppi import build_ppi_batch, extract_tf_weights
+
+                batch_ppi = build_ppi_batch(x_rna, vae.ppi_genes_idx, vae.ppi_edge_index, device)
+                ppi_out = vae.ppi(batch_ppi.x, batch_ppi.edge_index)
+                x_rna_ppi = extract_tf_weights(
+                    ppi_out,
+                    x_rna.shape[0],
+                    len(vae.ppi_genes_idx),
+                    vae.ppi_tfs_idx_keys,
+                    vae.ppi_tfs_idx_values,
+                    device,
+                )
+                x_rna_tfs = x_rna_tfs * x_rna_ppi
+
+            # Encode TF activity
+            z_tf, _, _ = vae.encoder(x_rna_tfs, use_mean=True)
+
+            # Predict test region activity via E1_test
+            enh_act_test = z_tf @ adj_E1_test.T  # (n_cells, n_test_regions)
+
+            # Decode ATAC for test regions
+            x_atac_rec_test = vae.decoder_atac(enh_act_test)
+
+            # Compute loss
+            losses = compute_test_chromosome_loss(
+                x_atac=x_atac,
+                x_atac_rec_test=x_atac_rec_test,
+                adj_E1_test=adj_E1_test,
+                test_region_indices=test_region_indices,
+                loss_atac=config.loss_atac,
+                alpha=config.alpha,
+                atac_tau=config.atac_tau,
+            )
+
+            for key in metrics:
+                metrics[key] += losses[key].item()
+            n_batches += 1
+
+    return {k: v / n_batches for k, v in metrics.items()}
+
+
 def train(
     mdata: md.MuData,
     *,
     epochs: int = 100,
     batch_size: int = 64,
-    lr: float = 1e-3,
+    lr: float = 1e-4,
     device: str = "cuda",
-    warmup_vae: int = 10,
-    warmup_grn: int = 50,
     logger: str = "dict",
     log_dir: str = "./runs",
+    logger_kwargs: dict | None = None,
     checkpoint_dir: str | None = None,
     checkpoint_every: int = 10,
     save_best_checkpoints: bool | None = None,
@@ -157,17 +311,17 @@ def train(
     batch_size
         Cells per batch.
     lr
-        Base learning rate (applied to all models).
+        Learning rate.
     device
         Training device ('cuda' or 'cpu').
-    warmup_vae
-        Epochs before enabling TF2rNet updates.
-    warmup_grn
-        Epochs before enabling PPI network.
     logger
         Logging backend: 'dict', 'tensorboard', 'wandb'.
     log_dir
         Directory for tensorboard/wandb logs.
+    logger_kwargs
+        Additional keyword arguments passed to the logger backend. For wandb,
+        this can include 'project', 'name', 'tags', etc. The default wandb
+        project is 'deepscenic'.
     checkpoint_dir
         Directory for checkpoints (None = no checkpoints).
     checkpoint_every
@@ -185,7 +339,9 @@ def train(
         Whether to upweight DAR regions during sequence sampling (1.5x weight).
         Requires DARs to be marked via ``ds.pp.mark_dars()`` first.
     num_workers
-        Number of workers for parallel data loading (0 = main process only).
+        Number of workers for parallel data loading. Use "auto" (default) to
+        automatically detect optimal value based on CPU count, or 0 for main
+        process only.
     pretrained_model
         Optional pretrained model from ds.tl.pretrain(). If provided, TF2rNet
         and sequence model weights are initialized from the pretrained model.
@@ -238,10 +394,7 @@ def train(
         epochs=epochs,
         batch_size=batch_size,
         seq_batch_size=seq_batch_size,
-        warmup_vae=warmup_vae,
-        warmup_grn=warmup_grn,
-        lr_vae=lr,
-        lr_tf2rnet=base_config.lr_tf2rnet,
+        lr=lr,
         lr_ppi=base_config.lr_ppi,
         weight_decay=base_config.weight_decay,
         beta=base_config.beta,
@@ -271,7 +424,10 @@ def train(
     config = final_config
 
     # Setup logging
-    training_logger = get_logger(logger, log_dir=log_dir)
+    _logger_kwargs = {"log_dir": log_dir}
+    if logger_kwargs:
+        _logger_kwargs.update(logger_kwargs)
+    training_logger = get_logger(logger, **_logger_kwargs)
     training_logger.log_hyperparams(config.to_dict())
 
     # Extract metadata from MuData
@@ -416,22 +572,44 @@ def train(
         dar_indices=dar_indices,
     )
 
+    # Build test sequence dataloader for test chromosome evaluation
+    test_region_mask = mdata.mod["atac"].var["split"] == "test"
+    n_test_regions = test_region_mask.sum()
+    if n_test_regions == 0:
+        raise ValueError(
+            "No test regions found (atac.var['split'] == 'test'). "
+            "Run ds.pp.split_features_by_chromosome() first."
+        )
+
+    test_seq_loader, test_region_indices = build_test_sequence_dataloader(
+        mdata,
+        batch_size=seq_batch_size,
+        context_length=config.seq_len,
+        num_workers=config.num_workers,
+    )
+    test_region_indices = test_region_indices.to(device)
+
+    log.info(f"Test chromosome evaluation: {n_test_regions} test regions")
+
     # Initialize E1 cache (use pretrained if available)
     if pretrained_model is not None:
         adj_E1_cache = pretrained_model.adj_E1.to(device)
     else:
         adj_E1_cache = _init_e1_cache(sequence_model, tf2rnet, train_seq_loader, device, config)
 
+    # Initialize test E1 cache (always computed, no pretrained cache for test regions)
+    adj_E1_test_cache = _init_e1_test_cache(sequence_model, tf2rnet, test_seq_loader, device, config)
+
+    # Save sequence model state once (for checkpoint resume)
+    # This enables storage optimization: checkpoints skip Enformer state dict
+    if checkpoint_dir is not None:
+        _save_sequence_model_state(sequence_model, tf2rnet, Path(checkpoint_dir))
+
     n_cells = mdata.n_obs
     log.info(f"Starting training: {epochs} epochs, {n_cells} cells, {n_genes} genes, {n_tfs} TFs, {n_regions} regions")
 
-    # Optimizers
-    optimizer_vae = Adam(vae.parameters(), lr=config.lr_vae, weight_decay=config.weight_decay)
-    optimizer_tf2rnet = Adam(
-        list(tf2rnet.parameters()) + list(sequence_model.parameters()),
-        lr=config.lr_tf2rnet,
-        weight_decay=config.weight_decay,
-    )
+    # Optimizer (only for VAE - TF2rNet is frozen)
+    optimizer_vae = Adam(vae.parameters(), lr=config.lr, weight_decay=config.weight_decay)
 
     scheduler = CosineAnnealingLR(optimizer_vae, T_max=epochs) if config.use_scheduler else None
 
@@ -460,47 +638,64 @@ def train(
     if resume_from is not None:
         checkpoint = Checkpoint.load(resume_from, map_location=device)
         vae.load_state_dict(checkpoint.vae_state_dict)
-        tf2rnet.load_state_dict(checkpoint.tf2rnet_state_dict)
-        if checkpoint.enformer_state_dict:
+
+        # Load sequence model state: from checkpoint, from one-time file, or keep initialized
+        if checkpoint.enformer_state_dict is not None:
+            # Checkpoint has sequence model (old-style checkpoint)
             sequence_model.load_state_dict(checkpoint.enformer_state_dict)
+            tf2rnet.load_state_dict(checkpoint.tf2rnet_state_dict)
+        elif checkpoint_dir is not None:
+            # Try loading from one-time sequence_model.pt file
+            seq_model_path = Path(checkpoint_dir) / "sequence_model.pt"
+            if seq_model_path.exists():
+                seq_data = torch.load(seq_model_path, map_location=device)
+                sequence_model.load_state_dict(seq_data["enformer_state_dict"])
+                tf2rnet.load_state_dict(seq_data["tf2rnet_state_dict"])
+                log.info(f"Loaded sequence model from {seq_model_path}")
+            else:
+                # No sequence model file - load tf2rnet from checkpoint, keep sequence model initialized
+                tf2rnet.load_state_dict(checkpoint.tf2rnet_state_dict)
+                log.warning(
+                    "No sequence model state in checkpoint or sequence_model.pt. "
+                    "Using initialized model - ensure this matches original training."
+                )
+        else:
+            # No checkpoint_dir - load tf2rnet from checkpoint only
+            tf2rnet.load_state_dict(checkpoint.tf2rnet_state_dict)
+            log.warning(
+                "No checkpoint_dir provided for resume. Cannot load sequence model state. "
+                "Provide checkpoint_dir or ensure pretrained_model matches original training."
+            )
+
         optimizer_vae.load_state_dict(checkpoint.optimizer_state_dict)
         if checkpoint.scheduler_state_dict and scheduler is not None:
             scheduler.load_state_dict(checkpoint.scheduler_state_dict)
         history = checkpoint.history
         adj_E1_cache = checkpoint.adj_E1.to(device)
+        # Load test E1 cache from checkpoint if available, otherwise recompute
+        if checkpoint.adj_E1_test is not None:
+            adj_E1_test_cache = checkpoint.adj_E1_test.to(device)
         start_epoch = checkpoint.epoch + 1
         best_loss = checkpoint.best_loss
 
-    # Sequence iterator for cycling
-    seq_iterator = iter(train_seq_loader)
+    # TF2rNet is always frozen during train() - use pretrain() to train TF2rNet
+    for param in tf2rnet.parameters():
+        param.requires_grad = False
+    for param in sequence_model.parameters():
+        param.requires_grad = False
 
     # Training loop
     for epoch in range(start_epoch, epochs):
         vae.train()
-        tf2rnet.train()
-        sequence_model.train()
-
-        # Parameter freezing based on warmup_grn (legacy behavior)
-        # After warmup_grn: freeze TF2rNet/sequence model to stop gradient computation
-        if epoch >= warmup_grn:
-            for param in tf2rnet.parameters():
-                param.requires_grad = False
-            for param in sequence_model.parameters():
-                param.requires_grad = False
-        else:
-            for param in tf2rnet.parameters():
-                param.requires_grad = True
-            for param in sequence_model.parameters():
-                param.requires_grad = True
 
         epoch_metrics = {
-            "loss": 0.0,
-            "rec_rna": 0.0,
-            "rec_atac": 0.0,
-            "kl": 0.0,
-            "e1_sparse": 0.0,
-            "e2_sparse": 0.0,
-            "ppi": 0.0,
+            "total": 0.0,
+            "rna_recon": 0.0,
+            "atac_recon": 0.0,
+            "kl_div": 0.0,
+            "e1_l1": 0.0,
+            "e2_l1": 0.0,
+            "ppi_reg": 0.0,
         }
         n_batches_seen = 0
 
@@ -509,45 +704,17 @@ def train(
             x_rna = batch["rna"].to(device)
             x_atac = batch["atac"].to(device)
 
-            # Clone E1 cache
-            adj_E1 = adj_E1_cache.clone()
-
-            # Update E1 for a batch of sequences (after warmup)
-            if epoch >= warmup_vae:
-                # Get next sequence batch (cycle if exhausted)
-                try:
-                    sequences, seq_idx = next(seq_iterator)
-                except StopIteration:
-                    seq_iterator = iter(train_seq_loader)
-                    sequences, seq_idx = next(seq_iterator)
-
-                sequences = sequences.to(device)
-
-                # Forward through sequence model + TF2rNet
-                optimizer_tf2rnet.zero_grad()
-                emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
-                tf_pred = tf2rnet(emb)
-
-                # Update E1 for this batch
-                adj_E1[seq_idx] = tf_pred
-
-                # Update cache (no gradients)
-                with torch.no_grad():
-                    adj_E1_cache[seq_idx] = tf_pred.detach()
-
-            # VAE forward
+            # VAE forward (E1 is frozen, computed once at initialization)
             optimizer_vae.zero_grad()
-            use_ppi_this_batch = use_ppi and epoch >= warmup_grn
             output = vae(
                 x_rna,
-                adj_E1,
-                use_ppi=use_ppi_this_batch,
+                adj_E1_cache,
+                use_ppi=use_ppi,
                 use_mean=False,
                 ppi_device=config.ppi_device,
             )
 
-            # Compute losses (E1 sparsity only included after warmup_grn, matching legacy)
-            include_e1 = epoch >= warmup_grn and epoch >= warmup_vae
+            # Compute losses
             losses = compute_total_loss(
                 x_rna=x_rna,
                 x_atac=x_atac,
@@ -555,7 +722,7 @@ def train(
                 x_atac_rec=output.x_atac_rec,
                 mu=output.mu,
                 logvar=output.logvar,
-                adj_E1_batch=adj_E1[seq_idx] if epoch >= warmup_vae else adj_E1,  # type: ignore
+                adj_E1_batch=adj_E1_cache,
                 adj_E2=vae.adj_E2,
                 r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                 x_rna_ppi=output.x_rna_ppi,
@@ -570,23 +737,20 @@ def train(
                 gamma=config.gamma,
                 rna_tau=config.rna_tau,
                 atac_tau=config.atac_tau,
-                use_ppi=use_ppi_this_batch,
-                include_e1_sparsity=include_e1,
+                use_ppi=use_ppi,
+                include_e1_sparsity=True,
             )
             total_loss = losses["total"]
 
             # Backward
             total_loss.backward()
             optimizer_vae.step()
-            # Step TF2rNet optimizer only during training window (before freeze)
-            if epoch >= warmup_vae and epoch < warmup_grn:
-                optimizer_tf2rnet.step()
 
             # Accumulate metrics
             for key in epoch_metrics:
                 if key in losses:
                     epoch_metrics[key] += losses[key].item()
-            epoch_metrics["loss"] += total_loss.item()
+            epoch_metrics["total"] += total_loss.item()
             n_batches_seen += 1
 
             pbar.set_postfix(loss=total_loss.item())
@@ -618,7 +782,7 @@ def train(
                 output = vae(
                     x_rna,
                     adj_E1_cache,
-                    use_ppi=use_ppi and epoch >= warmup_grn,
+                    use_ppi=use_ppi,
                     use_mean=True,
                     ppi_device=config.ppi_device,
                 )
@@ -641,59 +805,93 @@ def train(
                     beta=config.beta,
                     alpha=config.alpha,
                     gamma=config.gamma,
-                    use_ppi=use_ppi and epoch >= warmup_grn,
+                    use_ppi=use_ppi,
                 )
 
                 val_loss += losses["total"].item()
                 n_val_batches += 1
 
         val_loss /= n_val_batches
-        history.log("test", {"loss": val_loss})
-        training_logger.log_metrics({"test/loss": val_loss}, step=epoch)
+        history.log("val", {"total": val_loss})
+        training_logger.log_metrics({"val/total": val_loss}, step=epoch)
 
-        # Early stopping
+        # Validation on test chromosomes (generalization metric)
+        test_chrom_metrics = _evaluate_test_chromosomes(
+            vae=vae,
+            adj_E1_test=adj_E1_test_cache,
+            test_region_indices=test_region_indices,
+            test_cell_loader=test_cell_loader,
+            device=device,
+            config=config,
+            use_ppi=use_ppi,
+        )
+
+        history.log("val_chrom", test_chrom_metrics)
+        training_logger.log_metrics(
+            {f"val_chrom/{k}": v for k, v in test_chrom_metrics.items()},
+            step=epoch,
+        )
+
+        # Use test chromosome ATAC reconstruction for early stopping
+        early_stop_loss = test_chrom_metrics["atac_recon"]
+
+        # Early stopping (based on test chromosome ATAC loss)
         if early_stopping is not None:
-            if early_stopping(val_loss):
+            if early_stopping(early_stop_loss):
                 log.info(f"Early stopping at epoch {epoch + 1}")
                 break
 
-        # Best checkpoint saving
-        if save_best_checkpoints and (val_loss < best_loss) and (checkpoint_dir is not None):
-            best_loss = val_loss
+        # Best checkpoint saving based on test chromosome ATAC reconstruction (async to not block training)
+        if save_best_checkpoints and (test_chrom_metrics["atac_recon"] < best_loss) and (checkpoint_dir is not None):
+            best_loss = test_chrom_metrics["atac_recon"]
             best_path = Path(checkpoint_dir) / "best.pt"
             best_path.parent.mkdir(parents=True, exist_ok=True)
+            # Skip Enformer state dict - it's frozen and unchanged during train()
+            # Deep copy state dicts for async save (training continues modifying them)
             best_checkpoint = Checkpoint(
                 epoch=epoch,
-                vae_state_dict=vae.state_dict(),
-                tf2rnet_state_dict=tf2rnet.state_dict(),
-                enformer_state_dict=sequence_model.state_dict(),
-                optimizer_state_dict=optimizer_vae.state_dict(),
-                scheduler_state_dict=scheduler.state_dict() if scheduler is not None else None,
-                history=history,
+                vae_state_dict=copy.deepcopy(vae.state_dict()),
+                tf2rnet_state_dict=copy.deepcopy(tf2rnet.state_dict()),
+                enformer_state_dict=None,
+                optimizer_state_dict=copy.deepcopy(optimizer_vae.state_dict()),
+                scheduler_state_dict=copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
+                history=copy.deepcopy(history),
                 config=config,
-                adj_E1=adj_E1_cache,
+                adj_E1=adj_E1_cache.clone(),
+                adj_E1_test=adj_E1_test_cache.clone(),
                 best_loss=best_loss,
             )
-            best_checkpoint.save(best_path)
-            log.info(f"New best val loss: {val_loss:.6f} - saved to {best_path}")
+            _get_checkpoint_executor().submit(_save_checkpoint_async, best_checkpoint, best_path)
+            log.info(f"New best val_chrom/atac_recon: {test_chrom_metrics['atac_recon']:.6f} - saving to {best_path}")
 
-        # Periodic checkpointing
+        # Periodic checkpointing (async to not block training)
         if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = Path(checkpoint_dir) / f"epoch_{epoch + 1}.pt"
             checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            # Skip Enformer state dict - it's frozen and unchanged during train()
+            # Deep copy state dicts for async save (training continues modifying them)
             periodic_checkpoint = Checkpoint(
                 epoch=epoch,
-                vae_state_dict=vae.state_dict(),
-                tf2rnet_state_dict=tf2rnet.state_dict(),
-                enformer_state_dict=sequence_model.state_dict(),
-                optimizer_state_dict=optimizer_vae.state_dict(),
-                scheduler_state_dict=scheduler.state_dict() if scheduler is not None else None,
-                history=history,
+                vae_state_dict=copy.deepcopy(vae.state_dict()),
+                tf2rnet_state_dict=copy.deepcopy(tf2rnet.state_dict()),
+                enformer_state_dict=None,
+                optimizer_state_dict=copy.deepcopy(optimizer_vae.state_dict()),
+                scheduler_state_dict=copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
+                history=copy.deepcopy(history),
                 config=config,
-                adj_E1=adj_E1_cache,
+                adj_E1=adj_E1_cache.clone(),
+                adj_E1_test=adj_E1_test_cache.clone(),
                 best_loss=best_loss,
             )
-            periodic_checkpoint.save(checkpoint_path)
+            _get_checkpoint_executor().submit(_save_checkpoint_async, periodic_checkpoint, checkpoint_path)
+
+    # Wait for any pending async checkpoint saves to complete
+    if checkpoint_dir is not None:
+        executor = _get_checkpoint_executor()
+        executor.shutdown(wait=True)
+        # Reset the global executor for future use
+        global _checkpoint_executor
+        _checkpoint_executor = None
 
     # Close logger
     training_logger.close()
@@ -733,6 +931,7 @@ def finetune(
     save_best_checkpoints: bool | None = None,
     logger: str = "dict",
     log_dir: str = "./runs",
+    logger_kwargs: dict | None = None,
     num_workers: int = 0,
     config: FinetuneConfig | None = None,
 ) -> DeepSCENICModel:
@@ -770,8 +969,14 @@ def finetune(
         Logging backend: 'dict', 'tensorboard', 'wandb'.
     log_dir
         Directory for logs.
+    logger_kwargs
+        Additional keyword arguments passed to the logger backend. For wandb,
+        this can include 'project', 'name', 'tags', etc. The default wandb
+        project is 'deepscenic'.
     num_workers
-        Number of workers for data loading.
+        Number of workers for parallel data loading. Use "auto" (default) to
+        automatically detect optimal value based on CPU count, or 0 for main
+        process only.
     config
         Advanced configuration. Explicit parameters override config values.
 
@@ -807,7 +1012,10 @@ def finetune(
     finetune_config = final_config
 
     # Setup logging
-    training_logger = get_logger(logger, log_dir=log_dir)
+    _logger_kwargs = {"log_dir": log_dir}
+    if logger_kwargs:
+        _logger_kwargs.update(logger_kwargs)
+    training_logger = get_logger(logger, **_logger_kwargs)
     training_logger.log_hyperparams(finetune_config.to_dict())
 
     # Move model to device
@@ -872,7 +1080,7 @@ def finetune(
     for epoch in range(finetune_config.epochs):
         vae.train()
 
-        epoch_metrics = {"loss": 0.0, "rec_rna": 0.0, "e2_sparse": 0.0}
+        epoch_metrics = {"total": 0.0, "rna_recon": 0.0, "e2_l1": 0.0}
         n_batches_seen = 0
 
         pbar = tqdm(train_cell_loader, desc=f"Finetune {epoch + 1}/{epochs}")
@@ -906,9 +1114,9 @@ def finetune(
             optimizer.step()
 
             # Accumulate metrics
-            epoch_metrics["loss"] += total_loss.item()
-            epoch_metrics["rec_rna"] += loss_rec_rna.item()
-            epoch_metrics["e2_sparse"] += loss_e2_sparse.item()
+            epoch_metrics["total"] += total_loss.item()
+            epoch_metrics["rna_recon"] += loss_rec_rna.item()
+            epoch_metrics["e2_l1"] += loss_e2_sparse.item()
             n_batches_seen += 1
 
             pbar.set_postfix(loss=total_loss.item())
@@ -949,8 +1157,8 @@ def finetune(
                 n_val_batches += 1
 
         val_loss /= n_val_batches
-        history.log("test", {"loss": val_loss})
-        training_logger.log_metrics({"test/loss": val_loss}, step=epoch)
+        history.log("val", {"total": val_loss})
+        training_logger.log_metrics({"val/total": val_loss}, step=epoch)
 
         # Step scheduler
         scheduler.step(val_loss)
@@ -1027,6 +1235,7 @@ def pretrain(
     checkpoint_every: int = 10,
     logger: str = "dict",
     log_dir: str = "./runs",
+    logger_kwargs: dict | None = None,
     num_workers: int = 0,
     config: PretrainConfig | None = None,
 ) -> PretrainedModel:
@@ -1055,8 +1264,14 @@ def pretrain(
         Logging backend.
     log_dir
         Directory for logs.
+    logger_kwargs
+        Additional keyword arguments passed to the logger backend. For wandb,
+        this can include 'project', 'name', 'tags', etc. The default wandb
+        project is 'deepscenic'.
     num_workers
-        Number of workers for data loading.
+        Number of workers for parallel data loading. Use "auto" (default) to
+        automatically detect optimal value based on CPU count, or 0 for main
+        process only.
     config
         Advanced configuration.
 
@@ -1092,7 +1307,10 @@ def pretrain(
     pretrain_config = final_config
 
     # Setup logging
-    training_logger = get_logger(logger, log_dir=log_dir)
+    _logger_kwargs = {"log_dir": log_dir}
+    if logger_kwargs:
+        _logger_kwargs.update(logger_kwargs)
+    training_logger = get_logger(logger, **_logger_kwargs)
     training_logger.log_hyperparams(pretrain_config.to_dict())
 
     # Extract metadata from MuData
@@ -1171,8 +1389,8 @@ def pretrain(
 
         # Average epoch loss
         avg_loss = epoch_loss / n_batches
-        history.log("train", {"loss": avg_loss, "e1_sparse": avg_loss})
-        training_logger.log_metrics({"train/loss": avg_loss}, step=epoch)
+        history.log("train", {"total": avg_loss, "e1_l1": avg_loss})
+        training_logger.log_metrics({"train/total": avg_loss}, step=epoch)
 
         # Checkpointing
         if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:

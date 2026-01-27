@@ -196,10 +196,11 @@ def get_logger(
     elif backend == "tensorboard":
         return TensorboardLogger(kwargs.get("log_dir", "./runs"))
     elif backend == "wandb":
-        return WandbLogger(
-            project=kwargs.get("project", "deepscenic"),
-            name=kwargs.get("name"),
-        )
+        project = kwargs.pop("project", "deepscenic")
+        name = kwargs.pop("name", None)
+        # Remove log_dir as it's not used by wandb
+        kwargs.pop("log_dir", None)
+        return WandbLogger(project=project, name=name, **kwargs)
     elif backend == "none":
         # Null logger that does nothing
         return DictLogger()  # Use dict logger but ignore results
