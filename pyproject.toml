@@ -67,7 +67,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-enformer = ["enformer-pytorch>=0.8"]
+enformer = [
+    "enformer-pytorch>=0.8",
+    "transformers>=4.30,<4.38",  # Pin for all_tied_weights_keys compatibility
+]
 sequence = [
     "logomaker>=0.8",
 ]
@@ -92,9 +95,11 @@ doc = [
     "sphinxcontrib-bibtex>=1",
     "sphinxext-opengraph",
     "enformer-pytorch>=0.8",
+    "transformers>=4.30,<4.38",  # Pin for all_tied_weights_keys compatibility
 ]
 test = [
     "enformer-pytorch>=0.8",
+    "transformers>=4.30,<4.38",  # Pin for all_tied_weights_keys compatibility
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "coverage>=7.0",
