@@ -61,6 +61,9 @@ dependencies = [
     "h5py>=3.8",
     "networkx>=3.0",
 
+    # Metrics
+    "torchmetrics>=1.0",
+
     # Genome sequence handling
     "pyfaidx>=0.9",
     "tangermeme>=1.0.0",
