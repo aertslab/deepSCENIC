@@ -205,10 +205,10 @@ def mock_adj_E1():
 def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
     """Create a complete DeepSCENICModel for testing."""
     from deepscenic.tl._model import DeepSCENICModel
-    from deepscenic.tl._training_state import TrainingConfig, TrainingHistory
+    from deepscenic.tl._training_state import ModelConfig, TrainingHistory
 
     d = MINIMAL_DIMS
-    config = TrainingConfig(epochs=10, batch_size=d["n_cells"])
+    config = ModelConfig(n_hidden=128)
 
     # Create sample history
     history = TrainingHistory()
@@ -274,10 +274,14 @@ def mock_mdata_for_model():
     rna = ad.AnnData(X=np.random.rand(n_cells, d["n_genes"]).astype(np.float32))
     rna.var_names = [f"GENE{i}" for i in range(d["n_genes"])]
     rna.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+    # Add feature split: first half train, second half test
+    rna.var["split"] = ["train"] * (d["n_genes"] // 2) + ["test"] * (d["n_genes"] - d["n_genes"] // 2)
 
     atac = ad.AnnData(X=np.random.rand(n_cells, d["n_regions"]).astype(np.float32))
     atac.var_names = [f"chr1:{i * 100}-{i * 100 + 100}" for i in range(d["n_regions"])]
     atac.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+    # Add feature split: first half train, second half test
+    atac.var["split"] = ["train"] * (d["n_regions"] // 2) + ["test"] * (d["n_regions"] - d["n_regions"] // 2)
 
     mdata = md.MuData({"rna": rna, "atac": atac})
     mdata.obs["split"] = ["train"] * (n_cells // 2) + ["test"] * (n_cells // 2)
