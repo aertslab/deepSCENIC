@@ -940,9 +940,9 @@ def build_ppi_network(obj, net, biogrid_flag=False, human_flag=False):
 
     # Get expression features for all genes
     node_feature = sc.get.obs_df(obj, all_genes).T
-    node_feature["non_zero"] = node_feature.apply(lambda x: x.astype(bool).sum(), axis=1)
-    node_feature = node_feature.loc[node_feature.non_zero > node_feature.shape[1] * EXPRESSION_CUTOFF]
-    node_feature.drop("non_zero", axis=1, inplace=True)
+    # node_feature["non_zero"] = node_feature.apply(lambda x: x.astype(bool).sum(), axis=1)
+    # node_feature = node_feature.loc[node_feature.non_zero > node_feature.shape[1] * EXPRESSION_CUTOFF]
+    # node_feature.drop("non_zero", axis=1, inplace=True)
 
     # Filter network edges: no self loops, only include nodes in node_feature
     net = net.loc[net.Source != net.Target]

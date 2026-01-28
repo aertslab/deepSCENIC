@@ -410,11 +410,13 @@ class deepSCENIC:
             original_matrix_tfs_t = original_matrix_t[:, vae.TFs_idx]
             # PPI network pass
             x_rna_ppi_l = []
-            for i in range(original_matrix_t.shape[0]): 
+            for i in range(original_matrix_t.shape[0]):                 
                 x_rna_ppi = Data(x=original_matrix_t[i, vae.ppi_genes_idx].unsqueeze(-1), edge_index=vae.ppi_edge_idx).to(self.opt.device1)
-                x_rna_ppi = vae.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+                x_rna_ppi.node_ids = vae.node_ids
+                x_rna_ppi = vae.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index, x_rna_ppi.node_ids)
+
                 x_rna_ppi = x_rna_ppi.view(-1, len(vae.ppi_genes_idx))
-                x_rna_ppi = torch.sigmoid(x_rna_ppi[:, vae.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+                x_rna_ppi = torch.relu(x_rna_ppi[:, vae.ppi_tfs_idx_keys]) # TFs in node_features ppi output
                 x_rna_ppi = x_rna_ppi[:, vae.ppi_tfs_idx_values]
                 x_rna_ppi_l.append(x_rna_ppi)
             x_rna_ppi = torch.stack(x_rna_ppi_l, dim=0).squeeze(1)
@@ -434,16 +436,19 @@ class deepSCENIC:
             if len(perturbation.keys())>0:
                 for gene in perturbation.keys():
                     perturbed_matrix.loc[:, gene] = perturbation[gene]    
-            for i in tqdm(range(n_iter)):                      
+            for i in tqdm(range(n_iter)): 
+                for gene in perturbation.keys():
+                    perturbed_matrix.loc[:, gene] = perturbation[gene]                       
                 perturbed_matrix_t = torch.tensor(perturbed_matrix.values).to(torch.float).to(self.opt.device)
                 perturbed_matrix_tfs_t = perturbed_matrix_t[:, vae.TFs_idx]                      
                 # PPI network pass
                 x_rna_ppi_l = []
                 for i in range(perturbed_matrix_t.shape[0]): 
                     x_rna_ppi = Data(x=perturbed_matrix_t[i, vae.ppi_genes_idx].unsqueeze(-1), edge_index=vae.ppi_edge_idx).to(self.opt.device1)
-                    x_rna_ppi = vae.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+                    x_rna_ppi.node_ids = vae.node_ids
+                    x_rna_ppi = vae.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index, x_rna_ppi.node_ids)
                     x_rna_ppi = x_rna_ppi.view(-1, len(vae.ppi_genes_idx))
-                    x_rna_ppi = torch.sigmoid(x_rna_ppi[:, vae.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+                    x_rna_ppi = torch.relu(x_rna_ppi[:, vae.ppi_tfs_idx_keys]) # TFs in node_features ppi output
                     x_rna_ppi = x_rna_ppi[:, vae.ppi_tfs_idx_values]
                     x_rna_ppi_l.append(x_rna_ppi)
                 x_rna_ppi = torch.stack(x_rna_ppi_l, dim=0).squeeze(1)
@@ -507,7 +512,7 @@ class deepSCENIC:
                 batch = Batch.from_data_list(data_list).to(device1)
                 ppi_out = vae.PPInet(batch.x, batch.edge_index)
                 ppi_out = ppi_out.view(-1, len(ppi_genes_idx))
-                ppi_out = torch.sigmoid(ppi_out[:, ppi_tfs_idx_keys])
+                ppi_out = torch.relu(ppi_out[:, ppi_tfs_idx_keys])
                 ppi_out = ppi_out[:, ppi_tfs_idx_values].to(device)
                 outs.append(ppi_out)
             return torch.cat(outs, dim=0)
@@ -519,7 +524,7 @@ class deepSCENIC:
 
             original_matrix_t = torch.tensor(original_matrix_np, dtype=torch.float, device=device)
             x_rna_ppi = batch_ppi_pass(original_matrix_t)
-            x_rna_tfs = original_matrix_t[:, tfs_idx] * x_rna_ppi
+            x_rna_tfs = x_rna_ppi
             z_tf_orig = vae.inference_rna(x_rna_tfs.reshape(x_rna_tfs.size(0), -1, 1))['mean']
             Wrna = adj_E1 @ adj_E2
             Wrna_ct = z_tf_orig @ Wrna
@@ -599,7 +604,11 @@ class deepSCENIC:
 
         # Initialize VAE
         vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float().to(self.opt.device)
-        vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
+        # vae.load_state_dict(torch.load(vae_model_path,  map_location=torch.device(self.opt.device))['model_state_dict'])
+        vae_d = torch.load(vae_model_path, map_location=torch.device(self.opt.device))['model_state_dict']
+        vae_d = vae_d.get("state_dict", vae_d)
+        vae_d = { (k if k.startswith("module.") else k): v for k, v in vae_d.items() if not k.lstrip("module.").startswith("PPInet.") }
+        vae.load_state_dict(vae_d, strict=False)
         vae.adj_E2 = nn.Parameter(adj_E2)
         with torch.no_grad(): 
             vae.eval()
@@ -954,7 +963,9 @@ class deepSCENIC:
             vae = VAE(TFs_idx, genes_idx, ppi_tfs_idx, ppi_genes_idx, ppi_edge_index, r2g_dist_coo, 1, self.opt.n_hidden, opt=self.opt).float()
             if os.path.exists(self.opt.load_model + 'model.pth'):
                 vae_d = torch.load(self.opt.load_model + 'model.pth', map_location=torch.device(self.opt.device))['model_state_dict']
-                vae.load_state_dict(vae_d)
+                vae_d = vae_d.get("state_dict", vae_d)
+                vae_d = { (k if k.startswith("module.") else k): v for k, v in vae_d.items() if not k.lstrip("module.").startswith("PPInet.") }
+                vae.load_state_dict(vae_d, strict=False)
                 vae = vae.to(self.opt.device)
                 vae.PPInet = vae.PPInet.to(self.opt.device1)
                 print("loaded weights for vae")
@@ -997,20 +1008,25 @@ class deepSCENIC:
             tf2rNet_func_encoder.train()            
 
             if epoch >= self.opt.warmup_grn:
-                # if warmup vae, freeze layers of tf2r
+                # PPI training phase
                 for param in tf2rNet.parameters():
                     param.requires_grad = False
                 for param in tf2rNet_func_encoder.parameters():
                     param.requires_grad = False
                 for param in vae.parameters():
+                    param.requires_grad = False
+                for param in vae.PPInet.parameters():
                     param.requires_grad = True
-                # for param in vae.PPInet.parameters():
-                #     param.requires_grad = True
+                print("Training PPI net")
             else:
                 for param in tf2rNet.parameters():
                     param.requires_grad = True
                 for param in tf2rNet_func_encoder.parameters():
                     param.requires_grad = True
+                for param in vae.parameters():
+                    param.requires_grad = True
+                for param in vae.PPInet.parameters():
+                    param.requires_grad = False
             
             loss_l, loss_rec_rna_l, loss_rec_atac_l, loss_gauss_rna_l,E1_sparse_l, E2_sparse_l, ppi_loss_l, f1_score_l = [], [], [], [], [], [], [], []
             for i, data_batch in tqdm(enumerate(train_dataloader['dataloader'], 0), unit="batch", total=len(train_dataloader['dataloader'])):
@@ -1061,13 +1077,14 @@ class deepSCENIC:
                 E1_sparse = (adj_E1[seq_data_batch_idx, :].abs().mean()) * self.opt.alpha
 
                 if epoch >= self.opt.warmup_grn:
-                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E1_sparse + E2_sparse #+ ppi_loss
+                    # PPI training phase
+                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac #+ E2_sparse + E1_sparse
                 else:
-                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E2_sparse
+                    loss = loss_rec_rna + loss_gauss_rna + loss_rec_atac + E2_sparse + E1_sparse
 
                 loss.backward()
                 optimizer.step()
-                # Reset optimizers
+                # Reset optimizers  
                 optimizer.zero_grad(True)         
 
                 loss_l.append(loss.detach().item())

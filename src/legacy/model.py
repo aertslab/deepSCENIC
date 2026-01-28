@@ -179,13 +179,26 @@ class GenerativeNetATAC(nn.Module):
         return output
 
 class PPIgnn(torch.nn.Module):
-    def __init__(self, in_channels, hidden_channels, out_channels, heads=2):
+    def __init__(self, in_channels, hidden_channels, out_channels, num_nodes, id_dim, heads=2):
         super(PPIgnn, self).__init__()
+        in_channels = in_channels + id_dim
+        self.id_emb = nn.Embedding(num_nodes, id_dim)
         self.conv1 = GATConv(in_channels, hidden_channels, heads=heads, concat=True, add_self_loops=True)
         self.conv2 = GATConv(hidden_channels * heads, hidden_channels, heads=heads, concat=True, add_self_loops=True)
         self.conv3 = GATConv(hidden_channels * heads, out_channels, heads=1, concat=False,  add_self_loops=True)
+        self.node_dropout = 0.3
 
-    def forward(self, x, edge_index, edge_weight=None):
+    def forward(self, x, edge_index, node_id, edge_weight=None):
+        if self.training and (self.node_dropout > 0.0):
+            # Create mask: drop nodes with probability node_dropout
+            # mask is True for nodes *to keep*
+            keep_mask = torch.rand(x.size(0), device=x.device) >= self.node_dropout
+            # Convert to float and broadcast
+            mask = keep_mask.to(dtype=x.dtype).unsqueeze(-1)  # shape [num_nodes, 1]
+            x = x * mask
+
+        id_feat = self.id_emb(node_id)    
+        x = torch.cat([x, id_feat], dim=-1)
         x = F.elu(self.conv1(x, edge_index, edge_weight))
         x = F.elu(self.conv2(x, edge_index, edge_weight))
         x = self.conv3(x, edge_index, edge_weight)
@@ -204,14 +217,14 @@ class VAE(nn.Module):
         self.adj_E2 = nn.Parameter(torch.zeros(r2g_dist_coo.size, device=opt.device, requires_grad=True) + self.eps)
 
         self.ppi_edge_idx = ppi_edge_idx.to(opt.device)
-        self.PPInet = PPIgnn(in_channels=1, hidden_channels=z_dim, out_channels=1, heads=2)
-
-        # self.adj_E2 = nn.Parameter(torch.randn(r2g_dist_coo.size, device=dev, requires_grad=True))
         self.TFs_idx = torch.tensor(TFs_idx)
         self.genes_idx = torch.tensor(genes_idx)
         self.ppi_tfs_idx_keys = torch.tensor(list(ppi_tfs_idx.keys()))
         self.ppi_tfs_idx_values = torch.tensor(list(ppi_tfs_idx.values()))
         self.ppi_genes_idx = torch.tensor(ppi_genes_idx)
+        self.n_ppi_nodes = len(self.ppi_genes_idx)
+        self.node_ids = torch.arange(self.n_ppi_nodes, dtype=torch.long, device=opt.device1)
+        self.PPInet = PPIgnn(in_channels=1, hidden_channels=z_dim, out_channels=1, num_nodes=self.n_ppi_nodes, id_dim=32, heads=2)        
 
         nonLinear = nn.Tanh()
         if opt.device!='cpu':
@@ -247,16 +260,18 @@ class VAE(nn.Module):
         x_rna_tfs = x_rna[:, self.TFs_idx]
 
         if epoch >= self.opt.warmup_grn:
-            # PPI network pass
+            num_cells, num_genes = x_rna.shape             
             data_list = []
             for i in range(num_cells): 
-                data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
+                expr = x_rna[i, self.ppi_genes_idx].unsqueeze(-1)  # shape (n_nodes, 1)
+                data = Data(x=expr, edge_index=self.ppi_edge_idx)
+                data.node_ids = self.node_ids                       # attach your custom attribute
+                data_list.append(data.to(self.opt.device1))
             x_rna_ppi = Batch.from_data_list(data_list)
-            x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+            x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index, x_rna_ppi.node_ids)
             x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
-            x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+            x_rna_ppi = torch.relu(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
             x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
-
             x_rna_tfs = x_rna_tfs * x_rna_ppi
         else:
             x_rna_ppi = torch.ones_like(x_rna_tfs).to(self.opt.device)
@@ -319,14 +334,17 @@ class VAE(nn.Module):
 
         # PPI network pass
         if epoch >= self.opt.warmup_grn:
-            num_cells, num_genes = x_rna.shape 
+            num_cells, num_genes = x_rna.shape             
             data_list = []
             for i in range(num_cells): 
-                data_list.append(Data(x=x_rna[i, self.ppi_genes_idx].unsqueeze(-1), edge_index=self.ppi_edge_idx).to(self.opt.device1))
+                expr = x_rna[i, self.ppi_genes_idx].unsqueeze(-1)  # shape (n_nodes, 1)
+                data = Data(x=expr, edge_index=self.ppi_edge_idx)
+                data.node_ids = self.node_ids                       # attach your custom attribute
+                data_list.append(data.to(self.opt.device1))
             x_rna_ppi = Batch.from_data_list(data_list)
-            x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index)
+            x_rna_ppi = self.PPInet(x_rna_ppi.x, x_rna_ppi.edge_index, x_rna_ppi.node_ids)
             x_rna_ppi = x_rna_ppi.view(-1, len(self.ppi_genes_idx))
-            x_rna_ppi = torch.sigmoid(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
+            x_rna_ppi = torch.relu(x_rna_ppi[:, self.ppi_tfs_idx_keys]) # TFs in node_features ppi output
             x_rna_ppi = x_rna_ppi[:, self.ppi_tfs_idx_values].to(self.opt.device)   
             x_rna_tfs = x_rna_tfs * x_rna_ppi
         
