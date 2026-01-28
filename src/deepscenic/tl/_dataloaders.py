@@ -80,6 +80,7 @@ def build_cell_dataloader(
     balance_class: bool = False,
     class_key: str | None = None,
     num_workers: int = 0,
+    feature_split: str | None = None,
 ) -> DataLoader:
     """Build dataloader for cell batches.
 
@@ -88,7 +89,7 @@ def build_cell_dataloader(
     mdata
         MuData with rna and atac modalities.
     split
-        'train' or 'test'.
+        Cell split: 'train' or 'test'.
     batch_size
         Cells per batch.
     shuffle
@@ -99,18 +100,46 @@ def build_cell_dataloader(
         Column in obs for class balancing.
     num_workers
         Number of data loading workers.
+    feature_split
+        Feature split: 'train', 'test', or None (all features).
+        When specified, filters genes/regions by var['split'].
 
     Returns
     -------
     DataLoader
         Cell dataloader.
     """
-    # Get split mask
-    mask = mdata.obs["split"] == split
+    # Get cell split mask
+    cell_mask = mdata.obs["split"] == split
 
-    # Extract data
-    rna = mdata.mod["rna"][mask].X
-    atac = mdata.mod["atac"][mask].X
+    # Extract data with optional feature filtering
+    rna_adata = mdata.mod["rna"][cell_mask]
+    atac_adata = mdata.mod["atac"][cell_mask]
+
+    if feature_split is not None:
+        # Filter to features matching the specified split
+        # For RNA, include 'both' split (TFs) along with the requested split
+        if "split" not in rna_adata.var.columns:
+            raise ValueError(
+                f"Cannot filter by feature_split='{feature_split}': "
+                "RNA modality is missing 'split' column in var. "
+                "Run ds.pp.split_features_by_chromosome() first."
+            )
+        if "split" not in atac_adata.var.columns:
+            raise ValueError(
+                f"Cannot filter by feature_split='{feature_split}': "
+                "ATAC modality is missing 'split' column in var. "
+                "Run ds.pp.split_features_by_chromosome() first."
+            )
+
+        rna_var_mask = rna_adata.var["split"].isin([feature_split, "both"])
+        atac_var_mask = atac_adata.var["split"] == feature_split
+
+        rna = rna_adata[:, rna_var_mask].X
+        atac = atac_adata[:, atac_var_mask].X
+    else:
+        rna = rna_adata.X
+        atac = atac_adata.X
 
     dataset = CellDataset(rna, atac)
 
@@ -119,7 +148,7 @@ def build_cell_dataloader(
     if balance_class and class_key is not None:
         from sklearn.utils.class_weight import compute_class_weight
 
-        classes = mdata.obs.loc[mask, class_key].values
+        classes = mdata.obs.loc[cell_mask, class_key].values
         unique_classes = np.unique(classes)
         weights = compute_class_weight("balanced", classes=unique_classes, y=classes)
         sample_weights = [weights[np.where(unique_classes == c)[0][0]] for c in classes]

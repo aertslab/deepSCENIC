@@ -13,7 +13,7 @@ import pandas as pd
 import torch
 from torch import nn
 
-from ._training_state import PretrainConfig, TrainingConfig, TrainingHistory
+from ._training_state import ModelConfig, TrainingHistory
 
 log = logging.getLogger("deepscenic.tl")
 
@@ -21,6 +21,20 @@ if TYPE_CHECKING:
     from mudata import MuData
 
     from ..models import DeepSCENICVAE, MotifNet
+
+
+@dataclass
+class TrainingState:
+    """Training state for resuming training.
+
+    Stored inside DeepSCENICModel when saved with include_training_state=True.
+    """
+
+    optimizer_state_dict: dict
+    scheduler_state_dict: dict | None
+    epoch: int
+    best_loss: float
+    adj_E1_test: torch.Tensor | None = None
 
 
 @dataclass
@@ -41,7 +55,7 @@ class DeepSCENICModel:
     adj_E1
         Cached E1 matrix (n_regions, n_tfs).
     config
-        Training configuration used.
+        Model configuration.
     tf_names
         TF names in order.
     gene_names
@@ -51,6 +65,9 @@ class DeepSCENICModel:
     history
         Training history with loss metrics per epoch. Available when model was
         just trained or loaded from a file that includes history.
+    training_state
+        Training state for resuming (optimizer, scheduler, epoch, best_loss).
+        Only present when loaded from a checkpoint saved with include_training_state=True.
 
     Examples
     --------
@@ -64,13 +81,24 @@ class DeepSCENICModel:
     tf2rnet: MotifNet
     enformer: nn.Module
     adj_E1: torch.Tensor
-    config: TrainingConfig
+    config: ModelConfig
     tf_names: list[str]
     gene_names: list[str]
     region_names: list[str]
     history: TrainingHistory | None = None
+    training_state: TrainingState | None = None
 
-    def save(self, path: str | Path) -> None:
+    def save(
+        self,
+        path: str | Path,
+        *,
+        include_training_state: bool = False,
+        optimizer: torch.optim.Optimizer | None = None,
+        scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
+        epoch: int | None = None,
+        best_loss: float | None = None,
+        adj_E1_test: torch.Tensor | None = None,
+    ) -> None:
         """
         Save model to file.
 
@@ -81,6 +109,36 @@ class DeepSCENICModel:
         ----------
         path
             Output file path (.pt)
+        include_training_state
+            If True, include optimizer/scheduler state for resuming training.
+            Requires optimizer parameter to be provided.
+        optimizer
+            Optimizer to save state from. Required if include_training_state=True.
+        scheduler
+            Optional LR scheduler to save state from.
+        epoch
+            Current epoch number (for resumption).
+        best_loss
+            Best validation loss seen so far (for tracking).
+        adj_E1_test
+            Cached E1 matrix for test regions (optional).
+
+        Examples
+        --------
+        Save for inference only:
+
+        >>> model.save("model.pt")
+
+        Save with training state for resumption:
+
+        >>> model.save(
+        ...     "checkpoint.pt",
+        ...     include_training_state=True,
+        ...     optimizer=optimizer,
+        ...     scheduler=scheduler,
+        ...     epoch=current_epoch,
+        ...     best_loss=best_val_loss,
+        ... )
         """
         # Detect if sequence model is Enformer or custom
         is_custom_sequence_model = type(self.enformer).__name__ != "Enformer"
@@ -121,6 +179,16 @@ class DeepSCENICModel:
         if self.history is not None:
             data["history"] = self.history.to_dict()
 
+        # Optional training state for resumption
+        if include_training_state:
+            if optimizer is None:
+                raise ValueError("optimizer required when include_training_state=True")
+            data["optimizer_state_dict"] = optimizer.state_dict()
+            data["scheduler_state_dict"] = scheduler.state_dict() if scheduler else None
+            data["epoch"] = epoch
+            data["best_loss"] = best_loss
+            data["adj_E1_test"] = adj_E1_test
+
         torch.save(data, path)
 
         log.info(f"Saved model to {path}")
@@ -144,35 +212,35 @@ class DeepSCENICModel:
         sequence_model
             Custom sequence model instance. Required when loading a model that
             was trained with a custom sequence model. The model architecture
-            must match what was used during training.
+            must match what was used during training. For default Enformer models,
+            leave as None - Enformer will be instantiated and weights loaded.
 
         Returns
         -------
         DeepSCENICModel
-            Loaded model ready for inference
-
-        Notes
-        -----
-        If the saved model used a custom sequence model (not Enformer), you must
-        provide a matching model instance via the ``sequence_model`` parameter.
-        The weights will be loaded from the checkpoint.
+            Loaded model ready for inference. If the file was saved with
+            include_training_state=True, model.training_state will contain
+            optimizer/scheduler state for resuming training.
 
         Examples
         --------
-        Loading a model trained with default Enformer:
+        Loading a model for inference:
 
         >>> model = DeepSCENICModel.load("model.pt")
-        Loading a model trained with custom sequence model:
 
-        >>> custom = MySequenceModel()  # Same architecture as training
-        >>> model = DeepSCENICModel.load("model.pt", sequence_model=custom)
+        Loading a checkpoint and resuming training:
+
+        >>> model = DeepSCENICModel.load("checkpoint.pt", device="cuda")
+        >>> if model.training_state:
+        ...     optimizer.load_state_dict(model.training_state.optimizer_state_dict)
+        ...     start_epoch = model.training_state.epoch + 1
         """
         from ..models import DeepSCENICVAE, MotifNet
 
-        data = torch.load(path, map_location=device)
+        data = torch.load(path, map_location=device, weights_only=False)
 
-        # Reconstruct config
-        config = TrainingConfig.from_dict(data["config"])
+        # Reconstruct config (handles both old TrainingConfig and new ModelConfig)
+        config = ModelConfig.from_dict(data["config"])
 
         # Reconstruct VAE
         vae = DeepSCENICVAE(
@@ -216,7 +284,7 @@ class DeepSCENICModel:
                 )
             seq_model = sequence_model
         else:
-            # Default: load Enformer
+            # Default: instantiate Enformer (weights will be loaded from saved state)
             from enformer_pytorch import Enformer
 
             seq_model = Enformer.from_pretrained(
@@ -235,6 +303,21 @@ class DeepSCENICModel:
         if "history" in data:
             history = TrainingHistory.from_dict(data["history"])
 
+        # Restore training state if present
+        training_state = None
+        if "optimizer_state_dict" in data:
+            adj_E1_test = data.get("adj_E1_test")
+            if adj_E1_test is not None:
+                adj_E1_test = adj_E1_test.to(device)
+            training_state = TrainingState(
+                optimizer_state_dict=data["optimizer_state_dict"],
+                scheduler_state_dict=data.get("scheduler_state_dict"),
+                epoch=data.get("epoch", 0),
+                best_loss=data.get("best_loss", float("inf")),
+                adj_E1_test=adj_E1_test,
+            )
+            log.info(f"  Training state: epoch={training_state.epoch}, best_loss={training_state.best_loss:.6f}")
+
         return cls(
             vae=vae,
             tf2rnet=tf2rnet,
@@ -245,6 +328,7 @@ class DeepSCENICModel:
             gene_names=data["gene_names"],
             region_names=data["region_names"],
             history=history,
+            training_state=training_state,
         )
 
     def to(self, device: str | torch.device) -> DeepSCENICModel:
@@ -270,194 +354,6 @@ class DeepSCENICModel:
         return self
 
 
-@dataclass
-class PretrainedModel:
-    """Container for pretrained sequence models.
-
-    This is the object returned by `ds.tl.pretrain()` containing pretrained
-    TF2rNet and sequence models with a cached E1 matrix. It can be passed
-    to `ds.tl.train()` to initialize the sequence models.
-
-    Attributes
-    ----------
-    tf2rnet
-        Pretrained MotifNet model.
-    enformer
-        Pretrained sequence embedding model (Enformer or custom nn.Module).
-    adj_E1
-        Cached E1 matrix (n_regions, n_tfs).
-    config
-        Pretraining configuration used.
-    tf_names
-        TF names in order.
-    region_names
-        Region names in order.
-
-    Examples
-    --------
-    >>> pretrained = ds.tl.pretrain(mdata, epochs=100)
-    >>> pretrained.save("pretrained.pt")
-    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")
-    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)
-    """
-
-    tf2rnet: MotifNet
-    enformer: nn.Module
-    adj_E1: torch.Tensor
-    config: PretrainConfig
-    tf_names: list[str]
-    region_names: list[str]
-
-    def save(self, path: str | Path) -> None:
-        """Save pretrained model to file.
-
-        Parameters
-        ----------
-        path
-            Output file path (.pt).
-        """
-        is_custom_sequence_model = type(self.enformer).__name__ != "Enformer"
-
-        torch.save(
-            {
-                "tf2rnet_state_dict": self.tf2rnet.state_dict(),
-                "enformer_state_dict": self.enformer.state_dict(),
-                "adj_E1": self.adj_E1,
-                "config": self.config.to_dict(),
-                "tf_names": self.tf_names,
-                "region_names": self.region_names,
-                "n_tfs": self.tf2rnet.n_tfs,
-                "bottleneck_size": self.config.bottleneck_size,
-                "emb_len": self.config.emb_len,
-                "is_custom_sequence_model": is_custom_sequence_model,
-            },
-            path,
-        )
-
-        log.info(f"Saved pretrained model to {path}")
-
-    @classmethod
-    def load(
-        cls,
-        path: str | Path,
-        device: str = "cpu",
-        sequence_model: nn.Module | None = None,
-    ) -> PretrainedModel:
-        """Load pretrained model from file.
-
-        Parameters
-        ----------
-        path
-            Model file path (.pt).
-        device
-            Device to load model to.
-        sequence_model
-            Custom sequence model instance. Required when loading a model that
-            was pretrained with a custom sequence model.
-
-        Returns
-        -------
-        PretrainedModel
-            Loaded pretrained model.
-        """
-        from ..models import MotifNet
-
-        data = torch.load(path, map_location=device)
-        config = PretrainConfig.from_dict(data["config"])
-
-        # Reconstruct MotifNet
-        tf2rnet = MotifNet(
-            n_tfs=data["n_tfs"],
-            bottleneck_size=data["bottleneck_size"],
-            emb_len=data["emb_len"],
-        )
-        tf2rnet.load_state_dict(data["tf2rnet_state_dict"])
-        tf2rnet.to(device)
-        tf2rnet.eval()
-
-        # Reconstruct sequence model
-        is_custom = data.get("is_custom_sequence_model", False)
-        if is_custom:
-            if sequence_model is None:
-                raise ValueError(
-                    "This model was pretrained with a custom sequence model. "
-                    "You must provide the model instance via sequence_model parameter."
-                )
-            seq_model = sequence_model
-        else:
-            # Default: load Enformer
-            from enformer_pytorch import Enformer
-
-            seq_model = Enformer.from_pretrained(
-                "EleutherAI/enformer-official-rough",
-                target_length=-1,
-            )
-
-        seq_model.load_state_dict(data["enformer_state_dict"])
-        seq_model.to(device)
-        seq_model.eval()
-
-        log.info(f"Loaded pretrained model from {path}")
-
-        return cls(
-            tf2rnet=tf2rnet,
-            enformer=seq_model,
-            adj_E1=data["adj_E1"].to(device),
-            config=config,
-            tf_names=data["tf_names"],
-            region_names=data["region_names"],
-        )
-
-    def to(self, device: str | torch.device) -> PretrainedModel:
-        """Move model to device."""
-        self.tf2rnet.to(device)
-        self.enformer.to(device)
-        self.adj_E1 = self.adj_E1.to(device)
-        return self
-
-    def eval(self) -> PretrainedModel:
-        """Set all components to eval mode."""
-        self.tf2rnet.eval()
-        self.enformer.eval()
-        return self
-
-    def train_mode(self) -> PretrainedModel:
-        """Set all components to train mode."""
-        self.tf2rnet.train()
-        self.enformer.train()
-        return self
-
-
-def load_pretrained(
-    path: str | Path,
-    device: str = "cpu",
-    sequence_model: nn.Module | None = None,
-) -> PretrainedModel:
-    """Load a pretrained sequence model.
-
-    Parameters
-    ----------
-    path
-        Path to saved pretrained model file (.pt).
-    device
-        Device to load model to.
-    sequence_model
-        Custom sequence model instance. Required when loading a model that
-        was pretrained with a custom sequence model.
-
-    Returns
-    -------
-    PretrainedModel
-        Loaded pretrained model ready to use with ds.tl.train().
-
-    Examples
-    --------
-    >>> pretrained = ds.tl.load_pretrained("pretrained.pt")
-    >>> model = ds.tl.train(mdata, pretrained_model=pretrained)
-    """
-    return PretrainedModel.load(path, device=device, sequence_model=sequence_model)
-
-
 def load_model(
     path: str | Path,
     device: str = "cpu",
@@ -465,6 +361,11 @@ def load_model(
 ) -> DeepSCENICModel:
     """
     Load a trained deepSCENIC model.
+
+    This is the unified loading function for both inference-only models and
+    checkpoints with training state. If the file was saved with
+    include_training_state=True, the model.training_state attribute will
+    contain optimizer/scheduler state for resuming training.
 
     Parameters
     ----------
@@ -479,206 +380,23 @@ def load_model(
     Returns
     -------
     DeepSCENICModel
-        Loaded model ready for inference
-    """
-    return DeepSCENICModel.load(path, device=device, sequence_model=sequence_model)
-
-
-def load_model_from_checkpoint(
-    checkpoint_path: str | Path,
-    mdata: MuData,
-    *,
-    sequence_model_path: str | Path | None = None,
-    device: str = "cpu",
-    sequence_model: nn.Module | None = None,
-) -> DeepSCENICModel:
-    """
-    Load a model from a training checkpoint for inference.
-
-    Use this when training was interrupted and you only have checkpoints.
-    Requires the original MuData to reconstruct model metadata and architecture.
-
-    Parameters
-    ----------
-    checkpoint_path
-        Path to checkpoint file (e.g., checkpoint_dir/best.pt or checkpoint_dir/epoch_10.pt)
-    mdata
-        Original MuData used for training. Required to extract metadata
-        (gene names, TF names, region names) and architecture parameters.
-    sequence_model_path
-        Path to sequence_model.pt file containing Enformer/TF2rNet state.
-        If None, looks in same directory as checkpoint.
-    device
-        Device to load model to
-    sequence_model
-        Custom sequence model instance. Required if training used a custom
-        sequence model instead of Enformer.
-
-    Returns
-    -------
-    DeepSCENICModel
-        Reconstructed model ready for inference
+        Loaded model ready for inference. Check model.training_state for
+        resumption info if loading a checkpoint.
 
     Examples
     --------
-    Loading from an interrupted training run:
+    Load for inference:
 
-    >>> model = ds.tl.load_model_from_checkpoint(
-    ...     "checkpoints/best.pt",
-    ...     mdata,  # Original training data
-    ... )
-    >>> model.save("recovered_model.pt")  # Save as full model
+    >>> model = ds.tl.load_model("model.pt")
 
-    With explicit sequence model path:
+    Load checkpoint and resume training:
 
-    >>> model = ds.tl.load_model_from_checkpoint(
-    ...     "checkpoints/epoch_50.pt",
-    ...     mdata,
-    ...     sequence_model_path="checkpoints/sequence_model.pt",
-    ... )
+    >>> model = ds.tl.load_model("checkpoint.pt", device="cuda")
+    >>> if model.training_state:
+    ...     optimizer.load_state_dict(model.training_state.optimizer_state_dict)
+    ...     start_epoch = model.training_state.epoch + 1
     """
-    import numpy as np
-
-    from ..models import DeepSCENICVAE, MotifNet
-    from ._training_state import Checkpoint
-
-    checkpoint_path = Path(checkpoint_path)
-    checkpoint = Checkpoint.load(checkpoint_path, map_location=device)
-    config = checkpoint.config
-
-    # Extract metadata from mdata (same as train() does)
-    rna = mdata.mod["rna"]
-    tf_mask = rna.var["is_tf"]
-    tf_names = rna.var_names[tf_mask].tolist()
-    gene_names = list(rna.var_names)
-    region_names = list(mdata.mod["atac"].var_names)
-
-    n_tfs = len(tf_names)
-    n_genes = len(gene_names)
-    n_regions = len(region_names)
-
-    # Compute TF indices from is_tf mask
-    tf_indices = torch.tensor(np.where(tf_mask)[0])
-
-    # Compute gene_indices for reconstruction loss
-    gene_split = rna.var["split"]
-    train_gene_mask = gene_split.isin(["train", "both"])
-    gene_indices = torch.tensor(np.where(train_gene_mask)[0])
-
-    # Compute region_indices for ATAC reconstruction loss
-    atac = mdata.mod["atac"]
-    region_split = atac.var["split"]
-    train_region_mask = region_split == "train"
-    region_indices = torch.tensor(np.where(train_region_mask)[0])
-
-    # Get r2g sparse matrix info
-    r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
-    r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]))
-    r2g_distances = torch.tensor(r2g_coo.data).float()
-
-    # Get PPI info if present
-    ppi_edge_index = None
-    ppi_genes_idx = None
-    ppi_tfs_idx_keys = None
-    ppi_tfs_idx_values = None
-    use_ppi = config.use_ppi and "ppi_edge_index" in mdata.uns
-
-    if use_ppi:
-        ppi_edge_index = torch.tensor(mdata.uns["ppi_edge_index"])
-        ppi_genes_idx = torch.tensor(mdata.uns["ppi_genes_idx"])
-        ppi_tfs_idx_keys = torch.tensor(mdata.uns["ppi_tfs_idx_keys"])
-        ppi_tfs_idx_values = torch.tensor(mdata.uns["ppi_tfs_idx_values"])
-
-    # Batch correction
-    n_batches = 0
-    if config.batch_key is not None:
-        n_batches = int(mdata.obs[config.batch_key].nunique())
-
-    # Reconstruct VAE
-    vae = DeepSCENICVAE(
-        n_tfs=n_tfs,
-        n_genes=n_genes,
-        n_regions=n_regions,
-        r2g_indices=r2g_indices,
-        r2g_distances=r2g_distances,
-        tf_indices=tf_indices,
-        gene_indices=gene_indices,
-        region_indices=region_indices,
-        ppi_edge_index=ppi_edge_index,
-        ppi_genes_idx=ppi_genes_idx,
-        ppi_tfs_idx_keys=ppi_tfs_idx_keys,
-        ppi_tfs_idx_values=ppi_tfs_idx_values,
-        n_hidden=config.n_hidden,
-        use_ppi=use_ppi,
-        binary_atac=config.binary_atac,
-        n_batches=n_batches,
-    )
-    vae.load_state_dict(checkpoint.vae_state_dict)
-    vae.to(device)
-    vae.eval()
-
-    # Reconstruct MotifNet
-    tf2rnet = MotifNet(
-        n_tfs=n_tfs,
-        bottleneck_size=config.bottleneck_size,
-        emb_len=config.emb_len,
-    )
-
-    # Initialize sequence model
-    if sequence_model is not None:
-        seq_model = sequence_model
-    else:
-        from enformer_pytorch import Enformer
-
-        seq_model = Enformer.from_pretrained(
-            "EleutherAI/enformer-official-rough",
-            target_length=-1,
-        )
-
-    # Load sequence model state: from checkpoint or from sequence_model.pt
-    if checkpoint.enformer_state_dict is not None:
-        # Old-style checkpoint with sequence model included
-        seq_model.load_state_dict(checkpoint.enformer_state_dict)
-        tf2rnet.load_state_dict(checkpoint.tf2rnet_state_dict)
-    else:
-        # Look for sequence_model.pt
-        if sequence_model_path is None:
-            sequence_model_path = checkpoint_path.parent / "sequence_model.pt"
-
-        sequence_model_path = Path(sequence_model_path)
-        if sequence_model_path.exists():
-            seq_data = torch.load(sequence_model_path, map_location=device)
-            seq_model.load_state_dict(seq_data["enformer_state_dict"])
-            tf2rnet.load_state_dict(seq_data["tf2rnet_state_dict"])
-            log.info(f"Loaded sequence model from {sequence_model_path}")
-        else:
-            raise ValueError(
-                f"Checkpoint does not contain sequence model state and "
-                f"sequence_model.pt not found at {sequence_model_path}. "
-                f"Provide sequence_model_path parameter."
-            )
-
-    tf2rnet.to(device)
-    tf2rnet.eval()
-    seq_model.to(device)
-    seq_model.eval()
-
-    log.info(
-        f"Loaded model from checkpoint {checkpoint_path}: "
-        f"{n_genes} genes, {n_tfs} TFs, {n_regions} regions"
-    )
-
-    return DeepSCENICModel(
-        vae=vae,
-        tf2rnet=tf2rnet,
-        enformer=seq_model,
-        adj_E1=checkpoint.adj_E1.to(device),
-        config=config,
-        tf_names=tf_names,
-        gene_names=gene_names,
-        region_names=region_names,
-        history=checkpoint.history,
-    )
+    return DeepSCENICModel.load(path, device=device, sequence_model=sequence_model)
 
 
 def load_legacy_data(
@@ -1167,7 +885,7 @@ def load_legacy_model(
     # =========================================================================
     # Step 7: Package into DeepSCENICModel
     # =========================================================================
-    config = TrainingConfig(
+    config = ModelConfig(
         n_hidden=128,
         use_ppi=use_ppi,
         bottleneck_size=3072,

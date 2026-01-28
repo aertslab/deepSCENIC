@@ -10,43 +10,33 @@ from ._grn import (
 from ._inference import to_latent
 from ._model import (
     DeepSCENICModel,
-    PretrainedModel,
+    TrainingState,
     load_legacy_data,
     load_legacy_model,
     load_model,
-    load_model_from_checkpoint,
-    load_pretrained,
 )
 from ._perturbation import simulate_multi_perturbation, simulate_perturbation
-from ._train import finetune, pretrain, train
+from ._train import finetune_e2, train, train_ppi
 from ._training_state import (
-    Checkpoint,
     EarlyStopping,
-    FinetuneConfig,
-    PretrainConfig,
-    TrainingConfig,
+    ModelConfig,
     TrainingHistory,
 )
 
 __all__ = [
-    # Training stages
-    "pretrain",
-    "train",
-    "finetune",
+    # Training stages (4-phase workflow)
+    "train",  # Phase 1: Full model training
+    "finetune_e2",  # Phases 2-3: E2 finetuning
+    "train_ppi",  # Phase 4: PPI training
     # Model
     "DeepSCENICModel",
-    "PretrainedModel",
+    "TrainingState",
     "load_model",
-    "load_model_from_checkpoint",
-    "load_pretrained",
     "load_legacy_data",
     "load_legacy_model",
     # Config
-    "PretrainConfig",
-    "TrainingConfig",
-    "FinetuneConfig",
+    "ModelConfig",
     "TrainingHistory",
-    "Checkpoint",
     "EarlyStopping",
     # Inference
     "to_latent",

@@ -3,67 +3,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
-
-import torch
 
 if TYPE_CHECKING:
     from torch import nn
 
 
 @dataclass
-class TrainingConfig:
-    """Configuration for training.
+class ModelConfig:
+    """Model architecture configuration.
+
+    These settings affect the model structure and must be set before training.
+    Once a model is created, these cannot be changed.
 
     Parameters
     ----------
-    epochs
-        Total training epochs.
-    batch_size
-        Cells per batch.
-    seq_batch_size
-        Sequences per batch.
-    lr
-        Learning rate.
-    lr_ppi
-        Learning rate for PPI network.
-    weight_decay
-        Weight decay for optimizer.
-    beta
-        KL divergence weight.
-    alpha
-        E1 sparsity + PPI weight.
-    gamma
-        E2 sparsity weight.
-    rna_tau
-        RNA reconstruction weight.
-    atac_tau
-        ATAC reconstruction weight.
-    loss_rna
-        RNA loss type: 'mse', 'mae', 'cosine'.
-    loss_atac
-        ATAC loss type: 'mse', 'mae', 'bce', 'cosine'.
-    dropout_mask_rna
-        Whether to mask RNA loss on zeros.
-    dropout_mask_atac
-        Whether to mask ATAC loss on zeros.
     n_hidden
         MLP hidden dimension.
     use_ppi
         Whether to use PPI network.
     binary_atac
         Whether ATAC is binary.
-    device
-        Training device.
-    ppi_device
-        Separate device for PPI (optional).
-    batch_key
-        Column in obs for batch correction.
-    balance_class
-        Whether to use weighted sampling.
-    class_key
-        Column in obs for class balancing.
     bottleneck_size
         Sequence model embedding dimension per position.
     emb_len
@@ -78,10 +38,11 @@ class TrainingConfig:
 
     Examples
     --------
-    Using default Enformer:
+    Using default settings:
 
-    >>> config = TrainingConfig(epochs=100)
-    >>> model = ds.tl.train(mdata, config=config)
+    >>> config = ModelConfig()
+    >>> model = ds.tl.train(mdata, config=config, epochs=100)
+
     Using a custom sequence model:
 
     >>> import torch
@@ -98,57 +59,21 @@ class TrainingConfig:
     ...         x = self.pool(x)  # (batch, 256, 60)
     ...         return x.flatten(1)  # (batch, 15360)
     ...
-    >>> config = TrainingConfig(
+    >>> config = ModelConfig(
     ...     sequence_model=MyModel(),
     ...     bottleneck_size=256,
     ...     emb_len=60,
     ...     seq_len=640,
     ... )
-    >>> model = ds.tl.train(mdata, config=config)    """
+    >>> model = ds.tl.train(mdata, config=config, epochs=100)
+    """
 
-    # Training
-    epochs: int = 100
-    batch_size: int = 64
-    seq_batch_size: int = 1000
-
-    # Learning rates
-    lr: float = 1e-4
-    lr_ppi: float = 1e-3
-    weight_decay: float = 0.0
-
-    # Loss weights
-    beta: float = 1e-2  # KL divergence
-    alpha: float = 1e-2  # E1 sparsity + PPI
-    gamma: float = 1.0  # E2 sparsity
-    rna_tau: float = 1.0  # RNA reconstruction
-    atac_tau: float = 1.0  # ATAC reconstruction
-
-    # Loss types
-    loss_rna: str = "mae"  # 'mse', 'mae', 'cosine'
-    loss_atac: str = "cosine"  # 'mse', 'mae', 'bce', 'cosine'
-    dropout_mask_rna: bool = False
-    dropout_mask_atac: bool = False
-
-    # Model
+    # Model architecture
     n_hidden: int = 128
     use_ppi: bool = True
     binary_atac: bool = False
 
-    # Device
-    device: str = "cuda"
-    ppi_device: str | None = None  # Separate device for PPI
-
-    # Scheduler
-    use_scheduler: bool = False  # Whether to use CosineAnnealingLR scheduler
-
-    # Data
-    batch_key: str | None = None
-    balance_class: bool = False
-    class_key: str | None = None
-    balance_dars: bool = False  # Whether to upweight DARs in sequence sampling
-    num_workers: int = 0  # Number of data loading workers for cell dataloader
-
-    # Sequence model
+    # Sequence model settings
     bottleneck_size: int = 3072
     emb_len: int = 5
     seq_len: int = 640
@@ -161,7 +86,7 @@ class TrainingConfig:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> TrainingConfig:
+    def from_dict(cls, d: dict[str, Any]) -> ModelConfig:
         """Create from dictionary."""
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
@@ -209,182 +134,6 @@ class TrainingHistory:
         history.val = d.get("val", {})
         history.val_chrom = d.get("val_chrom", {})
         return history
-
-
-@dataclass
-class Checkpoint:
-    """Training checkpoint.
-
-    Stores all state needed to resume training.
-    """
-
-    epoch: int
-    vae_state_dict: dict[str, Any]
-    tf2rnet_state_dict: dict[str, Any]
-    enformer_state_dict: dict[str, Any] | None
-    optimizer_state_dict: dict[str, Any]
-    scheduler_state_dict: dict[str, Any] | None
-    history: TrainingHistory
-    config: TrainingConfig
-    adj_E1: torch.Tensor
-    adj_E1_test: torch.Tensor | None = None
-    best_loss: float = float("inf")
-
-    def save(self, path: str | Path) -> None:
-        """Save checkpoint to file."""
-        torch.save(
-            {
-                "epoch": self.epoch,
-                "vae_state_dict": self.vae_state_dict,
-                "tf2rnet_state_dict": self.tf2rnet_state_dict,
-                "enformer_state_dict": self.enformer_state_dict,
-                "optimizer_state_dict": self.optimizer_state_dict,
-                "scheduler_state_dict": self.scheduler_state_dict,
-                "history": self.history.to_dict(),
-                "config": self.config.to_dict(),
-                "adj_E1": self.adj_E1,
-                "adj_E1_test": self.adj_E1_test,
-                "best_loss": self.best_loss,
-            },
-            path,
-        )
-
-    @classmethod
-    def load(cls, path: str | Path, map_location: str = "cpu") -> Checkpoint:
-        """Load checkpoint from file."""
-        data = torch.load(path, map_location=map_location)
-        history = TrainingHistory.from_dict(data["history"])
-        config = TrainingConfig.from_dict(data["config"])
-        return cls(
-            epoch=data["epoch"],
-            vae_state_dict=data["vae_state_dict"],
-            tf2rnet_state_dict=data["tf2rnet_state_dict"],
-            enformer_state_dict=data.get("enformer_state_dict"),
-            optimizer_state_dict=data["optimizer_state_dict"],
-            scheduler_state_dict=data.get("scheduler_state_dict"),
-            history=history,
-            config=config,
-            adj_E1=data["adj_E1"],
-            adj_E1_test=data.get("adj_E1_test"),
-            best_loss=data.get("best_loss", float("inf")),
-        )
-
-
-@dataclass
-class PretrainConfig:
-    """Configuration for sequence model pretraining.
-
-    Parameters
-    ----------
-    epochs
-        Pretraining epochs.
-    batch_size
-        Sequences per batch.
-    lr
-        Learning rate.
-    weight_decay
-        Optimizer weight decay.
-    alpha
-        E1 sparsity weight.
-    device
-        Training device.
-    num_workers
-        Number of data loading workers.
-    bottleneck_size
-        Sequence model embedding dimension per position.
-    emb_len
-        Sequence model output length (positions).
-    seq_len
-        DNA sequence length in base pairs. Default is 640bp for Enformer
-        compatibility (target_length=5). Set to match your sequence_model's input.
-    sequence_model
-        Custom sequence embedding model. If None (default), uses Enformer.
-        Custom models must accept (batch, seq_len, 4) input and return
-        (batch, bottleneck_size * emb_len) flattened embeddings.
-
-    Examples
-    --------
-    >>> config = PretrainConfig(epochs=100, lr=1e-4)
-    >>> pretrained = ds.tl.pretrain(mdata, config=config)    """
-
-    epochs: int = 100
-    batch_size: int = 256
-    lr: float = 1e-4
-    weight_decay: float = 0.0
-    alpha: float = 1e-2
-    device: str = "cuda"
-    num_workers: int = 0  # Number of data loading workers for cell dataloader
-    bottleneck_size: int = 3072
-    emb_len: int = 5
-    seq_len: int = 640
-    sequence_model: nn.Module | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary (excludes non-serializable sequence_model)."""
-        d = dict(self.__dict__)
-        d.pop("sequence_model", None)
-        return d
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> PretrainConfig:
-        """Create from dictionary."""
-        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
-
-
-@dataclass
-class FinetuneConfig:
-    """Configuration for E2 finetuning.
-
-    Parameters
-    ----------
-    epochs
-        Finetuning epochs (typically 10000).
-    batch_size
-        Cells per batch.
-    lr
-        Learning rate (very small, e.g., 1e-6).
-    lr_patience
-        Epochs before reducing LR (ReduceLROnPlateau).
-    reinit_e2
-        Reinitialize E2 to zeros before finetuning.
-    gamma
-        E2 sparsity weight.
-    loss_rna
-        RNA loss type: 'mse', 'mae', 'cosine'.
-    dropout_mask_rna
-        Whether to mask RNA loss on zeros.
-    device
-        Training device.
-    num_workers
-        Number of data loading workers.
-    batch_key
-        Column in obs for batch correction.
-
-    Examples
-    --------
-    >>> config = FinetuneConfig(epochs=10000, lr=1e-6)
-    >>> model = ds.tl.finetune(model, mdata, config=config)    """
-
-    epochs: int = 10000
-    batch_size: int = 64
-    lr: float = 1e-6
-    lr_patience: int = 50
-    reinit_e2: bool = True
-    gamma: float = 1.0
-    loss_rna: str = "mse"
-    dropout_mask_rna: bool = False
-    device: str = "cuda"
-    num_workers: int = 0  # Number of data loading workers for cell dataloader
-    batch_key: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
-        return dict(self.__dict__)
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> FinetuneConfig:
-        """Create from dictionary."""
-        return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
 class EarlyStopping:

@@ -80,21 +80,57 @@ def kl_divergence(mu: Tensor, logvar: Tensor) -> Tensor:
     return -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
 
 
-def e1_sparsity_loss(adj_E1: Tensor) -> Tensor:
+def e1_sparsity_loss(adj_E1: Tensor, seq_idx: Tensor | None = None) -> Tensor:
     """
     L1 sparsity penalty on E1 (TF→region weights).
 
     Parameters
     ----------
     adj_E1
-        E1 weights (subset being updated)
+        E1 weights (full matrix or subset)
+    seq_idx
+        Indices of regions to compute sparsity on (legacy behavior).
+        If None, computes sparsity over entire E1 matrix.
 
     Returns
     -------
     Tensor
         Sparsity loss (scalar)
     """
+    if seq_idx is not None:
+        # Legacy behavior: only compute on sampled batch indices
+        return adj_E1[seq_idx, :].abs().mean()
     return adj_E1.abs().mean()
+
+
+def f1_score_binary(prediction: Tensor, target: Tensor) -> Tensor:
+    """Binary F1 score for ATAC predictions.
+
+    Only meaningful when binary_atac=True.
+
+    Parameters
+    ----------
+    prediction
+        Model predictions (logits)
+    target
+        Ground truth binary values
+
+    Returns
+    -------
+    Tensor
+        F1 score (scalar)
+    """
+    from torchmetrics.classification import BinaryF1Score
+
+    # Mask invalid entries (all -1)
+    mask = ~(target == -1).all(dim=1)
+    if mask.sum() == 0:
+        return torch.tensor(0.0, device=prediction.device)
+
+    f1 = BinaryF1Score().to(prediction.device)
+    # Apply sigmoid to convert logits to probabilities
+    pred_probs = torch.sigmoid(prediction[mask]).ravel()
+    return f1(pred_probs, target[mask].int().ravel())
 
 
 def e2_sparsity_loss(adj_E2: Tensor, r2g_distances: Tensor) -> Tensor:
@@ -161,6 +197,8 @@ def compute_total_loss(
     atac_tau: float = 1.0,
     use_ppi: bool = True,
     include_e1_sparsity: bool = True,
+    ppi_phase: bool = False,
+    seq_idx: Tensor | None = None,
 ) -> dict[str, Tensor]:
     """
     Compute all loss components for training.
@@ -216,6 +254,14 @@ def compute_total_loss(
         Whether PPI is being used
     include_e1_sparsity
         Whether to include E1 sparsity in the total loss.
+    ppi_phase
+        If True, we're in "PPI training phase" (epoch >= warmup_grn).
+        In this phase, sparsity losses (E1, E2) are excluded from the total
+        loss. This matches legacy behavior where only reconstruction losses
+        are used to train PPInet.
+    seq_idx
+        Indices of regions being updated this iteration (for E1 sparsity).
+        If provided, E1 sparsity is computed only on these regions (legacy behavior).
 
     Returns
     -------
@@ -237,7 +283,8 @@ def compute_total_loss(
     loss_kl = kl_divergence(mu, logvar) * beta
 
     # Sparsity losses
-    loss_e1_sparse = e1_sparsity_loss(adj_E1_batch) * alpha
+    # E1 sparsity: only on sampled batch (legacy behavior)
+    loss_e1_sparse = e1_sparsity_loss(adj_E1_batch, seq_idx=seq_idx) * alpha
     loss_e2_sparse = e2_sparsity_loss(adj_E2, r2g_distances) * gamma
 
     # PPI loss (only if using PPI)
@@ -247,9 +294,14 @@ def compute_total_loss(
         loss_ppi = torch.tensor(0.0, device=x_rna.device)
 
     # Total loss for backpropagation
-    total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse
-    if include_e1_sparsity:
-        total = total + loss_e1_sparse
+    # During PPI phase (epoch >= warmup_grn), sparsity losses are excluded
+    # This matches legacy behavior where PPInet is trained only via reconstruction
+    if ppi_phase:
+        total = loss_rec_rna + loss_rec_atac + loss_kl
+    else:
+        total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse
+        if include_e1_sparsity:
+            total = total + loss_e1_sparse
 
     return {
         "total": total,
@@ -270,8 +322,13 @@ def compute_test_chromosome_loss(
     loss_atac: str,
     alpha: float,
     atac_tau: float,
+    x_rna: Tensor | None = None,
+    x_rna_rec: Tensor | None = None,
+    test_gene_indices: Tensor | None = None,
+    loss_rna: str = "mse",
+    rna_tau: float = 1.0,
 ) -> dict[str, Tensor]:
-    """Compute ATAC reconstruction loss on test chromosomes.
+    """Compute reconstruction loss on test chromosomes.
 
     Parameters
     ----------
@@ -289,10 +346,20 @@ def compute_test_chromosome_loss(
         E1 sparsity weight
     atac_tau
         ATAC reconstruction weight
+    x_rna
+        Ground truth RNA (n_cells, n_all_genes). Optional.
+    x_rna_rec
+        Reconstructed RNA (n_cells, n_all_genes). Optional.
+    test_gene_indices
+        Global indices of test genes. Optional.
+    loss_rna
+        RNA loss type: 'mse', 'mae', 'cosine'
+    rna_tau
+        RNA reconstruction weight
 
     Returns
     -------
-    dict with keys: total, rec_atac, e1_sparse
+    dict with keys: total, atac_recon, e1_l1, and optionally rna_recon
     """
     # Extract ground truth for test regions
     x_atac_test = x_atac[:, test_region_indices]
@@ -303,8 +370,18 @@ def compute_test_chromosome_loss(
     # E1 sparsity on test E1
     loss_e1_sparse = e1_sparsity_loss(adj_E1_test) * alpha
 
-    return {
+    result = {
         "total": loss_rec_atac + loss_e1_sparse,
         "atac_recon": loss_rec_atac.detach(),
         "e1_l1": loss_e1_sparse.detach(),
     }
+
+    # Add RNA reconstruction if provided
+    if x_rna is not None and x_rna_rec is not None and test_gene_indices is not None:
+        x_rna_test = x_rna[:, test_gene_indices]
+        x_rna_rec_test = x_rna_rec[:, test_gene_indices]
+        loss_rec_rna = reconstruction_loss(x_rna_rec_test, x_rna_test, loss_rna) * rna_tau
+        result["rna_recon"] = loss_rec_rna.detach()
+        result["total"] = result["total"] + loss_rec_rna
+
+    return result
