@@ -123,11 +123,14 @@ class DeepSCENICVAE(nn.Module):
 
         # PPI network (pluggable)
         if self.use_ppi:
-            self.ppi = PPIgnn(hidden_channels=n_hidden, heads=2)
+            n_ppi_nodes = len(ppi_genes_idx)  # type: ignore[arg-type]
+            self.ppi = PPIgnn(num_nodes=n_ppi_nodes, hidden_channels=n_hidden, heads=2)
             self.register_buffer("ppi_edge_index", ppi_edge_index)
             self.register_buffer("ppi_genes_idx", ppi_genes_idx)
             self.register_buffer("ppi_tfs_idx_keys", ppi_tfs_idx_keys)
             self.register_buffer("ppi_tfs_idx_values", ppi_tfs_idx_values)
+            # Node identity indices for embedding lookup (legacy behavior)
+            self.register_buffer("ppi_node_ids", torch.arange(n_ppi_nodes, dtype=torch.long))
         else:
             self.ppi = None
 
@@ -233,8 +236,10 @@ class DeepSCENICVAE(nn.Module):
         # PPI modulation (optional)
         if self.use_ppi and use_ppi and self.ppi is not None:
             ppi_dev = ppi_device or device
-            batch = build_ppi_batch(x_rna, self.ppi_genes_idx, self.ppi_edge_index, ppi_dev)
-            ppi_out = self.ppi(batch.x, batch.edge_index)
+            batch = build_ppi_batch(
+                x_rna, self.ppi_genes_idx, self.ppi_edge_index, self.ppi_node_ids, ppi_dev
+            )
+            ppi_out = self.ppi(batch.x, batch.edge_index, batch.node_ids)
             x_rna_ppi = extract_tf_weights(
                 ppi_out,
                 n_cells,

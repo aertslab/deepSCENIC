@@ -29,32 +29,52 @@ class PPIgnn(nn.Module, PPIModule):
     Takes gene expression + PPI graph → TF activity modulation weights.
 
     Architecture:
-        GATConv(1, hidden, heads=2) → ELU
+        Concat(x, id_emb) → GATConv(1+id_dim, hidden, heads=2) → ELU
         → GATConv(hidden*2, hidden, heads=2) → ELU
         → GATConv(hidden*2, 1, heads=1)
-        → sigmoid → (batch, n_tfs)
+        → (batch, n_tfs)
 
     Parameters
     ----------
+    num_nodes
+        Number of nodes in the PPI network (for identity embedding)
     hidden_channels
-        Hidden dimension per attention head (default: 16)
+        Hidden dimension per attention head (default: 128)
+    id_dim
+        Dimension of node identity embedding (default: 32)
     heads
         Number of attention heads (default: 2)
+    node_dropout
+        Dropout rate for node features during training (default: 0.3)
 
     Examples
     --------
-    >>> ppi = PPIgnn(hidden_channels=16, heads=2)
+    >>> ppi = PPIgnn(num_nodes=1000, hidden_channels=128, heads=2)
     >>> # For batch of cells, use torch_geometric Batch
-    >>> output = ppi(x, edge_index)  # (n_nodes_total, 1)
+    >>> output = ppi(x, edge_index, node_ids)  # (n_nodes_total, 1)
     """
 
-    def __init__(self, hidden_channels: int = 16, heads: int = 2) -> None:
+    def __init__(
+        self,
+        num_nodes: int,
+        hidden_channels: int = 128,
+        id_dim: int = 32,
+        heads: int = 2,
+        node_dropout: float = 0.3,
+    ) -> None:
         super().__init__()
         # Import here to make torch_geometric optional at import time
         from torch_geometric.nn import GATConv
 
+        # Identity embedding for each node (legacy behavior)
+        self.id_emb = nn.Embedding(num_nodes, id_dim)
+        self.node_dropout = node_dropout
+
+        # Input channels = expression (1) + identity embedding (id_dim)
+        in_channels = 1 + id_dim
+
         self.conv1 = GATConv(
-            in_channels=1,
+            in_channels=in_channels,
             out_channels=hidden_channels,
             heads=heads,
             concat=True,
@@ -79,6 +99,7 @@ class PPIgnn(nn.Module, PPIModule):
         self,
         x: Tensor,
         edge_index: Tensor,
+        node_ids: Tensor,
         edge_weight: Tensor | None = None,
     ) -> Tensor:
         """
@@ -90,6 +111,8 @@ class PPIgnn(nn.Module, PPIModule):
             Node features (n_nodes, 1)
         edge_index
             Graph connectivity (2, n_edges)
+        node_ids
+            Node identity indices for embedding lookup (n_nodes,)
         edge_weight
             Optional edge weights
 
@@ -98,6 +121,16 @@ class PPIgnn(nn.Module, PPIModule):
         Tensor
             Node outputs (n_nodes, 1)
         """
+        # Apply node dropout during training (legacy behavior)
+        if self.training and self.node_dropout > 0.0:
+            keep_mask = torch.rand(x.size(0), device=x.device) >= self.node_dropout
+            mask = keep_mask.to(dtype=x.dtype).unsqueeze(-1)
+            x = x * mask
+
+        # Concatenate expression with identity embedding
+        id_feat = self.id_emb(node_ids)
+        x = torch.cat([x, id_feat], dim=-1)
+
         x = F.elu(self.conv1(x, edge_index, edge_weight))
         x = F.elu(self.conv2(x, edge_index, edge_weight))
         x = self.conv3(x, edge_index, edge_weight)
@@ -116,6 +149,7 @@ def build_ppi_batch(
     x_rna: Tensor,
     ppi_genes_idx: Tensor,
     edge_index: Tensor,
+    node_ids: Tensor,
     device: torch.device,
 ) -> Batch:
     """Build PyG Batch from cell expression for PPI forward pass.
@@ -131,13 +165,15 @@ def build_ppi_batch(
         Indices of genes in PPI network
     edge_index
         PPI graph connectivity (2, n_edges)
+    node_ids
+        Node identity indices for embedding lookup
     device
         Target device
 
     Returns
     -------
     Batch
-        PyTorch Geometric batch for parallel processing
+        PyTorch Geometric batch for parallel processing (includes node_ids attribute)
     """
     from torch_geometric.data import Batch, Data
 
@@ -146,7 +182,9 @@ def build_ppi_batch(
 
     for i in range(n_cells):
         node_features = x_rna[i, ppi_genes_idx].unsqueeze(-1)
-        data_list.append(Data(x=node_features, edge_index=edge_index).to(device))
+        data = Data(x=node_features, edge_index=edge_index)
+        data.node_ids = node_ids  # Attach node identity indices
+        data_list.append(data.to(device))
 
     return Batch.from_data_list(data_list)
 
@@ -184,8 +222,8 @@ def extract_tf_weights(
     # Reshape to (n_cells, n_ppi_genes)
     ppi_out = ppi_output.view(n_cells, n_ppi_genes)
 
-    # Extract TF subset and apply sigmoid
-    x_rna_ppi = torch.sigmoid(ppi_out[:, ppi_tfs_idx_keys])
+    # Extract TF subset and apply relu (legacy behavior)
+    x_rna_ppi = torch.relu(ppi_out[:, ppi_tfs_idx_keys])
 
     # Reorder to match TF order expected by VAE
     x_rna_ppi = x_rna_ppi[:, ppi_tfs_idx_values].to(device)
