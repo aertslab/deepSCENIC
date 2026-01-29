@@ -81,14 +81,12 @@ class TensorboardLogger(TrainingLogger):
             self.writer.add_scalar(key, value, step)
 
     def log_hyperparams(self, params: dict[str, Any]) -> None:
-        # Convert non-serializable values to strings
-        clean_params = {}
+        # Log hyperparams as text to avoid add_hparams creating subdirectories
+        # that clutter the TensorBoard run list
+        lines = [f"| Param | Value |", f"|-------|-------|"]
         for k, v in params.items():
-            try:
-                clean_params[k] = v
-            except Exception:
-                clean_params[k] = str(v)
-        self.writer.add_hparams(clean_params, {})
+            lines.append(f"| {k} | {v} |")
+        self.writer.add_text("hyperparams", "\n".join(lines))
 
     def close(self) -> None:
         self.writer.close()

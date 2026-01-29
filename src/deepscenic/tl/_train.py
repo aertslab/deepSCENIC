@@ -353,7 +353,7 @@ def train(
     log_dir: str = "./runs",
     logger_kwargs: dict | None = None,
     checkpoint_dir: str | None = None,
-    checkpoint_every: int = 10,
+    checkpoint_every: int = 0,
     save_best_checkpoints: bool | None = None,
     resume_from: str | None = None,
     early_stopping_patience: int | None = None,
@@ -427,7 +427,7 @@ def train(
     checkpoint_dir
         Directory for checkpoints (None = no checkpoints).
     checkpoint_every
-        Save checkpoint every N epochs.
+        Save checkpoint every N epochs. Set to 0 to disable periodic checkpointing.
     save_best_checkpoints
         Save checkpoint when validation loss improves. If None (default),
         enabled when checkpoint_dir is set. Saves to 'best.pt' in checkpoint_dir.
@@ -474,8 +474,10 @@ def train(
     # Build model config from provided config or defaults
     model_config = config if config is not None else ModelConfig()
 
-    # Setup logging
-    _logger_kwargs = {"log_dir": log_dir}
+    # Setup logging — use phase-specific subdirectory so TensorBoard shows
+    # each phase as a separate named run instead of merging them into "."
+    _phase_log_dir = str(Path(log_dir) / "train")
+    _logger_kwargs = {"log_dir": _phase_log_dir}
     if logger_kwargs:
         _logger_kwargs.update(logger_kwargs)
     training_logger = get_logger(logger, **_logger_kwargs)
@@ -692,9 +694,12 @@ def train(
 
     # Log checkpoint configuration
     if checkpoint_dir is not None:
-        log.info(f"Checkpointing enabled: saving every {checkpoint_every} epochs to {checkpoint_dir}")
+        if checkpoint_every > 0:
+            log.info(f"Periodic checkpointing: every {checkpoint_every} epochs to {checkpoint_dir}")
         if save_best_checkpoints:
             log.info("Best checkpoint saving enabled: saving to 'best.pt' on improvement")
+        if checkpoint_every <= 0 and not save_best_checkpoints:
+            log.info("checkpoint_dir set but no checkpointing enabled (checkpoint_every=0, save_best_checkpoints=False)")
     else:
         log.info("Checkpointing disabled (checkpoint_dir=None)")
 
@@ -990,7 +995,7 @@ def train(
             log.info(f"New best val_chrom/atac_recon: {test_chrom_metrics['atac_recon']:.6f} - saving to {best_path}")
 
         # Periodic checkpointing (async to not block training)
-        if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
+        if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = Path(checkpoint_dir) / f"epoch_{epoch + 1}.pt"
             checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
             # Deep copy state dicts for async save (training continues modifying them)
@@ -1081,7 +1086,7 @@ def finetune_e2(
     device: str = "cuda",
     num_workers: int = 0,
     checkpoint_dir: str | None = None,
-    checkpoint_every: int = 100,
+    checkpoint_every: int = 0,
     save_best_checkpoints: bool | None = None,
     logger: str = "dict",
     log_dir: str = "./runs",
@@ -1131,7 +1136,7 @@ def finetune_e2(
     checkpoint_dir
         Directory for checkpoints (None = no checkpoints).
     checkpoint_every
-        Save checkpoint every N epochs.
+        Save checkpoint every N epochs. Set to 0 to disable periodic checkpointing.
     save_best_checkpoints
         Save checkpoint when validation loss improves. If None (default),
         enabled when checkpoint_dir is set.
@@ -1168,8 +1173,11 @@ def finetune_e2(
     if use_ppi_finetune:
         log.info("PPInet active (but frozen) during E2 finetuning")
 
-    # Setup logging
-    _logger_kwargs = {"log_dir": log_dir}
+    # Setup logging — use phase-specific subdirectory so TensorBoard shows
+    # each phase as a separate named run
+    _phase_name = f"finetune_e2_cell-{cell_split}_feat-{feature_split}"
+    _phase_log_dir = str(Path(log_dir) / _phase_name)
+    _logger_kwargs = {"log_dir": _phase_log_dir}
     if logger_kwargs:
         _logger_kwargs.update(logger_kwargs)
     training_logger = get_logger(logger, **_logger_kwargs)
@@ -1289,9 +1297,12 @@ def finetune_e2(
 
     # Log checkpoint configuration
     if checkpoint_dir is not None:
-        log.info(f"Checkpointing enabled: saving every {checkpoint_every} epochs to {checkpoint_dir}")
+        if checkpoint_every > 0:
+            log.info(f"Periodic checkpointing: every {checkpoint_every} epochs to {checkpoint_dir}")
         if save_best_checkpoints:
             log.info("Best checkpoint saving enabled: saving to 'finetune_best.pt' on improvement")
+        if checkpoint_every <= 0 and not save_best_checkpoints:
+            log.info("checkpoint_dir set but no checkpointing enabled (checkpoint_every=0, save_best_checkpoints=False)")
     else:
         log.info("Checkpointing disabled (checkpoint_dir=None)")
 
@@ -1413,7 +1424,7 @@ def finetune_e2(
                 log.info(f"New best val loss: {val_loss:.6f} - saved to {best_path}")
 
         # Periodic checkpointing
-        if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
+        if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = Path(checkpoint_dir) / f"finetune_epoch_{epoch + 1}.pt"
             checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(
@@ -1478,7 +1489,7 @@ def train_ppi(
     log_dir: str = "./runs",
     logger_kwargs: dict | None = None,
     checkpoint_dir: str | None = None,
-    checkpoint_every: int = 10,
+    checkpoint_every: int = 0,
     save_best_checkpoints: bool | None = None,
     early_stopping_patience: int | None = None,
 ) -> DeepSCENICModel:
@@ -1528,7 +1539,7 @@ def train_ppi(
     checkpoint_dir
         Directory for checkpoints (None = no checkpoints).
     checkpoint_every
-        Save checkpoint every N epochs.
+        Save checkpoint every N epochs. Set to 0 to disable periodic checkpointing.
     save_best_checkpoints
         Save checkpoint when validation loss improves.
     early_stopping_patience
@@ -1554,8 +1565,10 @@ def train_ppi(
 
     log.info("Starting Phase 4: PPI training (VAE and E2 frozen)")
 
-    # Setup logging
-    _logger_kwargs = {"log_dir": log_dir}
+    # Setup logging — use phase-specific subdirectory so TensorBoard shows
+    # each phase as a separate named run
+    _phase_log_dir = str(Path(log_dir) / "train_ppi")
+    _logger_kwargs = {"log_dir": _phase_log_dir}
     if logger_kwargs:
         _logger_kwargs.update(logger_kwargs)
     training_logger = get_logger(logger, **_logger_kwargs)
@@ -1788,7 +1801,7 @@ def train_ppi(
             log.info(f"New best val loss: {val_loss:.6f} - saved to {best_path}")
 
         # Periodic checkpointing
-        if checkpoint_dir is not None and (epoch + 1) % checkpoint_every == 0:
+        if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = Path(checkpoint_dir) / f"ppi_epoch_{epoch + 1}.pt"
             checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
             torch.save(
