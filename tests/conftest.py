@@ -214,8 +214,8 @@ def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
     history = TrainingHistory()
     history.log("train", {"total": 1.0, "rna_recon": 0.5})
     history.log("train", {"total": 0.8, "rna_recon": 0.4})
-    history.log("val", {"total": 1.1})
-    history.log("val", {"total": 0.9})
+    history.log("val_cells", {"total": 1.1})
+    history.log("val_cells", {"total": 0.9})
 
     return DeepSCENICModel(
         vae=mock_vae,

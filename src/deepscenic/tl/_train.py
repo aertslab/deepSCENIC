@@ -100,23 +100,12 @@ def _init_enformer(device: str, emb_len: int) -> torch.nn.Module:
         dropout_rate=0.1,
         target_length=emb_len,  # default TF2rNet embedding
     )
-    enformer.to(device)
+    enformer.to(device)  # type: ignore
     return enformer  # type: ignore[no-any-return]
 
 
 def _is_enformer(model: torch.nn.Module) -> bool:
-    """Check if model is an Enformer instance.
-
-    Parameters
-    ----------
-    model
-        Sequence embedding model.
-
-    Returns
-    -------
-    bool
-        True if model is Enformer, False otherwise.
-    """
+    """Check if model is an Enformer instance."""
     return type(model).__name__ == "Enformer"
 
 
@@ -163,12 +152,25 @@ def _init_e1_cache(
     seq_dataloader: torch.utils.data.DataLoader,
     device: str,
     config: ModelConfig,
+    n_total_regions: int | None = None,
+    global_indices: np.ndarray | None = None,
 ) -> torch.Tensor:
-    """Initialize E1 cache by running all sequences through sequence model + TF2rNet."""
+    """Initialize E1 cache by running all sequences through sequence model + TF2rNet.
+
+    Parameters
+    ----------
+    n_total_regions
+        Total number of regions (including test). If provided, the cache is sized
+        to this value and ``global_indices`` is used to map dataloader indices to
+        global positions. When None, cache size equals ``len(seq_dataloader.dataset)``.
+    global_indices
+        Mapping from dataloader-local indices to global region indices.
+        Required when ``n_total_regions`` is set.
+    """
     sequence_model.eval()
     tf2rnet.eval()
 
-    n_regions = len(seq_dataloader.dataset)  # type: ignore[arg-type]
+    n_regions = n_total_regions if n_total_regions is not None else len(seq_dataloader.dataset)  # type: ignore[arg-type]
     adj_E1 = torch.zeros(n_regions, tf2rnet.n_tfs, device=device)
 
     with torch.no_grad():
@@ -176,7 +178,10 @@ def _init_e1_cache(
             sequences = sequences.to(device)
             emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
             tf_pred = tf2rnet(emb)
-            adj_E1[seq_idx] = tf_pred
+            if global_indices is not None:
+                adj_E1[global_indices[seq_idx.numpy()]] = tf_pred
+            else:
+                adj_E1[seq_idx] = tf_pred
 
     return adj_E1
 
@@ -224,31 +229,28 @@ class SequenceIterator:
 def _evaluate_test_chromosomes(
     vae: DeepSCENICVAE,
     adj_E1_test: torch.Tensor,
-    adj_E1_cache: torch.Tensor,
     test_region_indices: torch.Tensor,
-    test_gene_indices: torch.Tensor,
     test_cell_loader: torch.utils.data.DataLoader,
     device: str,
     *,
     loss_atac: str = "cosine",
-    loss_rna: str = "mae",
     alpha: float = 1e-2,
     atac_tau: float = 1.0,
-    rna_tau: float = 1.0,
     ppi_device: str | None = None,
     use_ppi: bool = True,
 ) -> dict[str, float]:
-    """Evaluate ATAC and RNA reconstruction on test chromosomes.
+    """Evaluate ATAC reconstruction on test chromosomes.
 
     Computes TF activity from encoder (with PPI modulation if enabled),
-    then predicts ATAC for test regions using adj_E1_test and RNA
-    reconstruction for test genes.
+    then predicts ATAC for test regions using adj_E1_test.
 
-    This matches legacy behavior where the full VAE forward pass (including
-    PPI network) is used to compute test chromosome reconstruction.
+    Note: Legacy code does not evaluate RNA on test genes here. The legacy
+    RNA "test" metric uses train genes on test cells, which is equivalent
+    to the standard validation metric. To avoid confusion, RNA evaluation
+    is omitted from test chromosome evaluation.
     """
     vae.eval()
-    metrics: dict[str, float] = {"total": 0.0, "atac_recon": 0.0, "e1_l1": 0.0, "rna_recon": 0.0}
+    metrics: dict[str, float] = {"total": 0.0, "atac_recon": 0.0, "e1_l1": 0.0}
     n_batches = 0
 
     with torch.no_grad():
@@ -263,9 +265,7 @@ def _evaluate_test_chromosomes(
             if vae.use_ppi and use_ppi and vae.ppi is not None:
                 from ..models._ppi import build_ppi_batch, extract_tf_weights
 
-                batch_ppi = build_ppi_batch(
-                    x_rna, vae.ppi_genes_idx, vae.ppi_edge_index, vae.ppi_node_ids, device
-                )
+                batch_ppi = build_ppi_batch(x_rna, vae.ppi_genes_idx, vae.ppi_edge_index, vae.ppi_node_ids, device)  # type: ignore
                 ppi_out = vae.ppi(batch_ppi.x, batch_ppi.edge_index, batch_ppi.node_ids)
                 x_rna_ppi = extract_tf_weights(
                     ppi_out,
@@ -286,16 +286,7 @@ def _evaluate_test_chromosomes(
             # Decode ATAC for test regions
             x_atac_rec_test = vae.decoder_atac(enh_act_test)
 
-            # Compute RNA reconstruction (full forward pass with cached E1)
-            output = vae(
-                x_rna,
-                adj_E1_cache,
-                use_ppi=use_ppi,
-                use_mean=True,
-                ppi_device=ppi_device,
-            )
-
-            # Compute loss
+            # Compute loss (ATAC only — no RNA test chromosome evaluation, matching legacy)
             losses = compute_test_chromosome_loss(
                 x_atac=x_atac,
                 x_atac_rec_test=x_atac_rec_test,
@@ -304,15 +295,11 @@ def _evaluate_test_chromosomes(
                 loss_atac=loss_atac,
                 alpha=alpha,
                 atac_tau=atac_tau,
-                x_rna=x_rna,
-                x_rna_rec=output.x_rna_rec,
-                test_gene_indices=test_gene_indices,
-                loss_rna=loss_rna,
-                rna_tau=rna_tau,
             )
 
             for key in metrics:
-                metrics[key] += losses[key].item()
+                if key in losses:
+                    metrics[key] += losses[key].item()
             n_batches += 1
 
     return {k: v / n_batches for k, v in metrics.items()}
@@ -531,11 +518,6 @@ def train(
     region_indices = torch.tensor(np.where(train_region_mask)[0])
     log.info(f"Using {len(region_indices)}/{n_regions} regions for ATAC reconstruction (train split)")
 
-    # Compute test_gene_indices for test chromosome RNA reconstruction evaluation
-    test_gene_mask = gene_split == "test"
-    test_gene_indices = torch.tensor(np.where(test_gene_mask)[0])
-    log.info(f"Using {len(test_gene_indices)}/{n_genes} genes for test chromosome RNA evaluation")
-
     # Get r2g sparse matrix info (convert CSR to COO for indices)
     r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
     r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]))
@@ -617,15 +599,21 @@ def train(
     )
 
     # Sequence dataloader (for TF2rNet training)
-    # Regions are derived from ATAC var_names (chr:start-end format)
-    region_names = list(mdata.mod["atac"].var_names)
+    # Only train regions — matches legacy behavior where E1 is only learned for train chromosomes
+    train_region_mask = mdata.mod["atac"].var["split"] == "train"
+    region_names = list(mdata.mod["atac"].var_names[train_region_mask])
+    # Map from train-only indices (0..n_train-1) to global indices (into full adj_E1_cache)
+    train_region_global_indices = np.where(train_region_mask)[0]
 
-    # Get DAR indices if balance_dars is enabled
+    # Get DAR indices if balance_dars is enabled (remap to train-only indexing)
     dar_indices = None
     if balance_dars and "atac" in mdata.mod:
         atac_var = mdata.mod["atac"].var
         if "is_dar" in atac_var.columns:
-            dar_indices = np.where(atac_var["is_dar"].values)[0]
+            global_dar = set(np.where(atac_var["is_dar"].values)[0])
+            dar_indices = np.array([i for i, g in enumerate(train_region_global_indices) if g in global_dar])
+            if len(dar_indices) == 0:
+                dar_indices = None
 
     train_seq_loader = build_sequence_dataloader(
         regions=region_names,
@@ -644,8 +632,7 @@ def train(
     n_test_regions = test_region_mask.sum()
     if n_test_regions == 0:
         raise ValueError(
-            "No test regions found (atac.var['split'] == 'test'). "
-            "Run ds.pp.split_features_by_chromosome() first."
+            "No test regions found (atac.var['split'] == 'test'). Run ds.pp.split_features_by_chromosome() first."
         )
 
     test_seq_loader, test_region_indices = build_test_sequence_dataloader(
@@ -655,15 +642,22 @@ def train(
         num_workers=num_workers,
     )
     test_region_indices = test_region_indices.to(device)
-    test_gene_indices = test_gene_indices.to(device)
+
 
     log.info(f"Test chromosome evaluation: {n_test_regions} test regions")
 
     # Initialize E1 cache
-    adj_E1_cache = _init_e1_cache(sequence_model, tf2rnet, train_seq_loader, device, model_config)
+    n_all_regions = len(mdata.mod["atac"].var_names)
+    adj_E1_cache = _init_e1_cache(
+        sequence_model, tf2rnet, train_seq_loader, device, model_config,
+        n_total_regions=n_all_regions, global_indices=train_region_global_indices,
+    )
 
     # Initialize test E1 cache (always computed, no pretrained cache for test regions)
     adj_E1_test_cache = _init_e1_test_cache(sequence_model, tf2rnet, test_seq_loader, device, model_config)
+
+    # Tensor mapping from train-local indices to global region indices
+    train_region_global_idx = torch.tensor(train_region_global_indices, dtype=torch.long, device=device)
 
     # Initialize sequence iterator for dynamic E1 updates (legacy behavior)
     seq_iterator = SequenceIterator(train_seq_loader)
@@ -699,7 +693,9 @@ def train(
         if save_best_checkpoints:
             log.info("Best checkpoint saving enabled: saving to 'best.pt' on improvement")
         if checkpoint_every <= 0 and not save_best_checkpoints:
-            log.info("checkpoint_dir set but no checkpointing enabled (checkpoint_every=0, save_best_checkpoints=False)")
+            log.info(
+                "checkpoint_dir set but no checkpointing enabled (checkpoint_every=0, save_best_checkpoints=False)"
+            )
     else:
         log.info("Checkpointing disabled (checkpoint_dir=None)")
 
@@ -730,10 +726,7 @@ def train(
             if resumed_model.training_state.adj_E1_test is not None:
                 adj_E1_test_cache = resumed_model.training_state.adj_E1_test.to(device)
         else:
-            log.warning(
-                "Checkpoint does not contain training state. "
-                "Starting from epoch 0 with fresh optimizer state."
-            )
+            log.warning("Checkpoint does not contain training state. Starting from epoch 0 with fresh optimizer state.")
 
         # Restore history if present
         if resumed_model.history is not None:
@@ -772,14 +765,18 @@ def train(
             # Update E1 with fresh sequence predictions (legacy behavior)
             # Clone persistent cache, then insert fresh predictions WITH gradients
             # This allows gradients to flow back through Enformer/MotifNet
-            sequences, seq_idx = seq_iterator.next()
+            sequences, seq_idx_local = seq_iterator.next()
             sequences = sequences.to(device)
+            # Remap train-local indices to global region indices
+            seq_idx = train_region_global_idx[seq_idx_local]
 
             # Clone persistent cache for this iteration
             adj_E1_batch = adj_E1_cache.clone()
 
             # Compute fresh TF predictions WITH gradients (trains Enformer + MotifNet)
-            emb = _get_sequence_embeddings(sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len)
+            emb = _get_sequence_embeddings(
+                sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len
+            )
             tf_pred = tf2rnet(emb)
             adj_E1_batch[seq_idx] = tf_pred  # Gradients flow through these predictions
 
@@ -866,11 +863,16 @@ def train(
         with torch.no_grad():
             for sequences, local_idx in test_seq_loader:
                 sequences = sequences.to(device)
-                emb = _get_sequence_embeddings(sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len)
+                emb = _get_sequence_embeddings(
+                    sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len
+                )
                 tf_pred = tf2rnet(emb)
                 adj_E1_test_cache[local_idx] = tf_pred
 
-        val_loss = 0.0
+        val_metrics: dict[str, float] = {
+            "total": 0.0, "rna_recon": 0.0, "atac_recon": 0.0,
+            "kl_div": 0.0, "e1_l1": 0.0, "e2_l1": 0.0,
+        }
         n_val_batches = 0
 
         with torch.no_grad():
@@ -909,27 +911,26 @@ def train(
                     ppi_phase=False,
                 )
 
-                val_loss += losses["total"].item()
+                for key in val_metrics:
+                    if key in losses:
+                        val_metrics[key] += losses[key].item()
+                val_metrics["total"] += losses["total"].item()
                 n_val_batches += 1
 
-        val_loss /= n_val_batches
-        history.log("val", {"total": val_loss})
-        training_logger.log_metrics({"val/total": val_loss}, step=epoch)
+        val_metrics = {k: v / n_val_batches for k, v in val_metrics.items()}
+        history.log("val_cells", val_metrics)
+        training_logger.log_metrics({f"val_cells/{k}": v for k, v in val_metrics.items()}, step=epoch)
 
         # Validation on test chromosomes (generalization metric)
         test_chrom_metrics = _evaluate_test_chromosomes(
             vae=vae,
             adj_E1_test=adj_E1_test_cache,
-            adj_E1_cache=adj_E1_cache,
             test_region_indices=test_region_indices,
-            test_gene_indices=test_gene_indices,
             test_cell_loader=test_cell_loader,
             device=device,
             loss_atac=loss_atac,
-            loss_rna=loss_rna,
             alpha=alpha,
             atac_tau=atac_tau,
-            rna_tau=rna_tau,
             ppi_device=ppi_device,
             use_ppi=False,
         )
@@ -978,7 +979,7 @@ def train(
                 copy.deepcopy(vae.state_dict()),
                 copy.deepcopy(tf2rnet.state_dict()),
                 copy.deepcopy(sequence_model.state_dict()),
-                adj_E1_cache.clone(),
+                adj_E1_cache.clone().cpu(),
                 model_config,
                 tf_names,
                 gene_names,
@@ -989,10 +990,10 @@ def train(
                 copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
                 epoch,
                 best_loss,
-                adj_E1_test_cache.clone(),
+                adj_E1_test_cache.clone().cpu(),
                 not _is_enformer(sequence_model),
             )
-            log.info(f"New best val_chrom/atac_recon: {test_chrom_metrics['atac_recon']:.6f} - saving to {best_path}")
+            log.info(f"New best val_chrom/atac_recon (checkpoint): {test_chrom_metrics['atac_recon']:.6f} - saving to {best_path}")
 
         # Periodic checkpointing (async to not block training)
         if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
@@ -1022,7 +1023,7 @@ def train(
                 copy.deepcopy(vae.state_dict()),
                 copy.deepcopy(tf2rnet.state_dict()),
                 copy.deepcopy(sequence_model.state_dict()),
-                adj_E1_cache.clone(),
+                adj_E1_cache.clone().cpu(),
                 model_config,
                 tf_names,
                 gene_names,
@@ -1033,7 +1034,7 @@ def train(
                 copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
                 epoch,
                 best_loss,
-                adj_E1_test_cache.clone(),
+                adj_E1_test_cache.clone().cpu(),
                 not _is_enformer(sequence_model),
             )
 
@@ -1302,7 +1303,9 @@ def finetune_e2(
         if save_best_checkpoints:
             log.info("Best checkpoint saving enabled: saving to 'finetune_best.pt' on improvement")
         if checkpoint_every <= 0 and not save_best_checkpoints:
-            log.info("checkpoint_dir set but no checkpointing enabled (checkpoint_every=0, save_best_checkpoints=False)")
+            log.info(
+                "checkpoint_dir set but no checkpointing enabled (checkpoint_every=0, save_best_checkpoints=False)"
+            )
     else:
         log.info("Checkpointing disabled (checkpoint_dir=None)")
 
@@ -1343,7 +1346,8 @@ def finetune_e2(
 
             # E2 sparsity only on active links (matching feature_split)
             loss_e2_sparse = e2_sparsity_loss(
-                vae.adj_E2[e2_link_mask], vae.r2g_distances[e2_link_mask]  # type: ignore[arg-type]
+                vae.adj_E2[e2_link_mask],
+                vae.r2g_distances[e2_link_mask],  # type: ignore[arg-type]
             )
             total_loss = loss_rec_rna + loss_e2_sparse * gamma
 
@@ -1389,15 +1393,16 @@ def finetune_e2(
                     dropout_mask=dropout_mask_rna,
                 )
                 loss_e2_sparse = e2_sparsity_loss(
-                    vae.adj_E2[e2_link_mask], vae.r2g_distances[e2_link_mask]  # type: ignore[arg-type]
+                    vae.adj_E2[e2_link_mask],
+                    vae.r2g_distances[e2_link_mask],  # type: ignore[arg-type]
                 )
 
                 val_loss += (loss_rec_rna + loss_e2_sparse * gamma).item()
                 n_val_batches += 1
 
         val_loss /= n_val_batches
-        history.log("val", {"total": val_loss})
-        training_logger.log_metrics({"val/total": val_loss}, step=epoch)
+        history.log("val_cells", {"total": val_loss})
+        training_logger.log_metrics({"val_cells/total": val_loss}, step=epoch)
 
         # Step scheduler
         scheduler.step(val_loss)
@@ -1616,8 +1621,10 @@ def train_ppi(
         num_workers=num_workers,
     )
 
-    # Build sequence dataloader for E1 cache updates
-    region_names = list(mdata.mod["atac"].var_names)
+    # Build sequence dataloader for E1 cache updates (train regions only, matches legacy)
+    train_region_mask_ppi = mdata.mod["atac"].var["split"] == "train"
+    region_names = list(mdata.mod["atac"].var_names[train_region_mask_ppi])
+    train_region_global_indices_ppi = np.where(train_region_mask_ppi)[0]
     train_seq_loader = build_sequence_dataloader(
         regions=region_names,
         batch_size=seq_batch_size,
@@ -1628,6 +1635,7 @@ def train_ppi(
         num_workers=num_workers,
     )
     seq_iterator = SequenceIterator(train_seq_loader)
+    train_region_global_idx_ppi = torch.tensor(train_region_global_indices_ppi, dtype=torch.long, device=device)
 
     # Optimizer for PPI only
     optimizer = Adam(vae.ppi.parameters(), lr=lr, weight_decay=weight_decay)
@@ -1665,10 +1673,13 @@ def train_ppi(
             x_atac = batch["atac"].to(device)
 
             # Update E1 cache with fresh sequence predictions
-            sequences, seq_idx = seq_iterator.next()
+            sequences, seq_idx_local = seq_iterator.next()
             sequences = sequences.to(device)
+            seq_idx = train_region_global_idx_ppi[seq_idx_local]
             with torch.no_grad():
-                emb = _get_sequence_embeddings(sequence_model, sequences, model.config.bottleneck_size, model.config.emb_len)
+                emb = _get_sequence_embeddings(
+                    sequence_model, sequences, model.config.bottleneck_size, model.config.emb_len
+                )
                 tf_pred = tf2rnet(emb)
                 adj_E1_cache[seq_idx] = tf_pred
 
@@ -1774,8 +1785,8 @@ def train_ppi(
                 n_val_batches += 1
 
         val_loss /= n_val_batches
-        history.log("val", {"total": val_loss})
-        training_logger.log_metrics({"val/total": val_loss}, step=epoch)
+        history.log("val_cells", {"total": val_loss})
+        training_logger.log_metrics({"val_cells/total": val_loss}, step=epoch)
 
         # Early stopping
         if early_stopping is not None:

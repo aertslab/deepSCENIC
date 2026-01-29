@@ -97,12 +97,12 @@ class TrainingHistory:
 
     Splits:
     - train: Training metrics (train cells, train features)
-    - val: Validation metrics (test cells, train features)
-    - val_chrom: Chromosome generalization (test cells, test features)
+    - val_cells: Validation metrics (held-out cells, train features)
+    - val_chrom: Chromosome generalization (test cells, held-out chromosomes)
     """
 
     train: dict[str, list[float]] = field(default_factory=dict)
-    val: dict[str, list[float]] = field(default_factory=dict)
+    val_cells: dict[str, list[float]] = field(default_factory=dict)
     val_chrom: dict[str, list[float]] = field(default_factory=dict)
 
     def log(self, split: str, metrics: dict[str, float]) -> None:
@@ -111,8 +111,10 @@ class TrainingHistory:
             storage = self.train
         elif split == "val_chrom":
             storage = self.val_chrom
+        elif split == "val_cells":
+            storage = self.val_cells
         else:
-            storage = self.val
+            raise ValueError(f"Unknown split: {split}")
         for key, value in metrics.items():
             if key not in storage:
                 storage[key] = []
@@ -122,7 +124,7 @@ class TrainingHistory:
         """Convert to dictionary."""
         return {
             "train": self.train,
-            "val": self.val,
+            "val_cells": self.val_cells,
             "val_chrom": self.val_chrom,
         }
 
@@ -131,7 +133,7 @@ class TrainingHistory:
         """Create from dictionary."""
         history = cls()
         history.train = d.get("train", {})
-        history.val = d.get("val", {})
+        history.val_cells = d.get("val_cells", {})
         history.val_chrom = d.get("val_chrom", {})
         return history
 
