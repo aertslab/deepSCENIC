@@ -148,14 +148,14 @@ def _get_sequence_embeddings(
 
 def _init_e1_cache(
     sequence_model: torch.nn.Module,
-    tf2rnet: MotifNet,
+    motifnet: MotifNet,
     seq_dataloader: torch.utils.data.DataLoader,
     device: str,
     config: ModelConfig,
     n_total_regions: int | None = None,
     global_indices: np.ndarray | None = None,
 ) -> torch.Tensor:
-    """Initialize E1 cache by running all sequences through sequence model + TF2rNet.
+    """Initialize E1 cache by running all sequences through sequence model + motifnet.
 
     Parameters
     ----------
@@ -168,16 +168,16 @@ def _init_e1_cache(
         Required when ``n_total_regions`` is set.
     """
     sequence_model.eval()
-    tf2rnet.eval()
+    motifnet.eval()
 
     n_regions = n_total_regions if n_total_regions is not None else len(seq_dataloader.dataset)  # type: ignore[arg-type]
-    adj_E1 = torch.zeros(n_regions, tf2rnet.n_tfs, device=device)
+    adj_E1 = torch.zeros(n_regions, motifnet.n_tfs, device=device)
 
     with torch.no_grad():
         for sequences, seq_idx in tqdm(seq_dataloader, desc="Initializing E1"):
             sequences = sequences.to(device)
             emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
-            tf_pred = tf2rnet(emb)
+            tf_pred = motifnet(emb)
             if global_indices is not None:
                 adj_E1[global_indices[seq_idx.numpy()]] = tf_pred
             else:
@@ -188,23 +188,23 @@ def _init_e1_cache(
 
 def _init_e1_test_cache(
     sequence_model: torch.nn.Module,
-    tf2rnet: MotifNet,
+    motifnet: MotifNet,
     test_seq_dataloader: torch.utils.data.DataLoader,
     device: str,
     config: ModelConfig,
 ) -> torch.Tensor:
     """Initialize E1 cache for TEST regions (no augmentation)."""
     sequence_model.eval()
-    tf2rnet.eval()
+    motifnet.eval()
 
     n_test_regions = len(test_seq_dataloader.dataset)  # type: ignore[arg-type]
-    adj_E1_test = torch.zeros(n_test_regions, tf2rnet.n_tfs, device=device)
+    adj_E1_test = torch.zeros(n_test_regions, motifnet.n_tfs, device=device)
 
     with torch.no_grad():
         for sequences, local_idx in tqdm(test_seq_dataloader, desc="Caching E1 (test)"):
             sequences = sequences.to(device)
             emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
-            tf_pred = tf2rnet(emb)
+            tf_pred = motifnet(emb)
             adj_E1_test[local_idx] = tf_pred
 
     return adj_E1_test
@@ -329,7 +329,7 @@ def train(
     """Train deepSCENIC model on multiome data.
 
     Phase 1 of the training workflow. Uses train cells and train features.
-    Trains the full model: sequence model (Enformer), MotifNet (TF2rNet),
+    Trains the full model: sequence model (Enformer), MotifNet (MotifNet),
     and VAE encoder/decoders.
 
     Parameters
@@ -545,6 +545,7 @@ def train(
         shuffle=True,
         balance_class=balance_class,
         class_key=class_key,
+        batch_key=batch_key,
         num_workers=num_workers,
     )
 
@@ -553,11 +554,11 @@ def train(
         split="test",
         batch_size=batch_size,
         shuffle=False,
+        batch_key=batch_key,
         num_workers=num_workers,
     )
 
-    # Sequence dataloader (for TF2rNet training)
-    # Only train regions - matches legacy behavior where E1 is only learned for train chromosomes
+    # Train sequence dataloader (for sequencenet + motifnet training)
     train_region_mask = mdata.mod["atac"].var["split"] == "train"
     region_names = list(mdata.mod["atac"].var_names[train_region_mask])
     # Map from train-only indices (0..n_train-1) to global indices (into full adj_E1_cache)
@@ -716,6 +717,9 @@ def train(
         for batch in pbar:
             x_rna = batch["rna"].to(device)
             x_atac = batch["atac"].to(device)
+            batch_id = batch.get("batch_id")
+            if batch_id is not None:
+                batch_id = batch_id.to(device)
 
             # Update E1 with fresh sequence predictions (legacy behavior)
             # Clone persistent cache, then insert fresh predictions WITH gradients
@@ -741,6 +745,7 @@ def train(
                 x_rna,
                 adj_E1_batch,
                 use_mean=False,
+                batch_id=batch_id,
             )
 
             # Compute losses (sparsity losses always included in train())
@@ -833,12 +838,16 @@ def train(
             for batch in test_cell_loader:
                 x_rna = batch["rna"].to(device)
                 x_atac = batch["atac"].to(device)
+                batch_id = batch.get("batch_id")
+                if batch_id is not None:
+                    batch_id = batch_id.to(device)
 
                 # Validation
                 output = vae(
                     x_rna,
                     adj_E1_cache,
                     use_mean=True,
+                    batch_id=batch_id,
                 )
 
                 losses = compute_total_loss(
