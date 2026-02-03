@@ -181,8 +181,8 @@ def mock_vae():
 
 
 @pytest.fixture
-def mock_tf2rnet():
-    """Create a minimal TF2rNet/MotifNet for testing."""
+def mock_motifnet():
+    """Create a minimal MotifNet for testing."""
     from deepscenic.models import MotifNet
 
     d = MINIMAL_DIMS
@@ -201,7 +201,7 @@ def mock_adj_E1():
 
 
 @pytest.fixture
-def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
+def mock_deepscenic_model(mock_vae, mock_motifnet, mock_adj_E1):
     """Create a complete DeepSCENICModel for testing."""
     from deepscenic.tl._model import DeepSCENICModel
     from deepscenic.tl._training_state import ModelConfig, TrainingHistory
@@ -218,7 +218,7 @@ def mock_deepscenic_model(mock_vae, mock_tf2rnet, mock_adj_E1):
 
     return DeepSCENICModel(
         vae=mock_vae,
-        tf2rnet=mock_tf2rnet,
+        motifnet=mock_motifnet,
         enformer=MockEnformer(
             bottleneck_size=d["bottleneck_size"],
             emb_len=d["emb_len"],

@@ -35,7 +35,6 @@ class PositiveLinear(nn.Module):
     """Linear layer with positive-constrained weights.
 
     Forward pass uses weight.abs() to ensure all weights are positive.
-    Biologically motivated: regulatory effects should be positive activations.
 
     Parameters
     ----------
@@ -45,12 +44,6 @@ class PositiveLinear(nn.Module):
         Size of each output sample
     bias
         If True, adds learnable bias. Default: False
-
-    Examples
-    --------
-    >>> layer = PositiveLinear(128, 64)
-    >>> x = torch.randn(32, 128)
-    >>> out = layer(x)  # shape: (32, 64), weights always positive
     """
 
     __constants__ = ["in_features", "out_features"]
@@ -102,13 +95,6 @@ class GaussianSampler(nn.Module):
         Input dimension
     out_features
         Output dimension (latent dimension)
-
-    Examples
-    --------
-    >>> sampler = GaussianSampler(128, 1)
-    >>> x = torch.randn(32, 10, 128)  # (batch, features, hidden)
-    >>> z, mu, logvar = sampler(x)
-    >>> z.shape  # (32, 10)
     """
 
     def __init__(self, in_features: int, out_features: int) -> None:
@@ -138,6 +124,7 @@ class GaussianSampler(nn.Module):
         logvar = self.logvar_layer(x).squeeze(-1)
 
         if use_mean:
+            # non-training forward passes
             return mu, mu, logvar
 
         # Reparameterization trick

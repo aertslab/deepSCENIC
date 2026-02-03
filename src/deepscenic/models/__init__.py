@@ -3,7 +3,7 @@
 from ._decoder import GenerativeNet, GenerativeNetATAC
 from ._encoder import InferenceNet
 from ._layers import GaussianSampler, PositiveLinear
-from ._tf2rnet import MotifNet
+from ._motifnet import MotifNet
 from ._vae import DeepSCENICVAE, VAEOutput
 
 __all__ = [
@@ -14,7 +14,7 @@ __all__ = [
     "InferenceNet",
     "GenerativeNet",
     "GenerativeNetATAC",
-    # TF2rNet
+    # Sequence head (DNA → TF binding)
     "MotifNet",
     # Main model
     "DeepSCENICVAE",

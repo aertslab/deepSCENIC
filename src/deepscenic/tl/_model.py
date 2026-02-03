@@ -48,8 +48,8 @@ class DeepSCENICModel:
     ----------
     vae
         Trained VAE model.
-    tf2rnet
-        Trained TF2rNet context head.
+    motifnet
+        Trained MotifNet context head.
     enformer
         Sequence embedding model (Enformer or custom nn.Module).
     adj_E1
@@ -78,7 +78,7 @@ class DeepSCENICModel:
     """
 
     vae: DeepSCENICVAE
-    tf2rnet: MotifNet
+    motifnet: MotifNet
     enformer: nn.Module
     adj_E1: torch.Tensor
     config: ModelConfig
@@ -102,7 +102,7 @@ class DeepSCENICModel:
         """
         Save model to file.
 
-        Includes all components (VAE, TF2rNet, sequence model), metadata, and
+        Includes all components (VAE, motifnet, sequence model), metadata, and
         training history if available. File size will be ~1GB+ if using Enformer.
 
         Parameters
@@ -145,7 +145,7 @@ class DeepSCENICModel:
 
         data = {
             "vae_state_dict": self.vae.state_dict(),
-            "tf2rnet_state_dict": self.tf2rnet.state_dict(),
+            "motifnet_state_dict": self.motifnet.state_dict(),
             "enformer_state_dict": self.enformer.state_dict(),
             "adj_E1": self.adj_E1,
             "config": self.config.to_dict(),
@@ -262,14 +262,14 @@ class DeepSCENICModel:
         vae.eval()
 
         # Reconstruct MotifNet
-        tf2rnet = MotifNet(
+        motifnet = MotifNet(
             n_tfs=data["n_tfs"],
             bottleneck_size=config.bottleneck_size,
             emb_len=config.emb_len,
         )
-        tf2rnet.load_state_dict(data["tf2rnet_state_dict"])
-        tf2rnet.to(device)
-        tf2rnet.eval()
+        motifnet.load_state_dict(data["motifnet_state_dict"])
+        motifnet.to(device)
+        motifnet.eval()
 
         # Reconstruct sequence model
         is_custom = data.get("is_custom_sequence_model", False)
@@ -317,7 +317,7 @@ class DeepSCENICModel:
 
         return cls(
             vae=vae,
-            tf2rnet=tf2rnet,
+            motifnet=motifnet,
             enformer=seq_model,
             adj_E1=data["adj_E1"].to(device),
             config=config,
@@ -331,7 +331,7 @@ class DeepSCENICModel:
     def to(self, device: str | torch.device) -> DeepSCENICModel:
         """Move model to device."""
         self.vae.to(device)
-        self.tf2rnet.to(device)
+        self.motifnet.to(device)
         self.enformer.to(device)
         self.adj_E1 = self.adj_E1.to(device)
         return self
@@ -339,14 +339,14 @@ class DeepSCENICModel:
     def eval(self) -> DeepSCENICModel:
         """Set all components to eval mode."""
         self.vae.eval()
-        self.tf2rnet.eval()
+        self.motifnet.eval()
         self.enformer.eval()
         return self
 
     def train(self) -> DeepSCENICModel:
         """Set all components to train mode."""
         self.vae.train()
-        self.tf2rnet.train()
+        self.motifnet.train()
         self.enformer.train()
         return self
 
@@ -559,7 +559,7 @@ def load_legacy_data(
 
 def load_legacy_model(
     vae_path: str | Path,
-    tf2rnet_path: str | Path,
+    motifnet_path: str | Path,
     enformer_path: str | Path,
     mdata: MuData,
     e1_path: str | Path | None = None,
@@ -577,7 +577,7 @@ def load_legacy_model(
     ----------
     vae_path
         Path to VAE checkpoint (e.g., best_model.pth)
-    tf2rnet_path
+    motifnet_path
         Path to MotifNet checkpoint (e.g., best_model_tf2r.pth)
     enformer_path
         Path to Enformer checkpoint (e.g., best_model_tf2r_encoder.pth)
@@ -605,7 +605,7 @@ def load_legacy_model(
     >>> mdata = ds.read("preprocessed.h5mu")
     >>> model = ds.tl.load_legacy_model(
     ...     vae_path="results/best_model.pth",
-    ...     tf2rnet_path="results/best_model_tf2r.pth",
+    ...     motifnet_path="results/best_model_tf2r.pth",
     ...     enformer_path="results/best_model_tf2r_encoder.pth",
     ...     mdata=mdata,
     ...     e1_path="results/E1.pkl",
@@ -616,7 +616,7 @@ def load_legacy_model(
     >>> ds.register_genome("/path/to/hg38.fa")
     >>> model = ds.tl.load_legacy_model(
     ...     vae_path="results/best_model.pth",
-    ...     tf2rnet_path="results/best_model_tf2r.pth",
+    ...     motifnet_path="results/best_model_tf2r.pth",
     ...     enformer_path="results/best_model_tf2r_encoder.pth",
     ...     mdata=mdata,
     ...     e1_path=None,  # Reconstruct from model
@@ -646,7 +646,7 @@ def load_legacy_model(
 
     # Convert paths to Path objects
     vae_path = Path(vae_path)
-    tf2rnet_path = Path(tf2rnet_path)
+    motifnet_path = Path(motifnet_path)
     enformer_path = Path(enformer_path)
 
     # =========================================================================
@@ -759,19 +759,19 @@ def load_legacy_model(
     # =========================================================================
     log.info("Loading MotifNet...")
 
-    tf2rnet = MotifNet(
+    motifnet = MotifNet(
         n_tfs=n_tfs,
         bottleneck_size=3072,  # Legacy default (Enformer output dim)
         emb_len=5,  # Legacy default (target_length=5)
     )
 
-    tf2r_ckpt = torch.load(tf2rnet_path, map_location=device)
-    tf2r_state = _map_legacy_motifnet_state_dict(tf2r_ckpt["model_state_dict"])
-    tf2rnet.load_state_dict(tf2r_state)
-    tf2rnet.to(device)
-    tf2rnet.eval()
+    motifnet_ckpt = torch.load(motifnet_path, map_location=device)
+    motifnet_state = _map_legacy_motifnet_state_dict(motifnet_ckpt["model_state_dict"])
+    motifnet.load_state_dict(motifnet_state)
+    motifnet.to(device)
+    motifnet.eval()
 
-    log.info(f"  MotifNet loaded (epoch {tf2r_ckpt.get('epoch', 'unknown')})")
+    log.info(f"  MotifNet loaded (epoch {motifnet_ckpt.get('epoch', 'unknown')})")
 
     # =========================================================================
     # Step 5: Construct Enformer and load state dict
@@ -841,7 +841,7 @@ def load_legacy_model(
         # Compute E1
         adj_E1 = torch.zeros(n_regions, n_tfs, device=device)
         enformer.eval()
-        tf2rnet.eval()
+        motifnet.eval()
 
         with torch.no_grad():
             for sequences, seq_idx in tqdm(seq_loader, desc="Computing E1"):
@@ -851,7 +851,7 @@ def load_legacy_model(
                 # Flatten: (batch, emb_len, bottleneck) -> (batch, bottleneck * emb_len)
                 emb = emb.reshape(emb.shape[0], -1).float()
                 # Get TF predictions from MotifNet
-                tf_pred = tf2rnet(emb)
+                tf_pred = motifnet(emb)
                 adj_E1[seq_idx] = tf_pred
 
         log.info(f"  E1 shape: {adj_E1.shape}")
@@ -867,7 +867,7 @@ def load_legacy_model(
 
     model = DeepSCENICModel(
         vae=vae,
-        tf2rnet=tf2rnet,
+        motifnet=motifnet,
         enformer=enformer,
         adj_E1=adj_E1,
         config=config,

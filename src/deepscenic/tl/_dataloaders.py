@@ -174,7 +174,6 @@ def build_sequence_dataloader(
     rc_aug: bool = True,
     *,
     context_length: int,
-    num_workers: int = 0,
     balance_dars: bool = False,
     dar_indices: NDArray | None = None,
 ) -> DataLoader:
@@ -199,8 +198,6 @@ def build_sequence_dataloader(
         Whether to use reverse complement augmentation.
     context_length
         Sequence length in base pairs. Should match your model's expected input.
-    num_workers
-        Number of data loading workers.
     balance_dars
         Whether to upweight DARs.
     dar_indices

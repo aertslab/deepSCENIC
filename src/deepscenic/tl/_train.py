@@ -45,7 +45,7 @@ def _get_checkpoint_executor() -> ThreadPoolExecutor:
 def _save_checkpoint_data(
     path: Path,
     vae_state_dict: dict,
-    tf2rnet_state_dict: dict,
+    motifnet_state_dict: dict,
     enformer_state_dict: dict,
     adj_E1: torch.Tensor,
     config: ModelConfig,
@@ -68,7 +68,7 @@ def _save_checkpoint_data(
     """
     data = {
         "vae_state_dict": vae_state_dict,
-        "tf2rnet_state_dict": tf2rnet_state_dict,
+        "motifnet_state_dict": motifnet_state_dict,
         "enformer_state_dict": enformer_state_dict,
         "adj_E1": adj_E1,
         "config": config.to_dict(),
@@ -98,7 +98,7 @@ def _init_enformer(device: str, emb_len: int) -> torch.nn.Module:
     enformer = Enformer.from_pretrained(
         "EleutherAI/enformer-official-rough",
         dropout_rate=0.1,
-        target_length=emb_len,  # default TF2rNet embedding
+        target_length=emb_len,
     )
     enformer.to(device)  # type: ignore
     return enformer  # type: ignore[no-any-return]
@@ -522,7 +522,7 @@ def train(
     # Initialize sequence models (custom or default Enformer)
     if model_config.sequence_model is not None:
         # User provided custom sequence model
-        tf2rnet = MotifNet(
+        motifnet = MotifNet(
             n_tfs=n_tfs,
             bottleneck_size=model_config.bottleneck_size,
             emb_len=model_config.emb_len,
@@ -530,7 +530,7 @@ def train(
         sequence_model = model_config.sequence_model.to(device)
     else:
         # Default: use Enformer
-        tf2rnet = MotifNet(
+        motifnet = MotifNet(
             n_tfs=n_tfs,
             bottleneck_size=model_config.bottleneck_size,
             emb_len=model_config.emb_len,
@@ -580,7 +580,6 @@ def train(
         shift_augs=(-3, 3),
         rc_aug=True,
         context_length=model_config.seq_len,
-        num_workers=num_workers,
         balance_dars=balance_dars,
         dar_indices=dar_indices,
     )
@@ -607,7 +606,7 @@ def train(
     n_all_regions = len(mdata.mod["atac"].var_names)
     adj_E1_cache = _init_e1_cache(
         sequence_model,
-        tf2rnet,
+        motifnet,
         train_seq_loader,
         device,
         model_config,
@@ -616,7 +615,7 @@ def train(
     )
 
     # Initialize test E1 cache (always computed, no pretrained cache for test regions)
-    adj_E1_test_cache = _init_e1_test_cache(sequence_model, tf2rnet, test_seq_loader, device, model_config)
+    adj_E1_test_cache = _init_e1_test_cache(sequence_model, motifnet, test_seq_loader, device, model_config)
 
     # Tensor mapping from train-local indices to global region indices
     train_region_global_idx = torch.tensor(train_region_global_indices, dtype=torch.long, device=device)
@@ -630,7 +629,7 @@ def train(
     optimizer = Adam(
         [
             {"params": vae.parameters(), "lr": lr},
-            {"params": tf2rnet.parameters(), "lr": lr},
+            {"params": motifnet.parameters(), "lr": lr},
             {"params": sequence_model.parameters(), "lr": lr},
         ],
         weight_decay=weight_decay,
@@ -671,7 +670,7 @@ def train(
 
         # Load state dicts into our freshly initialized models
         vae.load_state_dict(resumed_model.vae.state_dict())
-        tf2rnet.load_state_dict(resumed_model.tf2rnet.state_dict())
+        motifnet.load_state_dict(resumed_model.motifnet.state_dict())
         sequence_model.load_state_dict(resumed_model.enformer.state_dict())
 
         # Restore E1 cache
@@ -698,7 +697,7 @@ def train(
     for epoch in range(start_epoch, epochs):
         # Set all models to train mode
         vae.train()
-        tf2rnet.train()
+        motifnet.train()
         sequence_model.train()
 
         epoch_metrics: dict[str, float] = {
@@ -733,7 +732,7 @@ def train(
             emb = _get_sequence_embeddings(
                 sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len
             )
-            tf_pred = tf2rnet(emb)
+            tf_pred = motifnet(emb)
             adj_E1_batch[seq_idx] = tf_pred  # Gradients flow through these predictions
 
             # VAE forward
@@ -807,7 +806,7 @@ def train(
 
         # Validation
         vae.eval()
-        tf2rnet.eval()
+        motifnet.eval()
         sequence_model.eval()
 
         # Recompute test E1 each epoch (legacy behavior)
@@ -817,7 +816,7 @@ def train(
                 emb = _get_sequence_embeddings(
                     sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len
                 )
-                tf_pred = tf2rnet(emb)
+                tf_pred = motifnet(emb)
                 adj_E1_test_cache[local_idx] = tf_pred
 
         val_metrics: dict[str, float] = {
@@ -921,7 +920,7 @@ def train(
                 _save_checkpoint_data,
                 best_path,
                 copy.deepcopy(vae.state_dict()),
-                copy.deepcopy(tf2rnet.state_dict()),
+                copy.deepcopy(motifnet.state_dict()),
                 copy.deepcopy(sequence_model.state_dict()),
                 adj_E1_cache.clone().cpu(),
                 model_config,
@@ -963,7 +962,7 @@ def train(
                 _save_checkpoint_data,
                 checkpoint_path,
                 copy.deepcopy(vae.state_dict()),
-                copy.deepcopy(tf2rnet.state_dict()),
+                copy.deepcopy(motifnet.state_dict()),
                 copy.deepcopy(sequence_model.state_dict()),
                 adj_E1_cache.clone().cpu(),
                 model_config,
@@ -993,14 +992,14 @@ def train(
 
     # Return trained model
     vae.eval()
-    tf2rnet.eval()
+    motifnet.eval()
     sequence_model.eval()
 
     log.info("Training completed")
 
     return DeepSCENICModel(
         vae=vae,
-        tf2rnet=tf2rnet,
+        motifnet=motifnet,
         enformer=sequence_model,
         adj_E1=adj_E1_cache,
         config=model_config,
@@ -1391,7 +1390,7 @@ def finetune_e2(
     # Return updated model with new history
     return DeepSCENICModel(
         vae=vae,
-        tf2rnet=model.tf2rnet,
+        motifnet=model.motifnet,
         enformer=model.enformer,
         adj_E1=adj_E1,
         config=model.config,

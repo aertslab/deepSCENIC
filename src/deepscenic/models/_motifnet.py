@@ -12,7 +12,7 @@ class MotifNet(nn.Module):
     to predict TF binding strength per region.
 
     Architecture:
-        (batch, bottleneck_size * emb_len) [flattened Enformer output]
+        (batch, bottleneck_size * emb_len) [flattened sequence model's output]
         → reshape to (batch, 1, bottleneck_size * emb_len)
         → Conv1d(1, n_tfs, kernel=bottleneck_size)
         → reshape → Linear(emb_len, 1)
@@ -66,7 +66,7 @@ class MotifNet(nn.Module):
         Parameters
         ----------
         emb
-            Enformer embeddings, either:
+            Sequence model embeddings, either:
             - (batch, bottleneck_size * emb_len) - flattened format (typical)
             - (batch, bottleneck_size, emb_len) - 3D format
 
@@ -77,21 +77,18 @@ class MotifNet(nn.Module):
         """
         batch_size = emb.shape[0]
 
-        # Ensure float32 dtype for compatibility with model weights
         emb = emb.float()
 
-        # Reshape to process each position separately
         # (batch, bottleneck * emb_len) → (batch * emb_len, 1, bottleneck)
         emb = emb.reshape(-1, 1, self.bottleneck_size)
 
         # Conv1d: (batch * emb_len, 1, bottleneck) → (batch * emb_len, n_tfs, 1)
         h = self.ctx_conv(emb)
 
-        # Reshape to group positions back together
         # (batch * emb_len, n_tfs, 1) → (batch, emb_len, n_tfs) → (batch, n_tfs, emb_len)
         h = h.reshape(batch_size, self.emb_len, self.n_tfs).transpose(1, 2)
 
-        # Linear: (batch, n_tfs, emb_len) → (batch, n_tfs, 1) → (batch, n_tfs)
+        # (batch, n_tfs, emb_len) → (batch, n_tfs, 1) → (batch, n_tfs)
         out = self.ctx_linear(h).squeeze(-1)
 
         return out.float()

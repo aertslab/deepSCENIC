@@ -81,9 +81,8 @@ class TensorboardLogger(TrainingLogger):
             self.writer.add_scalar(key, value, step)
 
     def log_hyperparams(self, params: dict[str, Any]) -> None:
-        # Log hyperparams as text to avoid add_hparams creating subdirectories
-        # that clutter the TensorBoard run list
-        lines = [f"| Param | Value |", f"|-------|-------|"]
+        # Log hyperparams as text
+        lines = ["| Param | Value |", "|-------|-------|"]
         for k, v in params.items():
             lines.append(f"| {k} | {v} |")
         self.writer.add_text("hyperparams", "\n".join(lines))
@@ -132,36 +131,6 @@ class WandbLogger(TrainingLogger):
         wandb.finish()
 
 
-class CompositeLogger(TrainingLogger):
-    """Logger that forwards to multiple backends.
-
-    Parameters
-    ----------
-    loggers
-        List of loggers to forward to
-
-    Examples
-    --------
-    >>> logger = CompositeLogger([DictLogger(), TensorboardLogger("./runs")])
-    >>> logger.log_metrics({"loss": 0.5}, step=1)
-    """
-
-    def __init__(self, loggers: list[TrainingLogger]) -> None:
-        self.loggers = loggers
-
-    def log_metrics(self, metrics: dict[str, float], step: int) -> None:
-        for logger in self.loggers:
-            logger.log_metrics(metrics, step)
-
-    def log_hyperparams(self, params: dict[str, Any]) -> None:
-        for logger in self.loggers:
-            logger.log_hyperparams(params)
-
-    def close(self) -> None:
-        for logger in self.loggers:
-            logger.close()
-
-
 def get_logger(
     backend: str = "dict",
     **kwargs: Any,
@@ -172,7 +141,7 @@ def get_logger(
     Parameters
     ----------
     backend
-        One of: 'dict', 'tensorboard', 'wandb', 'none'
+        One of: 'dict', 'tensorboard', 'wandb'
     **kwargs
         Backend-specific arguments:
         - tensorboard: log_dir (str)
@@ -199,8 +168,5 @@ def get_logger(
         # Remove log_dir as it's not used by wandb
         kwargs.pop("log_dir", None)
         return WandbLogger(project=project, name=name, **kwargs)
-    elif backend == "none":
-        # Null logger that does nothing
-        return DictLogger()  # Use dict logger but ignore results
     else:
         raise ValueError(f"Unknown logger backend: {backend}")
