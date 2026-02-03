@@ -50,7 +50,7 @@ class DeepSCENICModel:
         Trained VAE model.
     motifnet
         Trained MotifNet context head.
-    enformer
+    sequence_model
         Sequence embedding model (Enformer or custom nn.Module).
     adj_E1
         Cached E1 matrix (n_regions, n_tfs).
@@ -79,7 +79,7 @@ class DeepSCENICModel:
 
     vae: DeepSCENICVAE
     motifnet: MotifNet
-    enformer: nn.Module
+    sequence_model: nn.Module
     adj_E1: torch.Tensor
     config: ModelConfig
     tf_names: list[str]
@@ -141,12 +141,12 @@ class DeepSCENICModel:
         ... )
         """
         # Detect if sequence model is Enformer or custom
-        is_custom_sequence_model = type(self.enformer).__name__ != "Enformer"
+        is_custom_sequence_model = type(self.sequence_model).__name__ != "Enformer"
 
         data = {
             "vae_state_dict": self.vae.state_dict(),
             "motifnet_state_dict": self.motifnet.state_dict(),
-            "enformer_state_dict": self.enformer.state_dict(),
+            "sequence_model_state_dict": self.sequence_model.state_dict(),
             "adj_E1": self.adj_E1,
             "config": self.config.to_dict(),
             "tf_names": self.tf_names,
@@ -289,7 +289,7 @@ class DeepSCENICModel:
                 target_length=-1,
             )
 
-        seq_model.load_state_dict(data["enformer_state_dict"])
+        seq_model.load_state_dict(data["sequence_model_state_dict"])
         seq_model.to(device)
         seq_model.eval()
 
@@ -318,7 +318,7 @@ class DeepSCENICModel:
         return cls(
             vae=vae,
             motifnet=motifnet,
-            enformer=seq_model,
+            sequence_model=seq_model,
             adj_E1=data["adj_E1"].to(device),
             config=config,
             tf_names=data["tf_names"],
@@ -332,7 +332,7 @@ class DeepSCENICModel:
         """Move model to device."""
         self.vae.to(device)
         self.motifnet.to(device)
-        self.enformer.to(device)
+        self.sequence_model.to(device)
         self.adj_E1 = self.adj_E1.to(device)
         return self
 
@@ -340,14 +340,14 @@ class DeepSCENICModel:
         """Set all components to eval mode."""
         self.vae.eval()
         self.motifnet.eval()
-        self.enformer.eval()
+        self.sequence_model.eval()
         return self
 
     def train(self) -> DeepSCENICModel:
         """Set all components to train mode."""
         self.vae.train()
         self.motifnet.train()
-        self.enformer.train()
+        self.sequence_model.train()
         return self
 
 
@@ -868,7 +868,7 @@ def load_legacy_model(
     model = DeepSCENICModel(
         vae=vae,
         motifnet=motifnet,
-        enformer=enformer,
+        sequence_model=enformer,
         adj_E1=adj_E1,
         config=config,
         tf_names=tf_names,

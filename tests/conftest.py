@@ -219,7 +219,7 @@ def mock_deepscenic_model(mock_vae, mock_motifnet, mock_adj_E1):
     return DeepSCENICModel(
         vae=mock_vae,
         motifnet=mock_motifnet,
-        enformer=MockEnformer(
+        sequence_model=MockEnformer(
             bottleneck_size=d["bottleneck_size"],
             emb_len=d["emb_len"],
         ),

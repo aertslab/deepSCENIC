@@ -69,7 +69,7 @@ def _save_checkpoint_data(
     data = {
         "vae_state_dict": vae_state_dict,
         "motifnet_state_dict": motifnet_state_dict,
-        "enformer_state_dict": enformer_state_dict,
+        "sequence_model_state_dict": enformer_state_dict,
         "adj_E1": adj_E1,
         "config": config.to_dict(),
         "tf_names": tf_names,
@@ -672,7 +672,7 @@ def train(
         # Load state dicts into our freshly initialized models
         vae.load_state_dict(resumed_model.vae.state_dict())
         motifnet.load_state_dict(resumed_model.motifnet.state_dict())
-        sequence_model.load_state_dict(resumed_model.enformer.state_dict())
+        sequence_model.load_state_dict(resumed_model.sequence_model.state_dict())
 
         # Restore E1 cache
         adj_E1_cache = resumed_model.adj_E1.to(device)
@@ -1009,7 +1009,7 @@ def train(
     return DeepSCENICModel(
         vae=vae,
         motifnet=motifnet,
-        enformer=sequence_model,
+        sequence_model=sequence_model,
         adj_E1=adj_E1_cache,
         config=model_config,
         tf_names=tf_names,
@@ -1400,7 +1400,7 @@ def finetune_e2(
     return DeepSCENICModel(
         vae=vae,
         motifnet=model.motifnet,
-        enformer=model.enformer,
+        sequence_model=model.sequence_model,
         adj_E1=adj_E1,
         config=model.config,
         tf_names=model.tf_names,
