@@ -20,8 +20,6 @@ class ModelConfig:
     ----------
     n_hidden
         MLP hidden dimension.
-    use_ppi
-        Whether to use PPI network.
     binary_atac
         Whether ATAC is binary.
     bottleneck_size
@@ -70,7 +68,6 @@ class ModelConfig:
 
     # Model architecture
     n_hidden: int = 128
-    use_ppi: bool = True
     binary_atac: bool = False
 
     # Sequence model settings

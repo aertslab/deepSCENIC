@@ -242,7 +242,9 @@ class DeepSCENICModel:
         # Reconstruct config (handles both old TrainingConfig and new ModelConfig)
         config = ModelConfig.from_dict(data["config"])
 
-        # Reconstruct VAE
+        # Reconstruct VAE (PPI removed for initial release - legacy PPI weights are ignored)
+        if data.get("use_ppi", False):
+            log.info("  Note: Legacy checkpoint had PPI enabled - PPI is removed in this release")
         vae = DeepSCENICVAE(
             n_tfs=data["n_tfs"],
             n_genes=data["n_genes"],
@@ -252,12 +254,7 @@ class DeepSCENICModel:
             tf_indices=data["tf_indices"],
             gene_indices=data["gene_indices"],
             region_indices=data["region_indices"],
-            ppi_edge_index=data.get("ppi_edge_index"),
-            ppi_genes_idx=data.get("ppi_genes_idx"),
-            ppi_tfs_idx_keys=data.get("ppi_tfs_idx_keys"),
-            ppi_tfs_idx_values=data.get("ppi_tfs_idx_values"),
             n_hidden=data["n_hidden"],
-            use_ppi=data.get("use_ppi", False),
             n_batches=data.get("n_batches", 0),
         )
         vae.load_state_dict(data["vae_state_dict"])
@@ -405,7 +402,7 @@ def load_legacy_data(
     r2g_path: str | Path | None = None,
     tf_path: str | Path | None = None,
     n_tfs: int | None = None,
-) -> "MuData":
+) -> MuData:
     """
     Load legacy training data files into MuData format for loading legacy models.
 
@@ -564,7 +561,7 @@ def load_legacy_model(
     vae_path: str | Path,
     tf2rnet_path: str | Path,
     enformer_path: str | Path,
-    mdata: "MuData",
+    mdata: MuData,
     e1_path: str | Path | None = None,
     *,
     device: str = "cuda",
@@ -589,7 +586,6 @@ def load_legacy_model(
 
         - ``mdata['rna'].var['is_tf']`` column (from ds.pp.mark_tfs())
         - ``mdata.uns['r2g']`` (from ds.pp.compute_r2g_penalty())
-        - Optionally ``mdata.uns['ppi_*']`` for PPI (from ds.pp.build_ppi_network())
     e1_path
         Path to pre-computed E1 matrix (E1.pkl). If None, reconstructs E1 by
         running Enformer + MotifNet inference on all regions. This requires
@@ -636,9 +632,10 @@ def load_legacy_model(
         {'epoch': int, 'model_state_dict': OrderedDict, 'optimizer_state_dict': ...}
 
     The state dict keys are identical between legacy and new code:
-        - VAE: 'adj_E2', 'inference_rna.*', 'generative_rna.*', 'generative_atac.*', 'PPInet.*'
+        - VAE: 'adj_E2', 'inference_rna.*', 'generative_rna.*', 'generative_atac.*'
         - MotifNet: 'ctx_head_layer.weight', 'ctx_lin.weight', 'ctx_lin.bias'
         - Enformer: Full Enformer state dict
+        - Note: 'PPInet.*' keys in legacy models are ignored (PPI removed in this release)
 
     See Also
     --------
@@ -689,26 +686,15 @@ def load_legacy_model(
     log.info(f"  R2G links: {r2g_indices.shape[1]}")
 
     # =========================================================================
-    # Step 2: Get PPI from h5mu (if present)
+    # Step 2: Check for PPI in h5mu (PPI removed for initial release)
     # =========================================================================
-    use_ppi = "ppi_edge_index" in mdata.uns
-    ppi_edge_index = None
-    ppi_genes_idx = None
-    ppi_tfs_idx_keys = None
-    ppi_tfs_idx_values = None
-
-    if use_ppi:
-        ppi_edge_index = torch.tensor(mdata.uns["ppi_edge_index"], dtype=torch.long)
-        ppi_genes_idx = torch.tensor(mdata.uns["ppi_genes_idx"], dtype=torch.long)
-        ppi_tfs_idx_keys = torch.tensor(mdata.uns["ppi_tfs_idx_keys"], dtype=torch.long)
-        ppi_tfs_idx_values = torch.tensor(mdata.uns["ppi_tfs_idx_values"], dtype=torch.long)
-        log.info(f"  PPI: {ppi_edge_index.shape[1]} edges from h5mu")
+    if "ppi_edge_index" in mdata.uns:
+        log.info("  Note: Legacy data has PPI info - PPI is removed in this release, ignoring")
 
     # =========================================================================
     # Step 3: Construct VAE and load state dict
     # =========================================================================
     log.info("Loading VAE...")
-
     vae = DeepSCENICVAE(
         n_tfs=n_tfs,
         n_genes=n_genes,
@@ -718,12 +704,7 @@ def load_legacy_model(
         tf_indices=tf_indices,
         gene_indices=gene_indices,
         region_indices=region_indices,
-        ppi_edge_index=ppi_edge_index,
-        ppi_genes_idx=ppi_genes_idx,
-        ppi_tfs_idx_keys=ppi_tfs_idx_keys,
-        ppi_tfs_idx_values=ppi_tfs_idx_values,
         n_hidden=128,  # Legacy default
-        use_ppi=use_ppi,
         binary_atac=False,  # Legacy default
         n_batches=0,  # Will detect from state dict
     )
@@ -748,12 +729,7 @@ def load_legacy_model(
             tf_indices=tf_indices,
             gene_indices=gene_indices,
             region_indices=region_indices,
-            ppi_edge_index=ppi_edge_index,
-            ppi_genes_idx=ppi_genes_idx,
-            ppi_tfs_idx_keys=ppi_tfs_idx_keys,
-            ppi_tfs_idx_values=ppi_tfs_idx_values,
             n_hidden=128,
-            use_ppi=use_ppi,
             binary_atac=False,
             n_batches=n_batches,
         )
@@ -761,10 +737,8 @@ def load_legacy_model(
     # Map legacy state dict keys to new format
     vae_state = _map_legacy_vae_state_dict(vae_state)
 
-    # Handle potential key mismatches for PPI
-    if not use_ppi:
-        # Remove PPI keys from state dict if we're not using PPI
-        vae_state = {k: v for k, v in vae_state.items() if not k.startswith("ppi.")}
+    # PPI removed for initial release - always remove PPI keys from legacy state dict
+    vae_state = {k: v for k, v in vae_state.items() if not k.startswith("ppi.")}
 
     # Log ignored keys (e.g., generative_rec.* dead code in PPI models)
     expected_keys = set(vae.state_dict().keys())
@@ -836,8 +810,8 @@ def load_legacy_model(
         # Reconstruct from model weights
         from tqdm import tqdm
 
-        from ._dataloaders import build_sequence_dataloader
         from .._genome import get_genome
+        from ._dataloaders import build_sequence_dataloader
 
         log.info("Reconstructing E1 matrix from model weights...")
         log.info("  (This may take a while - running all regions through Enformer)")
@@ -887,7 +861,6 @@ def load_legacy_model(
     # =========================================================================
     config = ModelConfig(
         n_hidden=128,
-        use_ppi=use_ppi,
         bottleneck_size=3072,
         emb_len=5,
     )

@@ -9,7 +9,6 @@ from torch import Tensor, nn
 
 from ._decoder import GenerativeNet, GenerativeNetATAC
 from ._encoder import InferenceNet
-from ._ppi import PPIgnn, build_ppi_batch, extract_tf_weights
 
 
 @dataclass
@@ -23,19 +22,17 @@ class VAEOutput:
     logvar: Tensor  # Encoder log variance (n_cells, n_tfs)
     enh_act: Tensor  # Region activity (n_cells, n_regions)
     z_rna: Tensor  # Gene regulatory signal (n_cells, n_genes)
-    x_rna_ppi: Tensor  # PPI modulation weights (n_cells, n_tfs)
 
 
 class DeepSCENICVAE(nn.Module):
     """Variational Autoencoder for GRN inference.
 
     Combines:
-    - InferenceNet: TF expression → latent TF activity
-    - GenerativeNet: Gene signal → RNA reconstruction
-    - GenerativeNetATAC: Region activity → ATAC reconstruction
-    - PPIgnn (optional): PPI-based TF modulation
+    - InferenceNet: TF expression -> latent TF activity
+    - GenerativeNet: Gene signal -> RNA reconstruction
+    - GenerativeNetATAC: Region activity -> ATAC reconstruction
 
-    The GRN matrices (E1: TF→region, E2: region→gene) are passed during
+    The GRN matrices (E1: TF->region, E2: region->gene) are passed during
     forward rather than stored, as E1 comes from TF2rNet and is cached.
 
     Parameters
@@ -47,25 +44,15 @@ class DeepSCENICVAE(nn.Module):
     n_regions
         Number of chromatin regions
     r2g_indices
-        Sparse indices for region→gene links (2, n_links)
+        Sparse indices for region->gene links (2, n_links)
     r2g_distances
-        Distance penalties for region→gene links (n_links,)
+        Distance penalties for region->gene links (n_links,)
     tf_indices
         Indices of TFs in the gene expression matrix
     gene_indices
         Indices of genes to reconstruct
-    ppi_edge_index
-        PPI graph edges (2, n_edges), optional
-    ppi_genes_idx
-        Indices of genes in PPI network, optional
-    ppi_tfs_idx_keys
-        TF indices within PPI genes, optional
-    ppi_tfs_idx_values
-        Target TF indices for reordering, optional
     n_hidden
         MLP hidden dimension (default: 128)
-    use_ppi
-        Whether to use PPI network for TF modulation
     binary_atac
         Whether ATAC is binary (adds bias to decoder)
     n_batches
@@ -74,7 +61,7 @@ class DeepSCENICVAE(nn.Module):
     Attributes
     ----------
     adj_E2
-        Learnable region→gene weights (n_links,)
+        Learnable region->gene weights (n_links,)
     """
 
     def __init__(
@@ -87,12 +74,7 @@ class DeepSCENICVAE(nn.Module):
         tf_indices: Tensor,
         gene_indices: Tensor,
         region_indices: Tensor,
-        ppi_edge_index: Tensor | None = None,
-        ppi_genes_idx: Tensor | None = None,
-        ppi_tfs_idx_keys: Tensor | None = None,
-        ppi_tfs_idx_values: Tensor | None = None,
         n_hidden: int = 128,
-        use_ppi: bool = True,
         binary_atac: bool = False,
         n_batches: int = 0,
     ) -> None:
@@ -102,8 +84,11 @@ class DeepSCENICVAE(nn.Module):
         self.n_genes = n_genes
         self.n_regions = n_regions
         self.n_hidden = n_hidden
-        self.use_ppi = use_ppi and ppi_edge_index is not None
         self.n_batches = n_batches
+
+        # PPI removed for initial release, kept as attribute for legacy loading
+        self.use_ppi = False
+        self.ppi = None
 
         # Store indices as buffers (not parameters)
         self.register_buffer("tf_indices", tf_indices)
@@ -112,7 +97,7 @@ class DeepSCENICVAE(nn.Module):
         self.register_buffer("r2g_indices", r2g_indices)
         self.register_buffer("r2g_distances", r2g_distances)
 
-        # Learnable E2 weights (region→gene)
+        # Learnable E2 weights (region->gene)
         n_links = r2g_indices.shape[1]
         self.adj_E2 = nn.Parameter(torch.zeros(n_links) + 1e-4)
 
@@ -120,19 +105,6 @@ class DeepSCENICVAE(nn.Module):
         self.encoder = InferenceNet(n_hidden=n_hidden)
         self.decoder_rna = GenerativeNet(n_hidden=n_hidden)
         self.decoder_atac = GenerativeNetATAC(n_hidden=n_hidden, use_bias=binary_atac)
-
-        # PPI network (pluggable)
-        if self.use_ppi:
-            n_ppi_nodes = len(ppi_genes_idx)  # type: ignore[arg-type]
-            self.ppi = PPIgnn(num_nodes=n_ppi_nodes, hidden_channels=n_hidden, heads=2)
-            self.register_buffer("ppi_edge_index", ppi_edge_index)
-            self.register_buffer("ppi_genes_idx", ppi_genes_idx)
-            self.register_buffer("ppi_tfs_idx_keys", ppi_tfs_idx_keys)
-            self.register_buffer("ppi_tfs_idx_values", ppi_tfs_idx_values)
-            # Node identity indices for embedding lookup (legacy behavior)
-            self.register_buffer("ppi_node_ids", torch.arange(n_ppi_nodes, dtype=torch.long))
-        else:
-            self.ppi = None
 
         # Batch correction layers
         if n_batches > 0:
@@ -160,7 +132,7 @@ class DeepSCENICVAE(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def _region_to_gene(self, enh_act: Tensor) -> Tensor:
-        """Compute region→gene signal using scatter_add (more memory efficient).
+        """Compute region->gene signal using scatter_add (more memory efficient).
 
         Equivalent to enh_act @ E2 where E2 is a sparse (n_regions, n_genes) matrix,
         but avoids materializing any dense matrices during forward or backward.
@@ -199,9 +171,7 @@ class DeepSCENICVAE(nn.Module):
         self,
         x_rna: Tensor,
         adj_E1: Tensor,
-        use_ppi: bool = True,
         use_mean: bool = False,
-        ppi_device: torch.device | None = None,
         batch_id: Tensor | None = None,
     ) -> VAEOutput:
         """
@@ -212,13 +182,9 @@ class DeepSCENICVAE(nn.Module):
         x_rna
             RNA expression (n_cells, n_genes)
         adj_E1
-            TF→region matrix from TF2rNet (n_regions, n_tfs)
-        use_ppi
-            Whether to apply PPI modulation this forward pass
+            TF->region matrix from TF2rNet (n_regions, n_tfs)
         use_mean
             If True, use encoder mean instead of sampling
-        ppi_device
-            Device for PPI computation (can differ from main device)
         batch_id
             One-hot batch identifiers (n_cells, n_batches) for batch correction
 
@@ -227,38 +193,16 @@ class DeepSCENICVAE(nn.Module):
         VAEOutput
             Container with all intermediate and final outputs
         """
-        device = x_rna.device
-        n_cells = x_rna.shape[0]
-
         # Extract TF expression
         x_rna_tfs = x_rna[:, self.tf_indices]
 
-        # PPI modulation (optional)
-        if self.use_ppi and use_ppi and self.ppi is not None:
-            ppi_dev = ppi_device or device
-            batch = build_ppi_batch(
-                x_rna, self.ppi_genes_idx, self.ppi_edge_index, self.ppi_node_ids, ppi_dev
-            )
-            ppi_out = self.ppi(batch.x, batch.edge_index, batch.node_ids)
-            x_rna_ppi = extract_tf_weights(
-                ppi_out,
-                n_cells,
-                len(self.ppi_genes_idx),
-                self.ppi_tfs_idx_keys,
-                self.ppi_tfs_idx_values,
-                device,
-            )
-            x_rna_tfs = x_rna_tfs * x_rna_ppi
-        else:
-            x_rna_ppi = torch.ones_like(x_rna_tfs)
-
-        # Encoder: TF expression → latent TF activity
+        # Encoder: TF expression -> latent TF activity
         z_tf, mu, logvar = self.encoder(x_rna_tfs, use_mean=use_mean)
 
-        # TF activity → region activity via E1
+        # TF activity -> region activity via E1
         enh_act = z_tf @ adj_E1.T
 
-        # Region activity → gene signal via E2 (scatter_add for memory efficiency)
+        # Region activity -> gene signal via E2 (scatter_add for memory efficiency)
         z_rna = self._region_to_gene(enh_act)
 
         # Apply batch correction BEFORE decoders (legacy behavior: additive correction to latent)
@@ -280,5 +224,4 @@ class DeepSCENICVAE(nn.Module):
             logvar=logvar,
             enh_act=enh_act,
             z_rna=z_rna,
-            x_rna_ppi=x_rna_ppi,
         )

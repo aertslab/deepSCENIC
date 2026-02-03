@@ -34,7 +34,6 @@ def training_setup(minimal_dims):
         gene_indices=gene_indices,
         region_indices=region_indices,
         n_hidden=d["n_hidden"],
-        use_ppi=False,
         n_batches=0,
     )
 
@@ -76,7 +75,6 @@ class TestGradientFlow:
         output = vae(
             training_setup["x_rna"],
             training_setup["adj_E1"],
-            use_ppi=False,
             use_mean=False,
         )
 
@@ -90,7 +88,6 @@ class TestGradientFlow:
             adj_E1_batch=training_setup["adj_E1"],
             adj_E2=vae.adj_E2,
             r2g_distances=training_setup["r2g_distances"],
-            x_rna_ppi=output.x_rna_ppi,
             gene_indices=training_setup["gene_indices"],
             region_indices=training_setup["region_indices"],
         )
@@ -115,7 +112,6 @@ class TestLossComputation:
         output = vae(
             training_setup["x_rna"],
             training_setup["adj_E1"],
-            use_ppi=False,
             use_mean=False,
         )
 
@@ -129,7 +125,6 @@ class TestLossComputation:
             adj_E1_batch=training_setup["adj_E1"],
             adj_E2=vae.adj_E2,
             r2g_distances=training_setup["r2g_distances"],
-            x_rna_ppi=output.x_rna_ppi,
             gene_indices=training_setup["gene_indices"],
             region_indices=training_setup["region_indices"],
         )
@@ -150,7 +145,6 @@ class TestOptimizerStep:
         output = vae(
             training_setup["x_rna"],
             training_setup["adj_E1"],
-            use_ppi=False,
             use_mean=False,
         )
 
@@ -164,7 +158,6 @@ class TestOptimizerStep:
             adj_E1_batch=training_setup["adj_E1"],
             adj_E2=vae.adj_E2,
             r2g_distances=training_setup["r2g_distances"],
-            x_rna_ppi=output.x_rna_ppi,
             gene_indices=training_setup["gene_indices"],
             region_indices=training_setup["region_indices"],
         )
@@ -212,7 +205,7 @@ class TestEndToEndMockTraining:
                 adj_E1_cache[seq_idx] = tf_pred.detach()
 
             optimizer_vae.zero_grad()
-            output = vae(x_rna, adj_E1, use_ppi=False, use_mean=False)
+            output = vae(x_rna, adj_E1, use_mean=False)
 
             losses = compute_total_loss(
                 x_rna=x_rna,
@@ -224,8 +217,7 @@ class TestEndToEndMockTraining:
                 adj_E1_batch=adj_E1[seq_idx],
                 adj_E2=vae.adj_E2,
                 r2g_distances=training_setup["r2g_distances"],
-                x_rna_ppi=output.x_rna_ppi,
-                gene_indices=training_setup["gene_indices"],
+                    gene_indices=training_setup["gene_indices"],
                 region_indices=training_setup["region_indices"],
             )
 
@@ -237,6 +229,6 @@ class TestEndToEndMockTraining:
             optimizer_tf2rnet.step()
 
         vae.eval()
-        output = vae(x_rna, adj_E1_cache, use_ppi=False, use_mean=True)
+        output = vae(x_rna, adj_E1_cache, use_mean=True)
         assert torch.isfinite(output.x_rna_rec).all()
         assert torch.isfinite(output.x_atac_rec).all()

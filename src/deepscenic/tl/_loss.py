@@ -82,7 +82,7 @@ def kl_divergence(mu: Tensor, logvar: Tensor) -> Tensor:
 
 def e1_sparsity_loss(adj_E1: Tensor, seq_idx: Tensor | None = None) -> Tensor:
     """
-    L1 sparsity penalty on E1 (TF→region weights).
+    L1 sparsity penalty on E1 (TF->region weights).
 
     Parameters
     ----------
@@ -135,7 +135,7 @@ def f1_score_binary(prediction: Tensor, target: Tensor) -> Tensor:
 
 def e2_sparsity_loss(adj_E2: Tensor, r2g_distances: Tensor) -> Tensor:
     """
-    Distance-weighted L1 sparsity on E2 (region→gene weights).
+    Distance-weighted L1 sparsity on E2 (region->gene weights).
 
     Combines L1 penalty with distance penalty to encourage nearby links.
 
@@ -154,25 +154,6 @@ def e2_sparsity_loss(adj_E2: Tensor, r2g_distances: Tensor) -> Tensor:
     return (adj_E2.abs() * r2g_distances).mean()
 
 
-def ppi_activation_loss(x_rna_ppi: Tensor) -> Tensor:
-    """
-    Encourage PPI network to produce high activation weights.
-
-    Loss = 1 - mean(|ppi_weights|)
-
-    Parameters
-    ----------
-    x_rna_ppi
-        PPI modulation weights (should be close to 1)
-
-    Returns
-    -------
-    Tensor
-        PPI activation loss (scalar)
-    """
-    return 1 - x_rna_ppi.abs().mean()
-
-
 def compute_total_loss(
     x_rna: Tensor,
     x_atac: Tensor,
@@ -183,7 +164,6 @@ def compute_total_loss(
     adj_E1_batch: Tensor,
     adj_E2: Tensor,
     r2g_distances: Tensor,
-    x_rna_ppi: Tensor,
     gene_indices: Tensor,
     region_indices: Tensor,
     loss_rna: str = "mse",
@@ -195,9 +175,7 @@ def compute_total_loss(
     gamma: float = 1.0,
     rna_tau: float = 1.0,
     atac_tau: float = 1.0,
-    use_ppi: bool = True,
     include_e1_sparsity: bool = True,
-    ppi_phase: bool = False,
     seq_idx: Tensor | None = None,
 ) -> dict[str, Tensor]:
     """
@@ -223,8 +201,6 @@ def compute_total_loss(
         All E2 weights
     r2g_distances
         Distance penalties for E2
-    x_rna_ppi
-        PPI modulation weights
     gene_indices
         Indices of TRAIN genes to compute RNA reconstruction loss on.
         Only these genes contribute to the reconstruction loss, while E2 links
@@ -243,22 +219,15 @@ def compute_total_loss(
     beta
         KL divergence weight
     alpha
-        E1 sparsity + PPI weight
+        E1 sparsity weight
     gamma
         E2 sparsity weight
     rna_tau
         RNA reconstruction weight
     atac_tau
         ATAC reconstruction weight
-    use_ppi
-        Whether PPI is being used
     include_e1_sparsity
         Whether to include E1 sparsity in the total loss.
-    ppi_phase
-        If True, we're in "PPI training phase" (epoch >= warmup_grn).
-        In this phase, sparsity losses (E1, E2) are excluded from the total
-        loss. This matches legacy behavior where only reconstruction losses
-        are used to train PPInet.
     seq_idx
         Indices of regions being updated this iteration (for E1 sparsity).
         If provided, E1 sparsity is computed only on these regions (legacy behavior).
@@ -287,21 +256,10 @@ def compute_total_loss(
     loss_e1_sparse = e1_sparsity_loss(adj_E1_batch, seq_idx=seq_idx) * alpha
     loss_e2_sparse = e2_sparsity_loss(adj_E2, r2g_distances) * gamma
 
-    # PPI loss (only if using PPI)
-    if use_ppi:
-        loss_ppi = ppi_activation_loss(x_rna_ppi) * alpha
-    else:
-        loss_ppi = torch.tensor(0.0, device=x_rna.device)
-
     # Total loss for backpropagation
-    # During PPI phase (epoch >= warmup_grn), sparsity losses are excluded
-    # This matches legacy behavior where PPInet is trained only via reconstruction
-    if ppi_phase:
-        total = loss_rec_rna + loss_rec_atac + loss_kl
-    else:
-        total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse
-        if include_e1_sparsity:
-            total = total + loss_e1_sparse
+    total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse
+    if include_e1_sparsity:
+        total = total + loss_e1_sparse
 
     return {
         "total": total,
@@ -310,7 +268,6 @@ def compute_total_loss(
         "kl_div": loss_kl.detach(),
         "e1_l1": loss_e1_sparse.detach(),
         "e2_l1": loss_e2_sparse.detach(),
-        "ppi_reg": loss_ppi.detach(),
     }
 
 

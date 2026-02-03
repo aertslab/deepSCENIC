@@ -236,13 +236,11 @@ def _evaluate_test_chromosomes(
     loss_atac: str = "cosine",
     alpha: float = 1e-2,
     atac_tau: float = 1.0,
-    ppi_device: str | None = None,
-    use_ppi: bool = True,
 ) -> dict[str, float]:
     """Evaluate ATAC reconstruction on test chromosomes.
 
-    Computes TF activity from encoder (with PPI modulation if enabled),
-    then predicts ATAC for test regions using adj_E1_test.
+    Computes TF activity from encoder, then predicts ATAC for test regions
+    using adj_E1_test.
 
     Note: Legacy code does not evaluate RNA on test genes here. The legacy
     RNA "test" metric uses train genes on test cells, which is equivalent
@@ -261,22 +259,6 @@ def _evaluate_test_chromosomes(
             # Extract TF expression
             x_rna_tfs = x_rna[:, vae.tf_indices]
 
-            # Apply PPI modulation if enabled (matches legacy vae.predict behavior)
-            if vae.use_ppi and use_ppi and vae.ppi is not None:
-                from ..models._ppi import build_ppi_batch, extract_tf_weights
-
-                batch_ppi = build_ppi_batch(x_rna, vae.ppi_genes_idx, vae.ppi_edge_index, vae.ppi_node_ids, device)  # type: ignore
-                ppi_out = vae.ppi(batch_ppi.x, batch_ppi.edge_index, batch_ppi.node_ids)
-                x_rna_ppi = extract_tf_weights(
-                    ppi_out,
-                    x_rna.shape[0],
-                    len(vae.ppi_genes_idx),
-                    vae.ppi_tfs_idx_keys,
-                    vae.ppi_tfs_idx_values,
-                    device,
-                )
-                x_rna_tfs = x_rna_tfs * x_rna_ppi
-
             # Encode TF activity
             z_tf, _, _ = vae.encoder(x_rna_tfs, use_mean=True)
 
@@ -286,7 +268,7 @@ def _evaluate_test_chromosomes(
             # Decode ATAC for test regions
             x_atac_rec_test = vae.decoder_atac(enh_act_test)
 
-            # Compute loss (ATAC only — no RNA test chromosome evaluation, matching legacy)
+            # Compute loss (ATAC only - no RNA test chromosome evaluation, matching legacy)
             losses = compute_test_chromosome_loss(
                 x_atac=x_atac,
                 x_atac_rec_test=x_atac_rec_test,
@@ -328,7 +310,6 @@ def train(
     atac_tau: float = 1.0,
     # Runtime settings
     device: str = "cuda",
-    ppi_device: str | None = None,
     num_workers: int = 0,
     # Data settings
     batch_key: str | None = None,
@@ -349,16 +330,14 @@ def train(
 
     Phase 1 of the training workflow. Uses train cells and train features.
     Trains the full model: sequence model (Enformer), MotifNet (TF2rNet),
-    and VAE encoder/decoders. PPInet is frozen during this phase.
-
-    For PPI training (Phase 4), use :func:`train_ppi` after E2 finetuning.
+    and VAE encoder/decoders.
 
     Parameters
     ----------
     mdata
         MuData with preprocessed RNA + ATAC data.
     config
-        Model architecture configuration. Use this to set n_hidden, use_ppi,
+        Model architecture configuration. Use this to set n_hidden,
         binary_atac, and sequence model settings. If None, uses defaults.
     epochs
         Total training epochs.
@@ -383,7 +362,7 @@ def train(
     beta
         KL divergence weight.
     alpha
-        E1 sparsity + PPI weight.
+        E1 sparsity weight.
     gamma
         E2 sparsity weight.
     rna_tau
@@ -392,8 +371,6 @@ def train(
         ATAC reconstruction weight.
     device
         Training device ('cuda' or 'cpu').
-    ppi_device
-        Separate device for PPI network (optional).
     num_workers
         Number of workers for parallel data loading.
     batch_key
@@ -446,7 +423,7 @@ def train(
     Training with custom architecture:
 
     >>> from deepscenic.tl import ModelConfig
-    >>> config = ModelConfig(n_hidden=256, use_ppi=True)
+    >>> config = ModelConfig(n_hidden=256)
     >>> model = ds.tl.train(mdata, config=config, epochs=100, lr=1e-4)
 
     Training with custom sequence model:
@@ -461,7 +438,7 @@ def train(
     # Build model config from provided config or defaults
     model_config = config if config is not None else ModelConfig()
 
-    # Setup logging — use phase-specific subdirectory so TensorBoard shows
+    # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run instead of merging them into "."
     _phase_log_dir = str(Path(log_dir) / "train")
     _logger_kwargs = {"log_dir": _phase_log_dir}
@@ -484,6 +461,7 @@ def train(
 
     # Extract metadata from MuData
     rna = mdata.mod["rna"]
+    atac = mdata.mod["atac"]
     tf_mask = rna.var["is_tf"]
     tf_names = rna.var_names[tf_mask].tolist()
     gene_names = list(rna.var_names)
@@ -499,18 +477,16 @@ def train(
     # Validate split columns exist
     if "split" not in rna.var.columns:
         raise ValueError("RNA modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
-    atac = mdata.mod["atac"]
     if "split" not in atac.var.columns:
         raise ValueError("ATAC modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
 
     # Compute gene_indices for reconstruction loss: only TRAIN genes (split='train' or 'both')
-    # This matches legacy behavior where reconstruction loss only evaluates on train features,
     # while E2 matrix can span ALL genes (E2 sparsity loss applies to all links).
     gene_split = rna.var["split"]
     # Include genes with split='train' or 'both' (TFs get 'both' by default)
     train_gene_mask = gene_split.isin(["train", "both"])
     gene_indices = torch.tensor(np.where(train_gene_mask)[0])
-    log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train + 'both' splits)")
+    log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train + 'both (TFs)' splits)")
 
     # Compute region_indices for ATAC reconstruction loss: only TRAIN regions
     region_split = atac.var["split"]
@@ -522,19 +498,6 @@ def train(
     r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
     r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]))
     r2g_distances = torch.tensor(r2g_coo.data).float()
-
-    # Get PPI info if present
-    ppi_edge_index = None
-    ppi_genes_idx = None
-    ppi_tfs_idx_keys = None
-    ppi_tfs_idx_values = None
-    use_ppi = model_config.use_ppi and "ppi_edge_index" in mdata.uns
-
-    if use_ppi:
-        ppi_edge_index = torch.tensor(mdata.uns["ppi_edge_index"])
-        ppi_genes_idx = torch.tensor(mdata.uns["ppi_genes_idx"])
-        ppi_tfs_idx_keys = torch.tensor(mdata.uns["ppi_tfs_idx_keys"])
-        ppi_tfs_idx_values = torch.tensor(mdata.uns["ppi_tfs_idx_values"])
 
     # Batch correction
     n_batches = 0
@@ -551,12 +514,7 @@ def train(
         tf_indices=tf_indices,
         gene_indices=gene_indices,
         region_indices=region_indices,
-        ppi_edge_index=ppi_edge_index,
-        ppi_genes_idx=ppi_genes_idx,
-        ppi_tfs_idx_keys=ppi_tfs_idx_keys,
-        ppi_tfs_idx_values=ppi_tfs_idx_values,
         n_hidden=model_config.n_hidden,
-        use_ppi=use_ppi,
         binary_atac=model_config.binary_atac,
         n_batches=n_batches,
     ).to(device)
@@ -599,7 +557,7 @@ def train(
     )
 
     # Sequence dataloader (for TF2rNet training)
-    # Only train regions — matches legacy behavior where E1 is only learned for train chromosomes
+    # Only train regions - matches legacy behavior where E1 is only learned for train chromosomes
     train_region_mask = mdata.mod["atac"].var["split"] == "train"
     region_names = list(mdata.mod["atac"].var_names[train_region_mask])
     # Map from train-only indices (0..n_train-1) to global indices (into full adj_E1_cache)
@@ -643,14 +601,18 @@ def train(
     )
     test_region_indices = test_region_indices.to(device)
 
-
     log.info(f"Test chromosome evaluation: {n_test_regions} test regions")
 
     # Initialize E1 cache
     n_all_regions = len(mdata.mod["atac"].var_names)
     adj_E1_cache = _init_e1_cache(
-        sequence_model, tf2rnet, train_seq_loader, device, model_config,
-        n_total_regions=n_all_regions, global_indices=train_region_global_indices,
+        sequence_model,
+        tf2rnet,
+        train_seq_loader,
+        device,
+        model_config,
+        n_total_regions=n_all_regions,
+        global_indices=train_region_global_indices,
     )
 
     # Initialize test E1 cache (always computed, no pretrained cache for test regions)
@@ -732,11 +694,6 @@ def train(
         if resumed_model.history is not None:
             history = resumed_model.history
 
-    # Freeze PPInet - it's trained separately via train_ppi()
-    if vae.ppi is not None:
-        for param in vae.ppi.parameters():
-            param.requires_grad = False
-
     # Training loop
     for epoch in range(start_epoch, epochs):
         # Set all models to train mode
@@ -751,7 +708,6 @@ def train(
             "kl_div": 0.0,
             "e1_l1": 0.0,
             "e2_l1": 0.0,
-            "ppi_reg": 0.0,
         }
         if model_config.binary_atac:
             epoch_metrics["f1_atac"] = 0.0
@@ -780,14 +736,12 @@ def train(
             tf_pred = tf2rnet(emb)
             adj_E1_batch[seq_idx] = tf_pred  # Gradients flow through these predictions
 
-            # VAE forward (PPI is frozen during train(), trained via train_ppi())
+            # VAE forward
             optimizer.zero_grad()
             output = vae(
                 x_rna,
                 adj_E1_batch,
-                use_ppi=False,
                 use_mean=False,
-                ppi_device=ppi_device,
             )
 
             # Compute losses (sparsity losses always included in train())
@@ -801,7 +755,6 @@ def train(
                 adj_E1_batch=adj_E1_batch,
                 adj_E2=vae.adj_E2,
                 r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
-                x_rna_ppi=output.x_rna_ppi,
                 gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                 region_indices=vae.region_indices,  # type: ignore[arg-type]
                 loss_rna=loss_rna,
@@ -813,9 +766,7 @@ def train(
                 gamma=gamma,
                 rna_tau=rna_tau,
                 atac_tau=atac_tau,
-                use_ppi=False,
                 include_e1_sparsity=True,
-                ppi_phase=False,
                 seq_idx=seq_idx,  # E1 sparsity only on sampled batch (legacy behavior)
             )
             total_loss = losses["total"]
@@ -870,8 +821,12 @@ def train(
                 adj_E1_test_cache[local_idx] = tf_pred
 
         val_metrics: dict[str, float] = {
-            "total": 0.0, "rna_recon": 0.0, "atac_recon": 0.0,
-            "kl_div": 0.0, "e1_l1": 0.0, "e2_l1": 0.0,
+            "total": 0.0,
+            "rna_recon": 0.0,
+            "atac_recon": 0.0,
+            "kl_div": 0.0,
+            "e1_l1": 0.0,
+            "e2_l1": 0.0,
         }
         n_val_batches = 0
 
@@ -880,13 +835,11 @@ def train(
                 x_rna = batch["rna"].to(device)
                 x_atac = batch["atac"].to(device)
 
-                # Validation (PPI is frozen during train())
+                # Validation
                 output = vae(
                     x_rna,
                     adj_E1_cache,
-                    use_ppi=False,
                     use_mean=True,
-                    ppi_device=ppi_device,
                 )
 
                 losses = compute_total_loss(
@@ -899,7 +852,6 @@ def train(
                     adj_E1_batch=adj_E1_cache,
                     adj_E2=vae.adj_E2,
                     r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
-                    x_rna_ppi=output.x_rna_ppi,
                     gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                     region_indices=vae.region_indices,  # type: ignore[arg-type]
                     loss_rna=loss_rna,
@@ -907,8 +859,6 @@ def train(
                     beta=beta,
                     alpha=alpha,
                     gamma=gamma,
-                    use_ppi=False,
-                    ppi_phase=False,
                 )
 
                 for key in val_metrics:
@@ -931,8 +881,6 @@ def train(
             loss_atac=loss_atac,
             alpha=alpha,
             atac_tau=atac_tau,
-            ppi_device=ppi_device,
-            use_ppi=False,
         )
 
         history.log("val_chrom", test_chrom_metrics)
@@ -968,10 +916,6 @@ def train(
                 "r2g_indices": vae.r2g_indices,
                 "r2g_distances": vae.r2g_distances,
                 "use_ppi": vae.use_ppi,
-                "ppi_edge_index": getattr(vae, "ppi_edge_index", None),
-                "ppi_genes_idx": getattr(vae, "ppi_genes_idx", None),
-                "ppi_tfs_idx_keys": getattr(vae, "ppi_tfs_idx_keys", None),
-                "ppi_tfs_idx_values": getattr(vae, "ppi_tfs_idx_values", None),
             }
             _get_checkpoint_executor().submit(
                 _save_checkpoint_data,
@@ -993,7 +937,9 @@ def train(
                 adj_E1_test_cache.clone().cpu(),
                 not _is_enformer(sequence_model),
             )
-            log.info(f"New best val_chrom/atac_recon (checkpoint): {test_chrom_metrics['atac_recon']:.6f} - saving to {best_path}")
+            log.info(
+                f"New best val_chrom/atac_recon (checkpoint): {test_chrom_metrics['atac_recon']:.6f} - saving to {best_path}"
+            )
 
         # Periodic checkpointing (async to not block training)
         if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
@@ -1012,10 +958,6 @@ def train(
                 "r2g_indices": vae.r2g_indices,
                 "r2g_distances": vae.r2g_distances,
                 "use_ppi": vae.use_ppi,
-                "ppi_edge_index": getattr(vae, "ppi_edge_index", None),
-                "ppi_genes_idx": getattr(vae, "ppi_genes_idx", None),
-                "ppi_tfs_idx_keys": getattr(vae, "ppi_tfs_idx_keys", None),
-                "ppi_tfs_idx_values": getattr(vae, "ppi_tfs_idx_values", None),
             }
             _get_checkpoint_executor().submit(
                 _save_checkpoint_data,
@@ -1083,7 +1025,6 @@ def finetune_e2(
     gamma: float = 1.0,
     loss_rna: str = "mae",
     dropout_mask_rna: bool = False,
-    use_ppi: bool = True,
     device: str = "cuda",
     num_workers: int = 0,
     checkpoint_dir: str | None = None,
@@ -1093,7 +1034,7 @@ def finetune_e2(
     log_dir: str = "./runs",
     logger_kwargs: dict | None = None,
 ) -> DeepSCENICModel:
-    """Finetune the E2 (region→gene) matrix.
+    """Finetune the E2 (region->gene) matrix.
 
     Phases 2 and 3 of the training workflow. Freezes all model parameters
     except E2 and trains with ReduceLROnPlateau scheduler.
@@ -1128,8 +1069,6 @@ def finetune_e2(
         RNA loss type: 'mse', 'mae', 'cosine'.
     dropout_mask_rna
         Whether to mask RNA loss on zeros.
-    use_ppi
-        Whether to use PPI modulation (if available in model).
     device
         Training device.
     num_workers
@@ -1169,12 +1108,7 @@ def finetune_e2(
     ...     epochs=500,
     ... )
     """
-    # Determine if PPI should be active during finetuning
-    use_ppi_finetune = model.vae.use_ppi and use_ppi
-    if use_ppi_finetune:
-        log.info("PPInet active (but frozen) during E2 finetuning")
-
-    # Setup logging — use phase-specific subdirectory so TensorBoard shows
+    # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run
     _phase_name = f"finetune_e2_cell-{cell_split}_feat-{feature_split}"
     _phase_log_dir = str(Path(log_dir) / _phase_name)
@@ -1327,11 +1261,10 @@ def finetune_e2(
 
             optimizer.zero_grad()
 
-            # VAE forward (PPInet is frozen but may modulate TF inputs)
+            # VAE forward
             output = vae(
                 x_rna,
                 adj_E1,
-                use_ppi=use_ppi_finetune,
                 use_mean=False,
             )
 
@@ -1382,7 +1315,6 @@ def finetune_e2(
                 output = vae(
                     x_rna,
                     adj_E1,
-                    use_ppi=use_ppi_finetune,
                     use_mean=True,
                 )
 
@@ -1462,382 +1394,6 @@ def finetune_e2(
         tf2rnet=model.tf2rnet,
         enformer=model.enformer,
         adj_E1=adj_E1,
-        config=model.config,
-        tf_names=model.tf_names,
-        gene_names=model.gene_names,
-        region_names=model.region_names,
-        history=history,
-    )
-
-
-def train_ppi(
-    model: DeepSCENICModel,
-    mdata: md.MuData,
-    *,
-    epochs: int = 100,
-    batch_size: int = 64,
-    seq_batch_size: int = 1000,
-    lr: float = 1e-4,
-    weight_decay: float = 0.0,
-    # Loss settings
-    loss_rna: str = "mae",
-    loss_atac: str = "cosine",
-    beta: float = 1e-2,
-    rna_tau: float = 1.0,
-    atac_tau: float = 1.0,
-    # Runtime settings
-    device: str = "cuda",
-    ppi_device: str | None = None,
-    num_workers: int = 0,
-    # Logging and checkpointing
-    logger: str = "dict",
-    log_dir: str = "./runs",
-    logger_kwargs: dict | None = None,
-    checkpoint_dir: str | None = None,
-    checkpoint_every: int = 0,
-    save_best_checkpoints: bool | None = None,
-    early_stopping_patience: int | None = None,
-) -> DeepSCENICModel:
-    """Train the PPI network while keeping VAE and E2 frozen.
-
-    Phase 4 of the training workflow. Only the PPInet is trainable.
-    Uses train cells and train features.
-
-    Parameters
-    ----------
-    model
-        Trained DeepSCENICModel from ds.tl.train() or ds.tl.finetune_e2().
-    mdata
-        MuData with preprocessed RNA + ATAC data.
-    epochs
-        Training epochs.
-    batch_size
-        Cells per batch.
-    seq_batch_size
-        Sequences per batch for E1 cache updates.
-    lr
-        Learning rate for PPI network.
-    weight_decay
-        Weight decay for optimizer.
-    loss_rna
-        RNA loss type: 'mse', 'mae', 'cosine'.
-    loss_atac
-        ATAC loss type: 'mse', 'mae', 'bce', 'cosine'.
-    beta
-        KL divergence weight.
-    rna_tau
-        RNA reconstruction weight.
-    atac_tau
-        ATAC reconstruction weight.
-    device
-        Training device ('cuda' or 'cpu').
-    ppi_device
-        Separate device for PPI network (optional).
-    num_workers
-        Number of workers for parallel data loading.
-    logger
-        Logging backend: 'dict', 'tensorboard', 'wandb'.
-    log_dir
-        Directory for tensorboard/wandb logs.
-    logger_kwargs
-        Additional keyword arguments passed to the logger backend.
-    checkpoint_dir
-        Directory for checkpoints (None = no checkpoints).
-    checkpoint_every
-        Save checkpoint every N epochs. Set to 0 to disable periodic checkpointing.
-    save_best_checkpoints
-        Save checkpoint when validation loss improves.
-    early_stopping_patience
-        Stop if no improvement for N epochs (None = disabled).
-
-    Returns
-    -------
-    DeepSCENICModel
-        Model with trained PPI network.
-
-    Examples
-    --------
-    >>> model = ds.tl.train(mdata, epochs=100)
-    >>> model = ds.tl.finetune_e2(model, mdata, cell_split="test", epochs=500)
-    >>> model = ds.tl.finetune_e2(model, mdata, cell_split="train", feature_split="test", epochs=500)
-    >>> model = ds.tl.train_ppi(model, mdata, epochs=100)
-    """
-    if not model.vae.use_ppi or model.vae.ppi is None:
-        raise ValueError(
-            "Model does not have PPI network enabled. "
-            "Create model with config=ModelConfig(use_ppi=True) and ensure PPI data is in mdata.uns."
-        )
-
-    log.info("Starting Phase 4: PPI training (VAE and E2 frozen)")
-
-    # Setup logging — use phase-specific subdirectory so TensorBoard shows
-    # each phase as a separate named run
-    _phase_log_dir = str(Path(log_dir) / "train_ppi")
-    _logger_kwargs = {"log_dir": _phase_log_dir}
-    if logger_kwargs:
-        _logger_kwargs.update(logger_kwargs)
-    training_logger = get_logger(logger, **_logger_kwargs)
-    hyperparams = {
-        "phase": "ppi",
-        "epochs": epochs,
-        "batch_size": batch_size,
-        "lr": lr,
-        "loss_rna": loss_rna,
-        "loss_atac": loss_atac,
-        "beta": beta,
-    }
-    training_logger.log_hyperparams(hyperparams)
-
-    # Move model to device
-    vae = model.vae.to(device)
-    tf2rnet = model.tf2rnet.to(device)
-    sequence_model = model.enformer.to(device)
-    adj_E1_cache = model.adj_E1.to(device)
-
-    # Freeze everything except PPInet
-    for param in vae.parameters():
-        param.requires_grad = False
-    for param in vae.ppi.parameters():
-        param.requires_grad = True
-    for param in tf2rnet.parameters():
-        param.requires_grad = False
-    for param in sequence_model.parameters():
-        param.requires_grad = False
-
-    # Build dataloaders
-    train_cell_loader = build_cell_dataloader(
-        mdata,
-        split="train",
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-    )
-
-    test_cell_loader = build_cell_dataloader(
-        mdata,
-        split="test",
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-    )
-
-    # Build sequence dataloader for E1 cache updates (train regions only, matches legacy)
-    train_region_mask_ppi = mdata.mod["atac"].var["split"] == "train"
-    region_names = list(mdata.mod["atac"].var_names[train_region_mask_ppi])
-    train_region_global_indices_ppi = np.where(train_region_mask_ppi)[0]
-    train_seq_loader = build_sequence_dataloader(
-        regions=region_names,
-        batch_size=seq_batch_size,
-        shuffle=True,
-        shift_augs=(-3, 3),
-        rc_aug=True,
-        context_length=model.config.seq_len,
-        num_workers=num_workers,
-    )
-    seq_iterator = SequenceIterator(train_seq_loader)
-    train_region_global_idx_ppi = torch.tensor(train_region_global_indices_ppi, dtype=torch.long, device=device)
-
-    # Optimizer for PPI only
-    optimizer = Adam(vae.ppi.parameters(), lr=lr, weight_decay=weight_decay)
-
-    # History and early stopping
-    history = TrainingHistory()
-    early_stopping = EarlyStopping(patience=early_stopping_patience) if early_stopping_patience else None
-
-    # Resolve save_best_checkpoints
-    if save_best_checkpoints is None:
-        save_best_checkpoints = checkpoint_dir is not None
-    if save_best_checkpoints and checkpoint_dir is None:
-        raise ValueError("save_best_checkpoints=True requires checkpoint_dir")
-
-    best_loss = float("inf")
-
-    log.info(f"Starting PPI training: {epochs} epochs")
-
-    # Training loop
-    for epoch in range(epochs):
-        vae.train()
-
-        epoch_metrics: dict[str, float] = {
-            "total": 0.0,
-            "rna_recon": 0.0,
-            "atac_recon": 0.0,
-            "kl_div": 0.0,
-            "ppi_reg": 0.0,
-        }
-        n_batches_seen = 0
-
-        pbar = tqdm(train_cell_loader, desc=f"PPI Train {epoch + 1}/{epochs}")
-        for batch in pbar:
-            x_rna = batch["rna"].to(device)
-            x_atac = batch["atac"].to(device)
-
-            # Update E1 cache with fresh sequence predictions
-            sequences, seq_idx_local = seq_iterator.next()
-            sequences = sequences.to(device)
-            seq_idx = train_region_global_idx_ppi[seq_idx_local]
-            with torch.no_grad():
-                emb = _get_sequence_embeddings(
-                    sequence_model, sequences, model.config.bottleneck_size, model.config.emb_len
-                )
-                tf_pred = tf2rnet(emb)
-                adj_E1_cache[seq_idx] = tf_pred
-
-            # VAE forward with PPI active
-            optimizer.zero_grad()
-            output = vae(
-                x_rna,
-                adj_E1_cache,
-                use_ppi=True,
-                use_mean=False,
-                ppi_device=ppi_device,
-            )
-
-            # Compute losses (PPI phase - no sparsity losses)
-            losses = compute_total_loss(
-                x_rna=x_rna,
-                x_atac=x_atac,
-                x_rna_rec=output.x_rna_rec,
-                x_atac_rec=output.x_atac_rec,
-                mu=output.mu,
-                logvar=output.logvar,
-                adj_E1_batch=adj_E1_cache,
-                adj_E2=vae.adj_E2,
-                r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
-                x_rna_ppi=output.x_rna_ppi,
-                gene_indices=vae.gene_indices,  # type: ignore[arg-type]
-                region_indices=vae.region_indices,  # type: ignore[arg-type]
-                loss_rna=loss_rna,
-                loss_atac=loss_atac,
-                beta=beta,
-                alpha=0.0,  # No sparsity in PPI phase
-                gamma=0.0,  # No sparsity in PPI phase
-                rna_tau=rna_tau,
-                atac_tau=atac_tau,
-                use_ppi=True,
-                include_e1_sparsity=False,
-                ppi_phase=True,
-            )
-            total_loss = losses["total"]
-
-            # Backward
-            total_loss.backward()
-            optimizer.step()
-
-            # Accumulate metrics
-            for key in epoch_metrics:
-                if key in losses:
-                    epoch_metrics[key] += losses[key].item()
-            epoch_metrics["total"] += total_loss.item()
-            n_batches_seen += 1
-
-            pbar.set_postfix(loss=total_loss.item())
-
-        # Average epoch metrics
-        for key in epoch_metrics:
-            epoch_metrics[key] /= n_batches_seen
-
-        # Log metrics
-        history.log("train", epoch_metrics)
-        training_logger.log_metrics({f"train/{k}": v for k, v in epoch_metrics.items()}, step=epoch)
-
-        # Validation
-        vae.eval()
-        val_loss = 0.0
-        n_val_batches = 0
-
-        with torch.no_grad():
-            for batch in test_cell_loader:
-                x_rna = batch["rna"].to(device)
-                x_atac = batch["atac"].to(device)
-
-                output = vae(
-                    x_rna,
-                    adj_E1_cache,
-                    use_ppi=True,
-                    use_mean=True,
-                    ppi_device=ppi_device,
-                )
-
-                losses = compute_total_loss(
-                    x_rna=x_rna,
-                    x_atac=x_atac,
-                    x_rna_rec=output.x_rna_rec,
-                    x_atac_rec=output.x_atac_rec,
-                    mu=output.mu,
-                    logvar=output.logvar,
-                    adj_E1_batch=adj_E1_cache,
-                    adj_E2=vae.adj_E2,
-                    r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
-                    x_rna_ppi=output.x_rna_ppi,
-                    gene_indices=vae.gene_indices,  # type: ignore[arg-type]
-                    region_indices=vae.region_indices,  # type: ignore[arg-type]
-                    loss_rna=loss_rna,
-                    loss_atac=loss_atac,
-                    beta=beta,
-                    alpha=0.0,
-                    gamma=0.0,
-                    use_ppi=True,
-                    ppi_phase=True,
-                )
-
-                val_loss += losses["total"].item()
-                n_val_batches += 1
-
-        val_loss /= n_val_batches
-        history.log("val_cells", {"total": val_loss})
-        training_logger.log_metrics({"val_cells/total": val_loss}, step=epoch)
-
-        # Early stopping
-        if early_stopping is not None:
-            if early_stopping(val_loss):
-                log.info(f"Early stopping at epoch {epoch + 1}")
-                break
-
-        # Best checkpoint saving
-        if save_best_checkpoints and (val_loss < best_loss) and (checkpoint_dir is not None):
-            best_loss = val_loss
-            best_path = Path(checkpoint_dir) / "ppi_best.pt"
-            best_path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "ppi_state_dict": vae.ppi.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "history": history.to_dict(),
-                    "best_loss": best_loss,
-                },
-                best_path,
-            )
-            log.info(f"New best val loss: {val_loss:.6f} - saved to {best_path}")
-
-        # Periodic checkpointing
-        if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
-            checkpoint_path = Path(checkpoint_dir) / f"ppi_epoch_{epoch + 1}.pt"
-            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "ppi_state_dict": vae.ppi.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "history": history.to_dict(),
-                    "best_loss": best_loss,
-                },
-                checkpoint_path,
-            )
-
-    # Close logger
-    training_logger.close()
-
-    vae.eval()
-    log.info("PPI training completed")
-
-    # Return updated model
-    return DeepSCENICModel(
-        vae=vae,
-        tf2rnet=tf2rnet,
-        enformer=sequence_model,
-        adj_E1=adj_E1_cache,
         config=model.config,
         tf_names=model.tf_names,
         gene_names=model.gene_names,

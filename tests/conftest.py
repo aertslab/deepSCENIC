@@ -176,7 +176,6 @@ def mock_vae():
         gene_indices=gene_indices,
         region_indices=region_indices,
         n_hidden=d["n_hidden"],
-        use_ppi=False,
         n_batches=0,
     )
 

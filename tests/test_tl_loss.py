@@ -8,7 +8,6 @@ from deepscenic.tl._loss import (
     e1_sparsity_loss,
     e2_sparsity_loss,
     kl_divergence,
-    ppi_activation_loss,
     reconstruction_loss,
 )
 
@@ -152,28 +151,6 @@ class TestE2SparsityLoss:
         assert torch.isclose(loss, torch.tensor(0.0))
 
 
-class TestPPIActivationLoss:
-    """Tests for ppi_activation_loss function."""
-
-    def test_zero_for_ones(self):
-        """Should be zero when all weights are 1."""
-        x_rna_ppi = torch.ones(8, 50)
-        loss = ppi_activation_loss(x_rna_ppi)
-        assert torch.isclose(loss, torch.tensor(0.0))
-
-    def test_one_for_zeros(self):
-        """Should be 1 when all weights are 0."""
-        x_rna_ppi = torch.zeros(8, 50)
-        loss = ppi_activation_loss(x_rna_ppi)
-        assert torch.isclose(loss, torch.tensor(1.0))
-
-    def test_intermediate_values(self):
-        """Should be between 0 and 1 for intermediate weights."""
-        x_rna_ppi = torch.full((8, 50), 0.5)
-        loss = ppi_activation_loss(x_rna_ppi)
-        assert torch.isclose(loss, torch.tensor(0.5))
-
-
 class TestComputeTotalLoss:
     """Tests for compute_total_loss function."""
 
@@ -196,7 +173,6 @@ class TestComputeTotalLoss:
             "adj_E1_batch": torch.randn(100, n_tfs),
             "adj_E2": torch.randn(n_links),
             "r2g_distances": torch.rand(n_links),
-            "x_rna_ppi": torch.rand(n_cells, n_tfs),
             "gene_indices": torch.arange(n_genes),
             "region_indices": torch.arange(n_regions),
         }
@@ -211,7 +187,6 @@ class TestComputeTotalLoss:
         assert "kl_div" in result
         assert "e1_l1" in result
         assert "e2_l1" in result
-        assert "ppi_reg" in result
 
     def test_gradient_flows_through_total(self, loss_inputs):
         """Gradients should flow through total loss."""
@@ -219,24 +194,6 @@ class TestComputeTotalLoss:
         result = compute_total_loss(**loss_inputs)
         result["total"].backward()
         assert loss_inputs["x_rna_rec"].grad is not None
-
-    def test_no_ppi_loss_when_disabled(self, loss_inputs):
-        """PPI loss should be zero when use_ppi=False."""
-        result = compute_total_loss(**loss_inputs, use_ppi=False)
-        assert torch.isclose(result["ppi_reg"], torch.tensor(0.0))
-
-    def test_ppi_excluded_from_total(self, loss_inputs):
-        """PPI loss should be computed for logging but excluded from total."""
-        result = compute_total_loss(**loss_inputs, use_ppi=True)
-
-        # PPI should be computed and non-zero
-        assert result["ppi_reg"] > 0
-
-        # Total should NOT include PPI (matching legacy behavior)
-        expected_total = (
-            result["rna_recon"] + result["atac_recon"] + result["kl_div"] + result["e1_l1"] + result["e2_l1"]
-        )
-        assert torch.isclose(result["total"], expected_total, rtol=1e-4)
 
     def test_e1_sparsity_excluded_when_disabled(self, loss_inputs):
         """E1 sparsity should be excluded from total when include_e1_sparsity=False."""
@@ -263,6 +220,5 @@ class TestComputeTotalLoss:
 
         # But total should NOT include this when disabled
         # Verify by checking total equals sum of other components
-        # Note: PPI is computed for logging but excluded from total
         expected_total = result["rna_recon"] + result["atac_recon"] + result["kl_div"] + result["e2_l1"]
         assert torch.isclose(result["total"], expected_total, rtol=1e-4)

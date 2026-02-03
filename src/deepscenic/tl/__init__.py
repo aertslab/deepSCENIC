@@ -16,7 +16,7 @@ from ._model import (
     load_model,
 )
 from ._perturbation import simulate_multi_perturbation, simulate_perturbation
-from ._train import finetune_e2, train, train_ppi
+from ._train import finetune_e2, train
 from ._training_state import (
     EarlyStopping,
     ModelConfig,
@@ -24,10 +24,9 @@ from ._training_state import (
 )
 
 __all__ = [
-    # Training stages (4-phase workflow)
+    # Training stages
     "train",  # Phase 1: Full model training
     "finetune_e2",  # Phases 2-3: E2 finetuning
-    "train_ppi",  # Phase 4: PPI training
     # Model
     "DeepSCENICModel",
     "TrainingState",

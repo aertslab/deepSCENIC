@@ -1,5 +1,6 @@
 .claude
 thoughts/
+archived/
 *.slurm
 CLAUDE.md
 *__pycache__*

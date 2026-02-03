@@ -151,7 +151,6 @@ def simulate_perturbation(
             output_orig = model.vae(
                 x_rna,
                 model.adj_E1,
-                use_ppi=model.vae.use_ppi,
                 use_mean=True,
             )
             z_rna_orig = output_orig.z_rna
@@ -174,7 +173,6 @@ def simulate_perturbation(
                 output_pert = model.vae(
                     perturbed_rna,
                     model.adj_E1,
-                    use_ppi=model.vae.use_ppi,
                     use_mean=True,
                 )
 
@@ -328,7 +326,6 @@ def simulate_multi_perturbation(
             output_orig = model.vae(
                 x_rna,
                 model.adj_E1,
-                use_ppi=model.vae.use_ppi,
                 use_mean=True,
             )
             z_rna_orig = output_orig.z_rna
@@ -351,7 +348,6 @@ def simulate_multi_perturbation(
                 output_pert = model.vae(
                     perturbed_rna,
                     model.adj_E1,
-                    use_ppi=model.vae.use_ppi,
                     use_mean=True,
                 )
 

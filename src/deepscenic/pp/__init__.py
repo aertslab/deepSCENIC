@@ -9,7 +9,6 @@ from anndata import AnnData
 from sklearn.model_selection import train_test_split
 
 from .basic import add_gene_annotation, filter_regions_by_celltype, mark_dars, mark_tfs, remove_zero_variance_genes
-from .ppi import build_ppi_network, load_string_ppi
 from .search_space import compute_r2g_penalty
 
 log = logging.getLogger("deepscenic.pp")
@@ -265,9 +264,6 @@ __all__ = [
     "add_gene_annotation",
     # DAR handling
     "mark_dars",
-    # PPI network
-    "build_ppi_network",
-    "load_string_ppi",
     # Splits
     "split_cells",
     "split_features_by_chromosome",

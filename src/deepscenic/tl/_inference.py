@@ -51,7 +51,6 @@ def to_latent(
         - 'z_rna': Gene regulatory signal (n_cells, n_genes)
         - 'x_rna_rec': Reconstructed RNA (n_cells, n_genes)
         - 'x_atac_rec': Reconstructed ATAC (n_cells, n_regions)
-        - 'x_rna_ppi': PPI modulation weights (n_cells, n_tfs)
 
     Examples
     --------
@@ -86,7 +85,6 @@ def to_latent(
         "z_rna": [],
         "x_rna_rec": [],
         "x_atac_rec": [],
-        "x_rna_ppi": [],
     }
 
     # Process in batches
@@ -99,7 +97,6 @@ def to_latent(
             output = model.vae(
                 x_rna,
                 model.adj_E1,
-                use_ppi=model.vae.use_ppi,
                 use_mean=True,  # Deterministic inference
             )
 
@@ -108,7 +105,6 @@ def to_latent(
             outputs["z_rna"].append(output.z_rna.cpu().numpy())
             outputs["x_rna_rec"].append(output.x_rna_rec.cpu().numpy())
             outputs["x_atac_rec"].append(output.x_atac_rec.cpu().numpy())
-            outputs["x_rna_ppi"].append(output.x_rna_ppi.cpu().numpy())
 
     # Concatenate batches
     return {k: np.concatenate(v, axis=0) for k, v in outputs.items()}
