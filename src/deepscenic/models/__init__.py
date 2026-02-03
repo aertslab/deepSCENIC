@@ -1,6 +1,6 @@
 """Neural network architectures for deepSCENIC."""
 
-from ._decoder import GenerativeNet, GenerativeNetATAC
+from ._decoder import GenerativeNet
 from ._encoder import InferenceNet
 from ._layers import GaussianSampler, PositiveLinear
 from ._motifnet import MotifNet
@@ -13,7 +13,6 @@ __all__ = [
     # Encoder/Decoder
     "InferenceNet",
     "GenerativeNet",
-    "GenerativeNetATAC",
     # Sequence head (DNA → TF binding)
     "MotifNet",
     # Main model

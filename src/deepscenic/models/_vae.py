@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor, nn
 
-from ._decoder import GenerativeNet, GenerativeNetATAC
+from ._decoder import GenerativeNet
 from ._encoder import InferenceNet
 
 
@@ -29,11 +29,7 @@ class DeepSCENICVAE(nn.Module):
 
     Combines:
     - InferenceNet: TF expression -> latent TF activity
-    - GenerativeNet: Gene signal -> RNA reconstruction
-    - GenerativeNetATAC: Region activity -> ATAC reconstruction
-
-    The GRN matrices (E1: TF->region, E2: region->gene) are passed during
-    forward rather than stored, as E1 comes from TF2rNet and is cached.
+    - GenerativeNet: Decodes gene signal (RNA) and region activity (ATAC)
 
     Parameters
     ----------
@@ -104,7 +100,7 @@ class DeepSCENICVAE(nn.Module):
         # Core networks
         self.encoder = InferenceNet(n_hidden=n_hidden)
         self.decoder_rna = GenerativeNet(n_hidden=n_hidden)
-        self.decoder_atac = GenerativeNetATAC(n_hidden=n_hidden, use_bias=binary_atac)
+        self.decoder_atac = GenerativeNet(n_hidden=n_hidden, use_bias=binary_atac)
 
         # Batch correction layers
         if n_batches > 0:
