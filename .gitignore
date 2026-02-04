@@ -3,7 +3,6 @@
 thoughts/
 archived/
 scripts/
-src/legacy/
 *.slurm
 CLAUDE.md
 pyrightconfig.json
