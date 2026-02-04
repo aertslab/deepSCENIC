@@ -128,7 +128,7 @@ class DeepSCENICVAE(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
     def _region_to_gene(self, enh_act: Tensor) -> Tensor:
-        """Compute region->gene signal using scatter_add (more memory efficient).
+        """Compute region->gene signal using scatter_add.
 
         Equivalent to enh_act @ E2 where E2 is a sparse (n_regions, n_genes) matrix,
         but avoids materializing any dense matrices during forward or backward.
@@ -201,7 +201,7 @@ class DeepSCENICVAE(nn.Module):
         # Region activity -> gene signal via E2 (scatter_add for memory efficiency)
         z_rna = self._region_to_gene(enh_act)
 
-        # Apply batch correction BEFORE decoders (legacy behavior: additive correction to latent)
+        # Apply batch correction before decoders
         if self.n_batches > 0 and batch_id is not None:
             enh_act_batch = self.batch_layer_atac(torch.cat([batch_id, enh_act], dim=1))
             enh_act = enh_act + enh_act_batch

@@ -237,7 +237,7 @@ def compute_total_loss(
     dict[str, Tensor]
         Dictionary with all loss components and total
     """
-    # Reconstruction losses - filter both prediction and target to TRAIN features
+    # Reconstruction losses - filter both prediction and target to train features
     # This ensures reconstruction loss only evaluates on held-in features,
     # while E2 sparsity loss still applies to ALL links (including to test genes).
     loss_rec_rna = (
@@ -252,7 +252,7 @@ def compute_total_loss(
     loss_kl = kl_divergence(mu, logvar) * beta
 
     # Sparsity losses
-    # E1 sparsity: only on sampled batch (legacy behavior)
+    # E1 sparsity: only on sampled batch
     loss_e1_sparse = e1_sparsity_loss(adj_E1_batch, seq_idx=seq_idx) * alpha
     loss_e2_sparse = e2_sparsity_loss(adj_E2, r2g_distances) * gamma
 

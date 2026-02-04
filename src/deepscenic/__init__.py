@@ -16,8 +16,6 @@ except Exception:
 from ._data import (
     SchemaError,
     SchemaWarning,
-    TrainingView,
-    get_split,
     is_valid_schema,
     validate_schema,
 )
@@ -75,8 +73,6 @@ __all__ = [
     "is_valid_schema",
     "SchemaError",
     "SchemaWarning",
-    "get_split",
-    "TrainingView",
     # Submodules (lazy loaded)
     "pp",
     "tl",
