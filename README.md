@@ -70,7 +70,7 @@ ds.register_genome(fasta_path="/path/to/hg38.fa")
 # Phase 1: Train full model (VAE + MotifNet + Enformer)
 model = ds.tl.train(mdata, epochs=100, device="cuda")
 
-# Phase 2: Finetune E2 on held-out cells (cross-cell-type generalization)
+# Phase 2: Finetune E2 on held-out cells
 model = ds.tl.finetune_e2(
     model, mdata,
     cell_split="test",      # Use test cells
