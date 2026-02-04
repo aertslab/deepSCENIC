@@ -501,10 +501,11 @@ def enhancer_activity_histogram(
 
 
 def tf_activity_clustermap(
-    model: DeepSCENICModel,
-    mdata: MuData,
+    model: DeepSCENICModel | None = None,
+    mdata: MuData | None = None,
     *,
-    groupby: str,
+    groupby: str | None = None,
+    scores: pd.DataFrame | None = None,
     top_n_tfs: int | None = 50,
     tfs: list[str] | None = None,
     cluster_rows: bool = True,
@@ -524,14 +525,23 @@ def tf_activity_clustermap(
     A well-trained model should show distinct TF activity profiles that
     correlate with known biology (e.g., lineage-specific TFs).
 
+    Can be used in two modes:
+    1. Compute TF activity from model: provide model, mdata, and groupby
+    2. Use pre-computed scores: provide scores DataFrame directly
+
     Parameters
     ----------
     model
-        Trained DeepSCENICModel.
+        Trained DeepSCENICModel. Required if scores not provided.
     mdata
-        MuData with cell annotations.
+        MuData with cell annotations. Required if scores not provided.
     groupby
         Column in mdata.obs to group cells by (e.g., 'celltype').
+        Required if scores not provided.
+    scores
+        Pre-computed TF activity scores as DataFrame with TF names as index
+        and cell groups as columns. If provided, model/mdata/groupby are ignored.
+        Typically from compute_tf_activity_scores().
     top_n_tfs
         Number of top TFs to show (by variance across groups).
         Ignored if tfs is provided.
@@ -562,42 +572,65 @@ def tf_activity_clustermap(
 
     Examples
     --------
+    Compute from model:
+
     >>> import deepscenic as ds
     >>> model = ds.tl.load_model("model.pt")
     >>> ds.pl.tf_activity_clustermap(model, mdata, groupby="celltype")
+
+    Use pre-computed scores from cell-type workflow:
+
+    >>> enhancer_activity = ds.tl.compute_celltype_enhancer_activity(model, mdata, "celltype")
+    >>> active_enhancers = ds.tl.identify_active_enhancers(enhancer_activity)
+    >>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enhancers)
+    >>> ds.pl.tf_activity_clustermap(scores=tf_scores)
     """
     import pandas as pd
     import seaborn as sns
-    import torch
 
-    # Get TF activity from model
-    with torch.no_grad():
-        # Get device from model
-        device = model.adj_E1.device
+    # Determine which mode we're in
+    if scores is not None:
+        # Pre-computed scores mode
+        df_grouped = scores.copy()
+        if not isinstance(df_grouped.index, pd.Index):
+            raise ValueError("scores must have TF names as index")
+    else:
+        # Compute from model mode
+        if model is None or mdata is None or groupby is None:
+            raise ValueError(
+                "When scores is not provided, model, mdata, and groupby are required"
+            )
 
-        rna_data = mdata.mod["rna"].X
-        if hasattr(rna_data, "toarray"):
-            rna_data = rna_data.toarray()
+        import torch
 
-        tf_indices = model.vae.tf_indices.cpu().numpy()
-        tf_expression = rna_data[:, tf_indices]
+        # Get TF activity from model
+        with torch.no_grad():
+            # Get device from model
+            device = model.adj_E1.device
 
-        # Get z_tf from encoder
-        tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
-        _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
-        z_tf = mu.squeeze(-1).cpu().numpy()
+            rna_data = mdata.mod["rna"].X
+            if hasattr(rna_data, "toarray"):
+                rna_data = rna_data.toarray()
 
-    # Get TF names
-    tf_names = model.tf_names
+            tf_indices = model.vae.tf_indices.cpu().numpy()
+            tf_expression = rna_data[:, tf_indices]
 
-    # Create DataFrame with TF activity per cell
-    df_tf = pd.DataFrame(z_tf, index=mdata.obs_names, columns=tf_names)
+            # Get z_tf from encoder
+            tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
+            _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
+            z_tf = mu.squeeze(-1).cpu().numpy()
 
-    # Group by annotation and compute mean
-    groups = mdata.obs[groupby]
-    df_grouped = df_tf.groupby(groups).mean().T
+        # Get TF names
+        tf_names = model.tf_names
 
-    # Select TFs to display
+        # Create DataFrame with TF activity per cell
+        df_tf = pd.DataFrame(z_tf, index=mdata.obs_names, columns=tf_names)
+
+        # Group by annotation and compute mean
+        groups = mdata.obs[groupby]
+        df_grouped = df_tf.groupby(groups).mean().T
+
+    # Select TFs to display (same logic for both modes)
     if tfs is not None:
         df_grouped = df_grouped.loc[df_grouped.index.isin(tfs)]
     elif top_n_tfs is not None and top_n_tfs < len(df_grouped):

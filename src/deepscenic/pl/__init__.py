@@ -4,12 +4,14 @@ from ._colors import get_colors, set_colors
 from ._utils import get_cmap_colors, parse_region, savefig_or_show, setup_axes
 from .genomics import arc_plot, genome_browser
 from .grn import (
+    heatmap_celltype_activity,
     heatmap_e1,
     heatmap_e2,
     heatmap_grn,
     network_gene_regulators,
     network_grn,
     network_tf_targets,
+    upset_active_enhancers,
 )
 from .perturbation import (
     dotplot_perturbation,
@@ -40,6 +42,9 @@ __all__ = [
     "network_grn",
     "network_tf_targets",
     "network_gene_regulators",
+    # GRN - Cell-type specific
+    "upset_active_enhancers",
+    "heatmap_celltype_activity",
     # Sequence
     "logo_attribution",
     "logo_motif",

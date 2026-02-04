@@ -29,6 +29,13 @@ Visualization functions for GRN analysis, perturbation results, and model diagno
 .. autofunction:: deepscenic.pl.network_gene_regulators
 ```
 
+### Cell-Type Specific
+
+```{eval-rst}
+.. autofunction:: deepscenic.pl.upset_active_enhancers
+.. autofunction:: deepscenic.pl.heatmap_celltype_activity
+```
+
 ## Sequence Analysis
 
 ```{eval-rst}

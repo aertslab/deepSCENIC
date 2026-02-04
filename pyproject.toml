@@ -78,6 +78,9 @@ enformer = [
 sequence = [
     "logomaker>=0.8",
 ]
+celltype = [
+    "upsetplot>=0.8",
+]
 dev = [
     "pre-commit>=3.0",
     "twine>=4.0",
