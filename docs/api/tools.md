@@ -4,8 +4,16 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 
 ## Training
 
+### Phase 1: Full Model Training
+
 ```{eval-rst}
 .. autofunction:: deepscenic.tl.train
+```
+
+### Phases 2-3: E2 Finetuning
+
+```{eval-rst}
+.. autofunction:: deepscenic.tl.finetune_e2
 ```
 
 ## Model
@@ -14,7 +22,29 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 .. autoclass:: deepscenic.tl.DeepSCENICModel
    :no-members:
 
+.. autoclass:: deepscenic.tl.TrainingState
+   :no-members:
+```
+
+### Loading Models
+
+```{eval-rst}
 .. autofunction:: deepscenic.tl.load_model
+.. autofunction:: deepscenic.tl.load_legacy_model
+.. autofunction:: deepscenic.tl.load_legacy_data
+```
+
+## Configuration
+
+```{eval-rst}
+.. autoclass:: deepscenic.tl.ModelConfig
+   :no-members:
+
+.. autoclass:: deepscenic.tl.TrainingHistory
+   :no-members:
+
+.. autoclass:: deepscenic.tl.EarlyStopping
+   :no-members:
 ```
 
 ## Inference

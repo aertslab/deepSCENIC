@@ -15,32 +15,23 @@ Functions for preparing multimodal data for GRN learning.
 .. autofunction:: deepscenic.pp.remove_zero_variance_genes
 ```
 
-## TF Annotation
+## TF and Gene Annotation
 
 ```{eval-rst}
 .. autofunction:: deepscenic.pp.mark_tfs
-.. autofunction:: deepscenic.pp.parse_region_coordinates
+.. autofunction:: deepscenic.pp.add_gene_annotation
 ```
 
 ## DAR Handling
 
 ```{eval-rst}
 .. autofunction:: deepscenic.pp.mark_dars
-.. autofunction:: deepscenic.pp.load_dars_from_bed
 ```
 
 ## Search Space
 
 ```{eval-rst}
 .. autofunction:: deepscenic.pp.compute_r2g_penalty
-.. autofunction:: deepscenic.pp.split_r2g_by_chromosome
-```
-
-## PPI Network
-
-```{eval-rst}
-.. autofunction:: deepscenic.pp.build_ppi_network
-.. autofunction:: deepscenic.pp.load_string_ppi
 ```
 
 ## Train/Test Splitting

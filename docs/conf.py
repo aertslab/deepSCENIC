@@ -83,9 +83,9 @@ intersphinx_mapping = {
     "scipy": ("https://docs.scipy.org/doc/scipy/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
     "anndata": ("https://anndata.readthedocs.io/en/stable/", None),
-    "mudata": ("https://mudata.readthedocs.io/en/latest/", None),
     "scanpy": ("https://scanpy.readthedocs.io/en/stable/", None),
-    "torch": ("https://pytorch.org/docs/stable/", None),
+    "torch": ("https://docs.pytorch.org/docs/stable/", None),
+    # mudata intersphinx disabled - readthedocs.io returning 404 as of Feb 2026
 }
 
 # Bibliography
@@ -123,9 +123,12 @@ nitpick_ignore = [
     ("py:class", "scipy.sparse.csr_matrix"),
     ("py:class", "csr_matrix"),
     ("py:class", "sparse matrix"),
-    # mudata (not in standard intersphinx)
+    # mudata (intersphinx disabled, manual ignores needed)
     ("py:class", "mudata.MuData"),
     ("py:class", "MuData"),
+    ("py:class", "mudata._core.mudata.MuData"),
+    # pandas internal paths
+    ("py:class", "pandas.core.frame.DataFrame"),
     # Short type aliases (docstrings use short names, not fully qualified)
     # These could be fixed by using full paths in docstrings, but for now we ignore them
     ("py:class", "Figure"),  # matplotlib.figure.Figure
@@ -142,10 +145,18 @@ nitpick_ignore = [
     # Internal private classes
     ("py:class", "deepscenic.models._vae.DeepSCENICVAE"),
     ("py:class", "deepscenic.models._tf2rnet.MotifNet"),
+    ("py:class", "deepscenic.models._motifnet.MotifNet"),
     ("py:class", "deepscenic.tl._training_state.TrainingConfig"),
+    ("py:class", "deepscenic.tl._training_state.ModelConfig"),
     ("py:class", "DeepSCENICVAE"),
     ("py:class", "MotifNet"),
     ("py:class", "TrainingConfig"),
+    ("py:class", "ModelConfig"),
+    ("py:class", "TrainingHistory"),
+    ("py:class", "TrainingState"),
+    # Function references that don't resolve
+    ("py:func", "deepscenic.write"),
+    ("py:func", "deepscenic.read"),
 ]
 
 # Ignore regex patterns for malformed type hints from docstrings
@@ -157,4 +168,19 @@ nitpick_ignore_regex = [
     # Set/dict literals
     (r"py:class", r"\{.*"),
     (r"py:class", r".*\}"),
+    # Docstring sentences incorrectly parsed as types (Returns section)
+    (r"py:class", r"If inplace=.*"),
+    (r"py:class", r"returns .*"),
+    (r"py:class", r"Combined .*"),
+    (r"py:class", r"Mapping from .*"),
+    (r"py:class", r"None depending .*"),
+    (r"py:class", r"Loaded .*"),
+    (r"py:class", r"DataFrame with .*"),
+    (r"py:class", r"Regions with .*"),
+    (r"py:class", r"validation .*"),
+    (r"py:class", r"empty if .*"),
+    (r"py:class", r"transcription factor .*"),
+    (r"py:class", r"deleted file .*"),
+    (r"py:class", r"MuData.*"),
+    (r"py:class", r"None\."),
 ]

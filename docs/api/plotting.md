@@ -58,4 +58,6 @@ Visualization functions for GRN analysis, perturbation results, and model diagno
 .. autofunction:: deepscenic.pl.loss_curves
 .. autofunction:: deepscenic.pl.sparsity_histogram
 .. autofunction:: deepscenic.pl.latent_umap
+.. autofunction:: deepscenic.pl.enhancer_activity_histogram
+.. autofunction:: deepscenic.pl.tf_activity_clustermap
 ```

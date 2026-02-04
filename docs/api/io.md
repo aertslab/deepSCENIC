@@ -1,28 +1,31 @@
-# Input/Output (`ds.io`)
+# Input/Output
 
 Functions for reading and writing deepSCENIC data.
 
 ## Reading Data
 
 ```{eval-rst}
-.. autofunction:: deepscenic.io.read
-.. autofunction:: deepscenic.io.read_legacy
+.. autofunction:: deepscenic.read
+.. autofunction:: deepscenic.read_bed
 ```
 
 ## Writing Data
 
 ```{eval-rst}
-.. autofunction:: deepscenic.io.write
+.. autofunction:: deepscenic.write
 ```
 
-## Convenience Functions
-
-These functions are also available at the package level:
+## Usage
 
 ```python
 import deepscenic as ds
 
-# Equivalent calls:
+# Read a MuData file
 mdata = ds.read("data.h5mu")
-mdata = ds.io.read("data.h5mu")
+
+# Read regions from BED file
+regions = ds.read_bed("peaks.bed")
+
+# Write processed data
+ds.write(mdata, "processed.h5mu")
 ```

@@ -9,8 +9,8 @@ These tutorials demonstrate the complete deepSCENIC workflow from data loading t
 
 notebooks/01_data_preparation
 notebooks/02_training
-notebooks/03_grn_analysis
-notebooks/04_perturbation_simulation
+notebooks/03_model_diagnosis
+notebooks/04_grn_analysis
 notebooks/05_visualization
 notebooks/06_legacy_migration
 ```
@@ -20,19 +20,19 @@ notebooks/06_legacy_migration
 Before starting, ensure you have:
 
 1. **deepSCENIC installed**: `pip install deepscenic[enformer]`
-2. **Sample data downloaded**: See {doc}`notebooks/01_data_loading` for instructions
+2. **Sample data downloaded**: See {doc}`notebooks/01_data_preparation` for instructions
 3. **GPU access** (recommended): Training benefits significantly from GPU acceleration
 
 ## Tutorial Overview
 
 | Tutorial | Topic | Key Functions |
 |----------|-------|---------------|
-| 01 | Data Loading | `ds.read()`, `ds.datasets.*` |
-| 02 | Preprocessing | `ds.pp.create_mudata()`, `ds.pp.mark_tfs()`, `ds.pp.compute_r2g_penalty()` |
-| 03 | Training | `ds.tl.train()`, `ds.pl.loss_curves()` |
+| 01 | Data Preparation | `ds.pp.create_mudata()`, `ds.pp.mark_tfs()`, `ds.pp.compute_r2g_penalty()` |
+| 02 | Training | `ds.tl.train()`, `ds.pl.loss_curves()` |
+| 03 | Model Diagnosis | Training diagnostics and model evaluation |
 | 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.pl.network_*()` |
-| 05 | Perturbation | `ds.tl.simulate_perturbation()`, `ds.pl.volcano_*()` |
-| 06 | Visualization | `ds.pl.genome_browser()`, `ds.pl.arc_plot()` |
+| 05 | Visualization | `ds.pl.genome_browser()`, `ds.pl.arc_plot()` |
+| 06 | Legacy Migration | Migrating from legacy deepSCENIC |
 
 ## Data Requirements
 

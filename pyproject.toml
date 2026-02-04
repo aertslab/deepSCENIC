@@ -10,10 +10,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 license-files = ["LICENSE"]
 authors = [
-    {name = "deepSCENIC Team"}
+    {name = "Gabriele Partel", email = "gabriele.partel@kuleuven.be"}
 ]
 maintainers = [
-    {name = "deepSCENIC Team"}
+    {name = "Gabriele Partel", email = "gabriele.partel@kuleuven.be"},
+    {name = "Lukas Mahieu", email = "lukas.mahieu@kuleuven.be"},
 ]
 keywords = ["single-cell", "GRN", "deep-learning", "scverse", "multiomics", "gene-regulation"]
 classifiers = [

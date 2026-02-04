@@ -1,20 +1,32 @@
-# Data Structures (`ds.data`)
+# Data Validation
 
-Schema validation and data splitting utilities.
+Schema validation utilities for deepSCENIC MuData objects.
 
-## Schema Validation
+## Validation Functions
 
 ```{eval-rst}
-.. autofunction:: deepscenic.data.validate_schema
-.. autofunction:: deepscenic.data.is_valid_schema
-.. autoexception:: deepscenic.data.SchemaError
-.. autoclass:: deepscenic.data.SchemaWarning
+.. autofunction:: deepscenic.validate_schema
+.. autofunction:: deepscenic.is_valid_schema
 ```
 
-## Data Splitting
+## Exceptions
 
 ```{eval-rst}
-.. autofunction:: deepscenic.data.get_split
-.. autoclass:: deepscenic.data.TrainingView
-   :no-members:
+.. autoexception:: deepscenic.SchemaError
+.. autoclass:: deepscenic.SchemaWarning
+```
+
+## Usage
+
+```python
+import deepscenic as ds
+
+# Validate a MuData object (logs warnings)
+ds.validate_schema(mdata, strict=False)
+
+# Strict validation (raises SchemaError on issues)
+ds.validate_schema(mdata, strict=True)
+
+# Check validity without side effects
+is_valid = ds.is_valid_schema(mdata)
 ```

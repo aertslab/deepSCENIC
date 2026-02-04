@@ -1,3 +1,4 @@
+# Project-specific
 .claude
 thoughts/
 archived/
@@ -5,6 +6,33 @@ scripts/
 src/legacy/
 *.slurm
 CLAUDE.md
-*__pycache__*
 pyrightconfig.json
+
+# Python
+*__pycache__*
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Jupyter
 *.ipynb_checkpoints*
+
+# Documentation
+docs/_build/
+docs/api/_autosummary/
+
+# Testing/Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+.venv/
+venv/
