@@ -58,14 +58,9 @@ def _save_checkpoint_data(
     scheduler_state_dict: dict | None,
     epoch: int,
     best_loss: float,
-    adj_E1_test: torch.Tensor | None,
     is_custom_sequence_model: bool,
 ) -> None:
-    """Save model checkpoint asynchronously in a background thread.
-
-    This builds the same format as DeepSCENICModel.save() but takes
-    pre-copied state dicts for async saving during training.
-    """
+    """Save model checkpoint asynchronously."""
     data = {
         "vae_state_dict": vae_state_dict,
         "motifnet_state_dict": motifnet_state_dict,
@@ -75,16 +70,12 @@ def _save_checkpoint_data(
         "tf_names": tf_names,
         "gene_names": gene_names,
         "region_names": region_names,
-        # VAE metadata for reconstruction
         **vae_metadata,
-        # Custom sequence model flag
         "is_custom_sequence_model": is_custom_sequence_model,
-        # Training state
         "optimizer_state_dict": optimizer_state_dict,
         "scheduler_state_dict": scheduler_state_dict,
         "epoch": epoch,
         "best_loss": best_loss,
-        "adj_E1_test": adj_E1_test,
     }
     if history is not None:
         data["history"] = history.to_dict()
@@ -149,65 +140,38 @@ def _get_sequence_embeddings(
 def _init_e1_cache(
     sequence_model: torch.nn.Module,
     motifnet: MotifNet,
-    seq_dataloader: torch.utils.data.DataLoader,
+    train_seq_dataloader: torch.utils.data.DataLoader,
+    test_seq_dataloader: torch.utils.data.DataLoader,
+    train_region_global_indices: np.ndarray,
+    test_region_indices: torch.Tensor,
     device: str,
     config: ModelConfig,
-    n_total_regions: int | None = None,
-    global_indices: np.ndarray | None = None,
+    n_total_regions: int,
 ) -> torch.Tensor:
-    """Initialize E1 cache by running all sequences through sequence model + motifnet.
-
-    Parameters
-    ----------
-    n_total_regions
-        Total number of regions (including test). If provided, the cache is sized
-        to this value and ``global_indices`` is used to map dataloader indices to
-        global positions. When None, cache size equals ``len(seq_dataloader.dataset)``.
-    global_indices
-        Mapping from dataloader-local indices to global region indices.
-        Required when ``n_total_regions`` is set.
-    """
+    """Initialize complete E1 cache for ALL regions (train + test)."""
     sequence_model.eval()
     motifnet.eval()
 
-    n_regions = n_total_regions if n_total_regions is not None else len(seq_dataloader.dataset)  # type: ignore[arg-type]
-    adj_E1 = torch.zeros(n_regions, motifnet.n_tfs, device=device)
+    adj_E1 = torch.zeros(n_total_regions, motifnet.n_tfs, device=device)
 
     with torch.no_grad():
-        for sequences, seq_idx in tqdm(seq_dataloader, desc="Initializing E1"):
+        # Compute E1 for train regions
+        for sequences, seq_idx in tqdm(train_seq_dataloader, desc="Init E1 (train)"):
             sequences = sequences.to(device)
             emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
             tf_pred = motifnet(emb)
-            if global_indices is not None:
-                adj_E1[global_indices[seq_idx.numpy()]] = tf_pred
-            else:
-                adj_E1[seq_idx] = tf_pred
+            global_idx = train_region_global_indices[seq_idx.numpy()]
+            adj_E1[global_idx] = tf_pred
+
+        # Compute E1 for test regions
+        for sequences, local_idx in tqdm(test_seq_dataloader, desc="Init E1 (test)"):
+            sequences = sequences.to(device)
+            emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
+            tf_pred = motifnet(emb)
+            global_idx = test_region_indices[local_idx]
+            adj_E1[global_idx] = tf_pred
 
     return adj_E1
-
-
-def _init_e1_test_cache(
-    sequence_model: torch.nn.Module,
-    motifnet: MotifNet,
-    test_seq_dataloader: torch.utils.data.DataLoader,
-    device: str,
-    config: ModelConfig,
-) -> torch.Tensor:
-    """Initialize E1 cache for TEST regions (no augmentation)."""
-    sequence_model.eval()
-    motifnet.eval()
-
-    n_test_regions = len(test_seq_dataloader.dataset)  # type: ignore[arg-type]
-    adj_E1_test = torch.zeros(n_test_regions, motifnet.n_tfs, device=device)
-
-    with torch.no_grad():
-        for sequences, local_idx in tqdm(test_seq_dataloader, desc="Caching E1 (test)"):
-            sequences = sequences.to(device)
-            emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
-            tf_pred = motifnet(emb)
-            adj_E1_test[local_idx] = tf_pred
-
-    return adj_E1_test
 
 
 class SequenceIterator:
@@ -228,7 +192,7 @@ class SequenceIterator:
 
 def _evaluate_test_chromosomes(
     vae: DeepSCENICVAE,
-    adj_E1_test: torch.Tensor,
+    adj_E1: torch.Tensor,
     test_region_indices: torch.Tensor,
     test_cell_loader: torch.utils.data.DataLoader,
     device: str,
@@ -237,38 +201,24 @@ def _evaluate_test_chromosomes(
     alpha: float = 1e-2,
     atac_tau: float = 1.0,
 ) -> dict[str, float]:
-    """Evaluate ATAC reconstruction on test chromosomes.
-
-    Computes TF activity from encoder, then predicts ATAC for test regions
-    using adj_E1_test.
-
-    Note: Legacy code does not evaluate RNA on test genes here. The legacy
-    RNA "test" metric uses train genes on test cells, which is equivalent
-    to the standard validation metric. To avoid confusion, RNA evaluation
-    is omitted from test chromosome evaluation.
-    """
+    """Evaluate ATAC reconstruction on test chromosomes."""
     vae.eval()
     metrics: dict[str, float] = {"total": 0.0, "atac_recon": 0.0, "e1_l1": 0.0}
     n_batches = 0
+
+    # Extract test E1 from global cache
+    adj_E1_test = adj_E1[test_region_indices]
 
     with torch.no_grad():
         for batch in test_cell_loader:
             x_rna = batch["rna"].to(device)
             x_atac = batch["atac"].to(device)
 
-            # Extract TF expression
             x_rna_tfs = x_rna[:, vae.tf_indices]
-
-            # Encode TF activity
             z_tf, _, _ = vae.encoder(x_rna_tfs, use_mean=True)
-
-            # Predict test region activity via E1_test
-            enh_act_test = z_tf @ adj_E1_test.T  # (n_cells, n_test_regions)
-
-            # Decode ATAC for test regions
+            enh_act_test = z_tf @ adj_E1_test.T
             x_atac_rec_test = vae.decoder_atac(enh_act_test)
 
-            # Compute loss (ATAC only - no RNA test chromosome evaluation, matching legacy)
             losses = compute_test_chromosome_loss(
                 x_atac=x_atac,
                 x_atac_rec_test=x_atac_rec_test,
@@ -603,20 +553,19 @@ def train(
 
     log.info(f"Test chromosome evaluation: {n_test_regions} test regions")
 
-    # Initialize E1 cache
+    # Initialize complete E1 cache (all regions)
     n_all_regions = len(mdata.mod["atac"].var_names)
     adj_E1_cache = _init_e1_cache(
-        sequence_model,
-        motifnet,
-        train_seq_loader,
-        device,
-        model_config,
+        sequence_model=sequence_model,
+        motifnet=motifnet,
+        train_seq_dataloader=train_seq_loader,
+        test_seq_dataloader=test_seq_loader,
+        train_region_global_indices=train_region_global_indices,
+        test_region_indices=test_region_indices,
+        device=device,
+        config=model_config,
         n_total_regions=n_all_regions,
-        global_indices=train_region_global_indices,
     )
-
-    # Initialize test E1 cache
-    adj_E1_test_cache = _init_e1_test_cache(sequence_model, motifnet, test_seq_loader, device, model_config)
 
     # Tensor mapping from train-local indices to global region indices
     train_region_global_idx = torch.tensor(train_region_global_indices, dtype=torch.long, device=device)
@@ -684,9 +633,6 @@ def train(
                 scheduler.load_state_dict(resumed_model.training_state.scheduler_state_dict)
             start_epoch = resumed_model.training_state.epoch + 1
             best_loss = resumed_model.training_state.best_loss
-            # Load test E1 cache from checkpoint if available
-            if resumed_model.training_state.adj_E1_test is not None:
-                adj_E1_test_cache = resumed_model.training_state.adj_E1_test.to(device)
         else:
             log.warning("Checkpoint does not contain training state. Starting from epoch 0 with fresh optimizer state.")
 
@@ -809,7 +755,7 @@ def train(
         motifnet.eval()
         sequence_model.eval()
 
-        # Recompute test E1 each epoch (legacy behavior)
+        # Recompute test E1 each epoch
         with torch.no_grad():
             for sequences, local_idx in test_seq_loader:
                 sequences = sequences.to(device)
@@ -817,7 +763,8 @@ def train(
                     sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len
                 )
                 tf_pred = motifnet(emb)
-                adj_E1_test_cache[local_idx] = tf_pred
+                global_idx = test_region_indices[local_idx]
+                adj_E1_cache[global_idx] = tf_pred
 
         val_metrics: dict[str, float] = {
             "total": 0.0,
@@ -877,7 +824,7 @@ def train(
         # Validation on test chromosomes (generalization metric)
         test_chrom_metrics = _evaluate_test_chromosomes(
             vae=vae,
-            adj_E1_test=adj_E1_test_cache,
+            adj_E1=adj_E1_cache,
             test_region_indices=test_region_indices,
             test_cell_loader=test_cell_loader,
             device=device,
@@ -937,7 +884,6 @@ def train(
                 copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
                 epoch,
                 best_loss,
-                adj_E1_test_cache.clone().cpu(),
                 not _is_enformer(sequence_model),
             )
             log.info(
@@ -979,7 +925,6 @@ def train(
                 copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
                 epoch,
                 best_loss,
-                adj_E1_test_cache.clone().cpu(),
                 not _is_enformer(sequence_model),
             )
 
@@ -1134,31 +1079,6 @@ def finetune_e2(
     # Move model to device
     vae = model.vae.to(device)
     adj_E1 = model.adj_E1.to(device)
-
-    # BUG FIX: Populate test E1 values for Phase 3 (feature_split="test")
-    # Without this fix, test regions in adj_E1 are zeros from Phase 1,
-    # causing E2 weights for test links to train on zero signal.
-    if feature_split == "test":
-        if model.training_state is not None and model.training_state.adj_E1_test is not None:
-            # Get test region indices in global coordinates
-            atac_var = mdata.mod["atac"].var
-            test_region_mask = (atac_var["split"] == "test").values
-            test_region_global_indices = torch.tensor(
-                np.where(test_region_mask)[0], device=device, dtype=torch.long
-            )
-            # adj_E1_test uses local test indexing (0..n_test-1)
-            # Map to global positions in adj_E1
-            adj_E1_test = model.training_state.adj_E1_test.to(device)
-            adj_E1[test_region_global_indices] = adj_E1_test
-            log.info(
-                f"Populated {len(test_region_global_indices)} test E1 values "
-                f"from training_state.adj_E1_test"
-            )
-        else:
-            log.warning(
-                "feature_split='test' but no adj_E1_test in training_state. "
-                "Test region E1 values will be zeros, which may produce incorrect results."
-            )
 
     # Freeze all parameters except adj_E2
     for name, param in vae.named_parameters():

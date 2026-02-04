@@ -25,16 +25,12 @@ if TYPE_CHECKING:
 
 @dataclass
 class TrainingState:
-    """Training state for resuming training.
-
-    Stored inside DeepSCENICModel when saved with include_training_state=True.
-    """
+    """Training state for resuming training."""
 
     optimizer_state_dict: dict
     scheduler_state_dict: dict | None
     epoch: int
     best_loss: float
-    adj_E1_test: torch.Tensor | None = None
 
 
 @dataclass
@@ -97,13 +93,8 @@ class DeepSCENICModel:
         scheduler: torch.optim.lr_scheduler.LRScheduler | None = None,
         epoch: int | None = None,
         best_loss: float | None = None,
-        adj_E1_test: torch.Tensor | None = None,
     ) -> None:
-        """
-        Save model to file.
-
-        Includes all components (VAE, motifnet, sequence model), metadata, and
-        training history if available. File size will be ~1GB+ if using Enformer.
+        """Save model to file.
 
         Parameters
         ----------
@@ -111,25 +102,22 @@ class DeepSCENICModel:
             Output file path (.pt)
         include_training_state
             If True, include optimizer/scheduler state for resuming training.
-            Requires optimizer parameter to be provided.
         optimizer
             Optimizer to save state from. Required if include_training_state=True.
         scheduler
             Optional LR scheduler to save state from.
         epoch
-            Current epoch number (for resumption).
+            Current epoch number.
         best_loss
-            Best validation loss seen so far (for tracking).
-        adj_E1_test
-            Cached E1 matrix for test regions (optional).
+            Best validation loss.
 
         Examples
         --------
-        Save for inference only:
+        Save for inference:
 
         >>> model.save("model.pt")
 
-        Save with training state for resumption:
+        Save with training state:
 
         >>> model.save(
         ...     "checkpoint.pt",
@@ -187,7 +175,6 @@ class DeepSCENICModel:
             data["scheduler_state_dict"] = scheduler.state_dict() if scheduler else None
             data["epoch"] = epoch
             data["best_loss"] = best_loss
-            data["adj_E1_test"] = adj_E1_test
 
         torch.save(data, path)
 
@@ -303,15 +290,11 @@ class DeepSCENICModel:
         # Restore training state if present
         training_state = None
         if "optimizer_state_dict" in data:
-            adj_E1_test = data.get("adj_E1_test")
-            if adj_E1_test is not None:
-                adj_E1_test = adj_E1_test.to(device)
             training_state = TrainingState(
                 optimizer_state_dict=data["optimizer_state_dict"],
                 scheduler_state_dict=data.get("scheduler_state_dict"),
                 epoch=data.get("epoch", 0),
                 best_loss=data.get("best_loss", float("inf")),
-                adj_E1_test=adj_E1_test,
             )
             log.info(f"  Training state: epoch={training_state.epoch}, best_loss={training_state.best_loss:.6f}")
 
