@@ -34,12 +34,11 @@ pip install deepscenic[enformer]
 
 deepSCENIC follows the scanpy-style API with modules for preprocessing (`ds.pp`), tools (`ds.tl`), and plotting (`ds.pl`).
 
-### 1. Data Preparation
+### Data Preparation
 
 ```python
 import deepscenic as ds
 
-# Create MuData from RNA and ATAC AnnData objects
 mdata = ds.pp.create_mudata(rna=adata_rna, atac=adata_atac)
 
 # Annotate transcription factors
@@ -58,7 +57,7 @@ ds.pp.split_cells(mdata, test_fraction=0.2, stratify_key="cell_type")
 ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7", "chr11"])
 ```
 
-### 2. Model Training
+### Model Training
 
 ```python
 # Register genome for sequence extraction
@@ -87,7 +86,7 @@ model = ds.tl.finetune_e2(
 model.save("my_model/")
 ```
 
-### 3. GRN Extraction & Analysis
+### GRN Extraction & Analysis
 
 ```python
 # Extract gene regulatory network
