@@ -615,13 +615,13 @@ def train(
         global_indices=train_region_global_indices,
     )
 
-    # Initialize test E1 cache (always computed, no pretrained cache for test regions)
+    # Initialize test E1 cache
     adj_E1_test_cache = _init_e1_test_cache(sequence_model, motifnet, test_seq_loader, device, model_config)
 
     # Tensor mapping from train-local indices to global region indices
     train_region_global_idx = torch.tensor(train_region_global_indices, dtype=torch.long, device=device)
 
-    # Initialize sequence iterator for dynamic E1 updates (legacy behavior)
+    # Initialize sequence iterator for dynamic E1 updates
     seq_iterator = SequenceIterator(train_seq_loader)
 
     n_cells = mdata.n_obs
@@ -721,18 +721,13 @@ def train(
             if batch_id is not None:
                 batch_id = batch_id.to(device)
 
-            # Update E1 with fresh sequence predictions (legacy behavior)
+            # Update E1 with fresh sequence predictions
             # Clone persistent cache, then insert fresh predictions WITH gradients
-            # This allows gradients to flow back through Enformer/MotifNet
             sequences, seq_idx_local = seq_iterator.next()
             sequences = sequences.to(device)
-            # Remap train-local indices to global region indices
+
             seq_idx = train_region_global_idx[seq_idx_local]
-
-            # Clone persistent cache for this iteration
             adj_E1_batch = adj_E1_cache.clone()
-
-            # Compute fresh TF predictions WITH gradients (trains Enformer + MotifNet)
             emb = _get_sequence_embeddings(
                 sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len
             )
@@ -748,7 +743,7 @@ def train(
                 batch_id=batch_id,
             )
 
-            # Compute losses (sparsity losses always included in train())
+            # Compute losses
             losses = compute_total_loss(
                 x_rna=x_rna,
                 x_atac=x_atac,
@@ -1139,6 +1134,31 @@ def finetune_e2(
     # Move model to device
     vae = model.vae.to(device)
     adj_E1 = model.adj_E1.to(device)
+
+    # BUG FIX: Populate test E1 values for Phase 3 (feature_split="test")
+    # Without this fix, test regions in adj_E1 are zeros from Phase 1,
+    # causing E2 weights for test links to train on zero signal.
+    if feature_split == "test":
+        if model.training_state is not None and model.training_state.adj_E1_test is not None:
+            # Get test region indices in global coordinates
+            atac_var = mdata.mod["atac"].var
+            test_region_mask = (atac_var["split"] == "test").values
+            test_region_global_indices = torch.tensor(
+                np.where(test_region_mask)[0], device=device, dtype=torch.long
+            )
+            # adj_E1_test uses local test indexing (0..n_test-1)
+            # Map to global positions in adj_E1
+            adj_E1_test = model.training_state.adj_E1_test.to(device)
+            adj_E1[test_region_global_indices] = adj_E1_test
+            log.info(
+                f"Populated {len(test_region_global_indices)} test E1 values "
+                f"from training_state.adj_E1_test"
+            )
+        else:
+            log.warning(
+                "feature_split='test' but no adj_E1_test in training_state. "
+                "Test region E1 values will be zeros, which may produce incorrect results."
+            )
 
     # Freeze all parameters except adj_E2
     for name, param in vae.named_parameters():
