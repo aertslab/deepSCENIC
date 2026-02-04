@@ -22,13 +22,17 @@ deepSCENIC learns hierarchical TF→region→gene regulatory cascades by integra
 ```bash
 pip install deepscenic
 ```
-If you want to use the "enformer" model as the sequence model (this is the default):
+If you want to use the [enformer](https://github.com/lucidrains/enformer-pytorch) model as the sequence model (this is the default):
 
 ```bash
 pip install deepscenic[enformer]
 ```
 
 **Requirements**: Python ≥3.11, PyTorch ≥2.0
+
+## Documentation
+
+Full documentation including tutorials and API reference: [deepscenic.readthedocs.io](https://deepscenic.readthedocs.io)
 
 ## Quick Start
 
@@ -99,7 +103,7 @@ targets = ds.tl.get_tf_targets(grn, tf="SOX10", top_n=100)
 ds.pl.heatmap_grn(grn, tfs=["SOX10", "MITF", "PAX3"])
 ```
 
-### 4. Perturbation Simulation
+### Perturbation Simulation
 
 ```python
 # Simulate TF knockdown (level=0) or overexpression (level=2)
@@ -114,10 +118,6 @@ ds.pl.volcano_perturbation(results, tf_name="SOX10")
 ```
 
 For complete workflows, see the [tutorials](https://deepscenic.readthedocs.io/en/latest/tutorials.html).
-
-## Documentation
-
-Full documentation including tutorials and API reference: [deepscenic.readthedocs.io](https://deepscenic.readthedocs.io)
 
 ## Citation
 
