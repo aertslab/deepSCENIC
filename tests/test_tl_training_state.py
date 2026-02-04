@@ -1,12 +1,8 @@
 """Tests for training state management."""
 
-import pytest
-import torch
 
 from deepscenic.tl._training_state import (
     EarlyStopping,
-    ModelConfig,
-    TrainingHistory,
 )
 
 

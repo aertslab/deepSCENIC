@@ -43,7 +43,8 @@ def set_colors(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> ds.pl.set_colors(mdata, "celltype")    >>> ds.pl.set_colors(mdata, "celltype", colors=["red", "blue"])    """
+    >>> ds.pl.set_colors(mdata, "celltype")    >>> ds.pl.set_colors(mdata, "celltype", colors=["red", "blue"])
+    """
     # Get categories
     if key in mdata.obs.columns:
         categories = mdata.obs[key].cat.categories.tolist()
@@ -96,7 +97,8 @@ def get_colors(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> colors = ds.pl.get_colors(mdata, "celltype")    """
+    >>> colors = ds.pl.get_colors(mdata, "celltype")
+    """
     # Get categories
     if key in mdata.obs.columns:
         categories = mdata.obs[key].cat.categories.tolist()

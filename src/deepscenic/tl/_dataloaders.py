@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     import mudata as md
     from numpy.typing import NDArray
 
-    from .._genome import Genome, GenomeIntervalDataset
+    from .._genome import Genome
 
 
 class CellDataset(Dataset):

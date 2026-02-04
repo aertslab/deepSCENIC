@@ -90,7 +90,8 @@ def arc_plot(
     ...     "gene": ["GENE1", "GENE2"],
     ...     "weight": [0.5, 0.8],
     ... })
-    >>> ds.pl.arc_plot(links, chrom="chr1", start=0, end=5000)    """
+    >>> ds.pl.arc_plot(links, chrom="chr1", start=0, end=5000)
+    """
     import pandas as pd
     from matplotlib import cm
     from matplotlib.colors import Normalize

@@ -66,7 +66,8 @@ def logo_attribution(
     >>> import numpy as np
     >>> import deepscenic as ds
     >>> attrs = np.random.randn(100, 4)  # (seq_len, 4)
-    >>> ds.pl.logo_attribution(attrs)    """
+    >>> ds.pl.logo_attribution(attrs)
+    """
     try:
         from tangermeme.plot import plot_logo
     except ImportError as e:
@@ -150,7 +151,8 @@ def logo_motif(
     >>> import deepscenic as ds
     >>> pwm = np.random.rand(20, 4)
     >>> pwm = pwm / pwm.sum(axis=1, keepdims=True)
-    >>> ds.pl.logo_motif(pwm)    """
+    >>> ds.pl.logo_motif(pwm)
+    """
     try:
         import logomaker
     except ImportError as e:
