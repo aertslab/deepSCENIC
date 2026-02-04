@@ -1,11 +1,16 @@
 """Tools for deepSCENIC (training, inference, perturbation)."""
 
 from ._grn import (
+    build_grn_for_tfs,
+    compute_celltype_enhancer_activity,
+    compute_tf_activity_scores,
     extract_e1_matrix,
     extract_e2_matrix,
     extract_grn,
     get_gene_regulators,
     get_tf_targets,
+    identify_active_enhancers,
+    identify_key_tfs,
 )
 from ._inference import to_latent
 from ._model import (
@@ -48,4 +53,10 @@ __all__ = [
     "extract_e2_matrix",
     "get_tf_targets",
     "get_gene_regulators",
+    # Cell-type aware GRN
+    "compute_celltype_enhancer_activity",
+    "identify_active_enhancers",
+    "compute_tf_activity_scores",
+    "identify_key_tfs",
+    "build_grn_for_tfs",
 ]
