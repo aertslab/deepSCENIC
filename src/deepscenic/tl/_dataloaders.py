@@ -119,6 +119,10 @@ def build_cell_dataloader(
     DataLoader
         Cell dataloader.
     """
+    # Validate split parameter
+    if split not in ("train", "test"):
+        raise ValueError(f"split must be 'train' or 'test', got '{split}'")
+
     # Get cell split mask
     cell_mask = mdata.obs["split"] == split
 
@@ -164,7 +168,12 @@ def build_cell_dataloader(
 
     # Weighted sampling for class balance
     sampler = None
-    if balance_class and class_key is not None:
+    if balance_class:
+        if class_key is None:
+            raise ValueError(
+                "balance_class=True requires class_key to be set. "
+                "Provide the obs column name containing class labels."
+            )
         from sklearn.utils.class_weight import compute_class_weight
 
         classes = mdata.obs.loc[cell_mask, class_key].values

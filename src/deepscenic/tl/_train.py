@@ -30,6 +30,14 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("deepscenic.tl")
 
+
+def _resolve_device(device: str | None) -> str:
+    """Resolve device, auto-detecting CUDA availability if None."""
+    if device is not None:
+        return device
+    return "cuda" if torch.cuda.is_available() else "cpu"
+
+
 # Global thread pool for async checkpoint saving (single worker to serialize saves)
 _checkpoint_executor: ThreadPoolExecutor | None = None
 
@@ -259,7 +267,7 @@ def train(
     rna_tau: float = 1.0,
     atac_tau: float = 1.0,
     # Runtime settings
-    device: str = "cuda",
+    device: str | None = None,
     num_workers: int = 0,
     # Data settings
     batch_key: str | None = None,
@@ -320,7 +328,7 @@ def train(
     atac_tau
         ATAC reconstruction weight.
     device
-        Training device ('cuda' or 'cpu').
+        Training device ('cuda', 'cpu', or None for auto-detect).
     num_workers
         Number of workers for parallel data loading.
     batch_key
@@ -387,6 +395,22 @@ def train(
     """
     # Build model config from provided config or defaults
     model_config = config if config is not None else ModelConfig()
+
+    # Resolve device (auto-detect if None)
+    device = _resolve_device(device)
+    log.info(f"Using device: {device}")
+
+    # Validate MuData structure
+    if "rna" not in mdata.mod:
+        raise ValueError(
+            "MuData missing 'rna' modality. "
+            "Ensure your data has both 'rna' and 'atac' modalities."
+        )
+    if "atac" not in mdata.mod:
+        raise ValueError(
+            "MuData missing 'atac' modality. "
+            "Ensure your data has both 'rna' and 'atac' modalities."
+        )
 
     # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run instead of merging them into "."
@@ -516,13 +540,18 @@ def train(
 
     # Get DAR indices if balance_dars is enabled (remap to train-only indexing)
     dar_indices = None
-    if balance_dars and "atac" in mdata.mod:
+    if balance_dars:
         atac_var = mdata.mod["atac"].var
-        if "is_dar" in atac_var.columns:
-            global_dar = set(np.where(atac_var["is_dar"].values)[0])
-            dar_indices = np.array([i for i, g in enumerate(train_region_global_indices) if g in global_dar])
-            if len(dar_indices) == 0:
-                dar_indices = None
+        if "is_dar" not in atac_var.columns:
+            raise ValueError(
+                "balance_dars=True requires 'is_dar' column in atac.var. "
+                "Run ds.pp.mark_dars() first to identify differentially accessible regions."
+            )
+        global_dar = set(np.where(atac_var["is_dar"].values)[0])
+        dar_indices = np.array([i for i, g in enumerate(train_region_global_indices) if g in global_dar])
+        if len(dar_indices) == 0:
+            log.warning("No DAR regions found in train split. DAR balancing will have no effect.")
+            dar_indices = None
 
     train_seq_loader = build_sequence_dataloader(
         regions=region_names,
@@ -973,7 +1002,7 @@ def finetune_e2(
     gamma: float = 1.0,
     loss_rna: str = "mae",
     dropout_mask_rna: bool = False,
-    device: str = "cuda",
+    device: str | None = None,
     num_workers: int = 0,
     checkpoint_dir: str | None = None,
     checkpoint_every: int = 0,
@@ -1018,7 +1047,7 @@ def finetune_e2(
     dropout_mask_rna
         Whether to mask RNA loss on zeros.
     device
-        Training device.
+        Training device ('cuda', 'cpu', or None for auto-detect).
     num_workers
         Number of workers for parallel data loading.
     checkpoint_dir
@@ -1056,6 +1085,28 @@ def finetune_e2(
     ...     epochs=500,
     ... )
     """
+    # Resolve device (auto-detect if None)
+    device = _resolve_device(device)
+    log.info(f"Using device: {device}")
+
+    # Validate MuData structure
+    if "rna" not in mdata.mod:
+        raise ValueError(
+            "MuData missing 'rna' modality. "
+            "Ensure your data has both 'rna' and 'atac' modalities."
+        )
+    if "atac" not in mdata.mod:
+        raise ValueError(
+            "MuData missing 'atac' modality. "
+            "Ensure your data has both 'rna' and 'atac' modalities."
+        )
+
+    # Validate split parameters
+    if cell_split not in ("train", "test"):
+        raise ValueError(f"cell_split must be 'train' or 'test', got '{cell_split}'")
+    if feature_split not in ("train", "test"):
+        raise ValueError(f"feature_split must be 'train' or 'test', got '{feature_split}'")
+
     # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run
     _phase_name = f"finetune_e2_cell-{cell_split}_feat-{feature_split}"

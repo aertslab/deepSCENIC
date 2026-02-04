@@ -63,7 +63,9 @@ def heatmap_e1(
 
     Examples
     --------
-    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.heatmap_e1(model, top_k=30)    """
+    >>> model = ds.tl.load_model("model.pt")
+    >>> ds.pl.heatmap_e1(model, top_k=30)
+    """
     from deepscenic.tl import extract_e1_matrix
 
     # Get E1 matrix
@@ -146,7 +148,9 @@ def heatmap_e2(
 
     Examples
     --------
-    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.heatmap_e2(model, top_k=30)    """
+    >>> model = ds.tl.load_model("model.pt")
+    >>> ds.pl.heatmap_e2(model, top_k=30)
+    """
     from deepscenic.tl import extract_e2_matrix
 
     # Get E2 as sparse df, pivot to dense for selected genes
@@ -236,7 +240,9 @@ def heatmap_grn(
 
     Examples
     --------
-    >>> model = ds.tl.load_model("model.pt")    >>> ds.pl.heatmap_grn(model, top_k=20)    """
+    >>> model = ds.tl.load_model("model.pt")
+    >>> ds.pl.heatmap_grn(model, top_k=20)
+    """
     from deepscenic.tl import extract_e1_matrix, extract_e2_matrix
 
     # Get matrices
