@@ -1,5 +1,8 @@
 """Shared fixtures for deepSCENIC tests."""
 
+from pathlib import Path
+
+import anndata as ad
 import mudata as md
 import numpy as np
 import pandas as pd
@@ -265,8 +268,6 @@ def tmp_fasta(tmp_path):
 @pytest.fixture
 def mock_mdata_for_model():
     """Create MuData compatible with mock_deepscenic_model dimensions."""
-    import anndata as ad
-
     d = MINIMAL_DIMS
     n_cells = d["n_cells"] * 2  # 16 cells (8 train, 8 test)
 
@@ -286,3 +287,200 @@ def mock_mdata_for_model():
     mdata.obs["split"] = ["train"] * (n_cells // 2) + ["test"] * (n_cells // 2)
 
     return mdata
+
+
+# =============================================================================
+# Pipeline Integration Test Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def raw_rna_adata() -> ad.AnnData:
+    """Create minimal raw RNA data before preprocessing.
+
+    Returns AnnData with:
+    - 16 cells (will be split 80/20)
+    - 20 genes (5 will be marked as TFs)
+    - Random expression values
+    """
+    n_cells = 16
+    n_genes = 20
+
+    # Random log-normalized expression
+    X = np.random.rand(n_cells, n_genes).astype(np.float32)
+
+    adata = ad.AnnData(X=X)
+    adata.obs_names = [f"cell_{i}" for i in range(n_cells)]
+    adata.var_names = [f"GENE{i}" for i in range(n_genes)]
+
+    # Add celltype for stratified splitting
+    adata.obs["celltype"] = ["TypeA"] * 10 + ["TypeB"] * 6
+
+    return adata
+
+
+@pytest.fixture
+def raw_atac_adata() -> ad.AnnData:
+    """Create minimal raw ATAC data before preprocessing.
+
+    Returns AnnData with:
+    - 16 cells (matching RNA)
+    - 30 regions across chr1 (20) and chr7 (10, test chromosome)
+    - Region names in chr:start-end format for auto-parsing
+    """
+    n_cells = 16
+    n_regions = 30
+
+    # Random accessibility values
+    X = np.random.rand(n_cells, n_regions).astype(np.float32)
+
+    adata = ad.AnnData(X=X)
+    adata.obs_names = [f"cell_{i}" for i in range(n_cells)]
+
+    # Region names: chr1 (train), chr7 (test)
+    # Each region is 640bp (matching default seq_len)
+    region_names = []
+    for i in range(20):  # chr1 regions
+        start = i * 10000
+        region_names.append(f"chr1:{start}-{start + 640}")
+    for i in range(10):  # chr7 regions (test chromosome)
+        start = i * 10000
+        region_names.append(f"chr7:{start}-{start + 640}")
+
+    adata.var_names = region_names
+
+    return adata
+
+
+@pytest.fixture
+def pipeline_tf_list() -> list[str]:
+    """TF names that match raw_rna_adata genes."""
+    # First 5 genes are TFs
+    return ["GENE0", "GENE1", "GENE2", "GENE3", "GENE4"]
+
+
+@pytest.fixture
+def pipeline_gene_annotation() -> pd.DataFrame:
+    """Gene annotation DataFrame for preprocessing.
+
+    Provides chromosome and TSS for each gene.
+    - GENE0-9: chr1 (train genes, TFs in 0-4)
+    - GENE10-14: chr7 (test genes)
+    - GENE15-19: chr1 (train genes)
+    """
+    data = {
+        "Chromosome": (
+            ["chr1"] * 10 +   # GENE0-9 on chr1
+            ["chr7"] * 5 +    # GENE10-14 on chr7 (test)
+            ["chr1"] * 5      # GENE15-19 on chr1
+        ),
+        "Transcription_Start_Site": [i * 5000 for i in range(20)],
+    }
+    df = pd.DataFrame(data)
+    df.index = [f"GENE{i}" for i in range(20)]
+    return df
+
+
+@pytest.fixture
+def preprocessed_mdata(
+    raw_rna_adata: ad.AnnData,
+    raw_atac_adata: ad.AnnData,
+    pipeline_tf_list: list[str],
+    pipeline_gene_annotation: pd.DataFrame,
+) -> md.MuData:
+    """Create MuData through actual preprocessing pipeline.
+
+    Runs Tutorial 1 preprocessing steps:
+    1. mark_tfs
+    2. add_gene_annotation
+    3. create_mudata
+    4. split_cells
+    5. split_features_by_chromosome
+    6. compute_r2g_penalty
+    """
+    import deepscenic as ds
+
+    # Step 1: Mark TFs (before create_mudata)
+    ds.pp.mark_tfs(raw_rna_adata, pipeline_tf_list)
+
+    # Step 2: Add gene annotation
+    ds.pp.add_gene_annotation(raw_rna_adata, pipeline_gene_annotation)
+
+    # Step 3: Create MuData
+    mdata = ds.pp.create_mudata(rna=raw_rna_adata, atac=raw_atac_adata)
+
+    # Copy celltype from RNA to MuData for stratified splitting
+    mdata.obs["celltype"] = raw_rna_adata.obs["celltype"].copy()
+
+    # Step 4: Split cells
+    ds.pp.split_cells(mdata, test_fraction=0.25, stratify_key="celltype")
+
+    # Step 5: Split features by chromosome
+    ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"])
+
+    # Step 6: Compute R2G penalty
+    ds.pp.compute_r2g_penalty(mdata, max_distance=50000, sigma=10000)
+
+    return mdata
+
+
+@pytest.fixture
+def tmp_fasta_path(tmp_path: Path) -> Path:
+    """Create temporary FASTA file with test sequences.
+
+    Provides sequences for chr1 and chr7 regions used in pipeline tests.
+    """
+    fasta_path = tmp_path / "test_genome.fa"
+
+    # Generate enough sequence for our test regions
+    # Each region is 640bp, we need up to 200000bp per chromosome
+    seq_len = 200000
+    bases = "ACGT"
+
+    with open(fasta_path, "w") as f:
+        for chrom in ["chr1", "chr7"]:
+            f.write(f">{chrom}\n")
+            # Write sequence in 80-char lines
+            seq = "".join(np.random.choice(list(bases), seq_len))
+            for i in range(0, len(seq), 80):
+                f.write(seq[i:i+80] + "\n")
+
+    return fasta_path
+
+
+@pytest.fixture
+def pipeline_trained_model(
+    preprocessed_mdata: md.MuData,
+    tmp_fasta_path: Path,
+) -> "DeepSCENICModel":
+    """Create trained model through actual training API with MockEnformer.
+
+    Runs Tutorial 2 training with minimal epochs and mock sequence model.
+    """
+    import deepscenic as ds
+    from deepscenic.tl._training_state import ModelConfig
+
+    # Register genome
+    ds.register_genome(tmp_fasta_path)
+
+    # Create config with MockEnformer
+    config = ModelConfig(
+        sequence_model=MockEnformer(bottleneck_size=16, emb_len=2),
+        seq_len=640,
+        bottleneck_size=16,
+        emb_len=2,
+        n_hidden=8,  # Small hidden size for speed
+    )
+
+    # Train with minimal epochs
+    model = ds.tl.train(
+        preprocessed_mdata,
+        config=config,
+        epochs=2,
+        batch_size=4,
+        seq_batch_size=10,
+        lr=1e-3,
+        device="cpu",
+    )
+
+    return model
