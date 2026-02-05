@@ -151,7 +151,7 @@ def split_cells(
 
 def split_features_by_chromosome(
     mdata: md.MuData,
-    test_chromosomes: list[str] = ["chr7", "chr11", "chr18", "chr19"],
+    test_chromosomes: list[str] | None = None,
     keep_tfs_in_both: bool = True,
     inplace: bool = True,
 ) -> md.MuData | None:
@@ -175,7 +175,7 @@ def split_features_by_chromosome(
     mdata
         Input multimodal data
     test_chromosomes
-        Chromosomes for test set
+        Chromosomes for test set. Defaults to ["chr7", "chr11", "chr18", "chr19"].
     keep_tfs_in_both
         If True (default), transcription factors get ``split='both'`` regardless
         of their chromosome location. This ensures all TFs are available as
@@ -188,6 +188,9 @@ def split_features_by_chromosome(
     -------
     If inplace=False, returns modified MuData
     """
+    if test_chromosomes is None:
+        test_chromosomes = ["chr7", "chr11", "chr18", "chr19"]
+
     if not inplace:
         mdata = mdata.copy()
 

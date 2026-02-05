@@ -802,12 +802,12 @@ def load_legacy_model(
         # Check genome is registered
         try:
             genome = get_genome()
-        except RuntimeError:
+        except RuntimeError as err:
             raise ValueError(
                 "No E1 path provided and no genome registered. Either:\n"
                 "  1. Provide e1_path to load pre-computed E1 matrix, OR\n"
                 "  2. Register genome with ds.register_genome('/path/to/genome.fa')"
-            )
+            ) from err
 
         # Build sequence dataloader (no augmentation for inference)
         seq_loader = build_sequence_dataloader(

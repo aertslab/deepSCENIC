@@ -121,7 +121,7 @@ class DeepSCENICVAE(nn.Module):
     def _init_weights(self) -> None:
         """Xavier initialization for Linear/Conv layers."""
         for m in self.modules():
-            if isinstance(m, (nn.Linear, nn.Conv1d, nn.Conv2d)):
+            if isinstance(m, nn.Linear | nn.Conv1d | nn.Conv2d):
                 if hasattr(m, "weight") and m.weight is not None:
                     nn.init.xavier_normal_(m.weight)
                 if hasattr(m, "bias") and m.bias is not None:

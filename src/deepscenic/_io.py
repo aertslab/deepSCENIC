@@ -110,11 +110,11 @@ def _convert_nullable_columns(df: pd.DataFrame) -> pd.DataFrame:
         first_val = non_null.iloc[0]
         if isinstance(first_val, str):
             df[col] = df[col].astype("string")
-        elif isinstance(first_val, (int, np.integer)):
+        elif isinstance(first_val, int | np.integer):
             df[col] = df[col].astype("Int64")
-        elif isinstance(first_val, (float, np.floating)):
+        elif isinstance(first_val, float | np.floating):
             df[col] = df[col].astype("Float64")
-        elif isinstance(first_val, (bool, np.bool_)):
+        elif isinstance(first_val, bool | np.bool_):
             df[col] = df[col].astype("boolean")
 
     return df

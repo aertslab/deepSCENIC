@@ -370,9 +370,7 @@ def process_perturbation_results(
     gene_names = list(mdata.mod["rna"].var_names)
 
     if logFC.shape[1] != len(gene_names):
-        raise ValueError(
-            f"logFC has {logFC.shape[1]} genes but mdata has {len(gene_names)} genes"
-        )
+        raise ValueError(f"logFC has {logFC.shape[1]} genes but mdata has {len(gene_names)} genes")
 
     # Handle tf_name as string or list
     if isinstance(tf_name, str):
@@ -384,12 +382,14 @@ def process_perturbation_results(
     mean_logfc = logFC.mean(axis=0)
 
     # Build result DataFrame
-    result = pd.DataFrame({
-        "gene": gene_names,
-        "tf": tf_label,
-        "log2fc": mean_logfc,
-        "abs_log2fc": np.abs(mean_logfc),
-    })
+    result = pd.DataFrame(
+        {
+            "gene": gene_names,
+            "tf": tf_label,
+            "log2fc": mean_logfc,
+            "abs_log2fc": np.abs(mean_logfc),
+        }
+    )
 
     # Compute p-values if requested
     if compute_pvalues:

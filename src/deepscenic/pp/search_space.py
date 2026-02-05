@@ -355,15 +355,12 @@ def compute_r2g_penalty(
 
     # Update config with new stats
     config["n_links"] = len(new_data)
-    config["density"] = (
-        len(new_data) / (n_regions * n_genes_final) if (n_regions * n_genes_final) > 0 else 0
-    )
+    config["density"] = len(new_data) / (n_regions * n_genes_final) if (n_regions * n_genes_final) > 0 else 0
 
     # Log TFs without annotation and removed non-TF genes
     tfs_without_annotation = [g for g in tf_genes if g not in genes_with_annotation]
     tf_set = set(tf_genes)
-    n_removed_non_tfs = len([g for g in all_gene_names
-                            if g not in tf_set and g not in genes_with_annotation])
+    n_removed_non_tfs = len([g for g in all_gene_names if g not in tf_set and g not in genes_with_annotation])
 
     if tfs_without_annotation:
         log.info(f"{len(tfs_without_annotation)} TFs without annotation will have 0 links")
@@ -377,9 +374,7 @@ def compute_r2g_penalty(
     # Store TF order in uns for easy access during training
     mdata.mod["rna"].uns["tf_order"] = tf_genes
 
-    log.info(
-        f"Reordered RNA modality: {len(tf_genes)} TFs first, then {len(non_tf_genes)} other genes"
-    )
+    log.info(f"Reordered RNA modality: {len(tf_genes)} TFs first, then {len(non_tf_genes)} other genes")
 
     # Store in MuData
     mdata.uns[key_added] = {

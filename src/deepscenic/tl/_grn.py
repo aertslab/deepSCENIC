@@ -546,9 +546,7 @@ def compute_tf_activity_scores(
             results[ct] = np.zeros(len(model.tf_names))
             continue
 
-        region_indices = [
-            region_to_idx[r] for r in active_regions if r in region_to_idx
-        ]
+        region_indices = [region_to_idx[r] for r in active_regions if r in region_to_idx]
 
         if not region_indices:
             results[ct] = np.zeros(len(model.tf_names))
@@ -650,9 +648,7 @@ def build_grn_for_tfs(
                     "combined_weight": "tf2g_score",
                 }
             )
-            results.append(
-                targets[["TF", "region", "gene", "tf2r_score", "r2g_score", "tf2g_score"]]
-            )
+            results.append(targets[["TF", "region", "gene", "tf2r_score", "r2g_score", "tf2g_score"]])
 
     if not results:
         return pd.DataFrame(columns=_BUILD_GRN_COLUMNS)
