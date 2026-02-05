@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -10,41 +10,10 @@ from scipy.sparse import issparse
 from tqdm.auto import tqdm
 
 if TYPE_CHECKING:
-    from typing import Literal
-
     import mudata as md
+    import pandas as pd
 
     from ._model import DeepSCENICModel
-
-
-@overload
-def simulate_perturbation(
-    model: DeepSCENICModel,
-    mdata: md.MuData,
-    tf_name: str,
-    level: float = ...,
-    n_iter: int = ...,
-    batch_size: int = ...,
-    device: str | torch.device | None = ...,
-    split: str | None = ...,
-    clip_percentile: float = ...,
-    return_intermediate: Literal[False] = ...,
-) -> np.ndarray: ...
-
-
-@overload
-def simulate_perturbation(
-    model: DeepSCENICModel,
-    mdata: md.MuData,
-    tf_name: str,
-    level: float = ...,
-    n_iter: int = ...,
-    batch_size: int = ...,
-    device: str | torch.device | None = ...,
-    split: str | None = ...,
-    clip_percentile: float = ...,
-    return_intermediate: Literal[True] = ...,
-) -> dict[int, np.ndarray]: ...
 
 
 def simulate_perturbation(
@@ -202,36 +171,6 @@ def simulate_perturbation(
     return np.concatenate(logFC_all, axis=0)
 
 
-@overload
-def simulate_multi_perturbation(
-    model: DeepSCENICModel,
-    mdata: md.MuData,
-    tf_names: list[str],
-    levels: list[float] | None = ...,
-    n_iter: int = ...,
-    batch_size: int = ...,
-    device: str | torch.device | None = ...,
-    split: str | None = ...,
-    clip_percentile: float = ...,
-    return_intermediate: Literal[False] = ...,
-) -> np.ndarray: ...
-
-
-@overload
-def simulate_multi_perturbation(
-    model: DeepSCENICModel,
-    mdata: md.MuData,
-    tf_names: list[str],
-    levels: list[float] | None = ...,
-    n_iter: int = ...,
-    batch_size: int = ...,
-    device: str | torch.device | None = ...,
-    split: str | None = ...,
-    clip_percentile: float = ...,
-    return_intermediate: Literal[True] = ...,
-) -> dict[int, np.ndarray]: ...
-
-
 def simulate_multi_perturbation(
     model: DeepSCENICModel,
     mdata: md.MuData,
@@ -374,3 +313,98 @@ def simulate_multi_perturbation(
     if return_intermediate:
         return {i: np.concatenate(logFC_per_iter[i], axis=0) for i in range(1, n_iter + 1)}
     return np.concatenate(logFC_all, axis=0)
+
+
+def process_perturbation_results(
+    logFC: np.ndarray,
+    mdata: md.MuData,
+    tf_name: str | list[str],
+    *,
+    compute_pvalues: bool = True,
+    gene_subset: list[str] | None = None,
+) -> pd.DataFrame:
+    """
+    Process perturbation results into a DataFrame for plotting.
+
+    Computes mean log2 fold change across cells and optional p-values
+    (one-sample t-test vs 0) for each gene.
+
+    Parameters
+    ----------
+    logFC
+        Log fold change array from simulate_perturbation (n_cells, n_genes)
+    mdata
+        MuData used for simulation (provides gene names)
+    tf_name
+        Name of perturbed TF(s) - used for the 'tf' column
+    compute_pvalues
+        Whether to compute p-values via one-sample t-test
+    gene_subset
+        If provided, only include these genes in output
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: 'gene', 'tf', 'log2fc', 'abs_log2fc',
+        and optionally 'pvalue'. Ready for volcano_perturbation,
+        heatmap_perturbation, or dotplot_perturbation.
+
+    Examples
+    --------
+    >>> logFC = ds.tl.simulate_perturbation(model, mdata, "SOX10")
+    >>> results = ds.tl.process_perturbation_results(logFC, mdata, "SOX10")
+    >>> ds.pl.volcano_perturbation(results)
+
+    >>> # For multi-TF comparison heatmaps
+    >>> results_list = []
+    >>> for tf in ["SOX10", "MITF", "PAX3"]:
+    ...     logFC = ds.tl.simulate_perturbation(model, mdata, tf)
+    ...     results_list.append(ds.tl.process_perturbation_results(logFC, mdata, tf))
+    >>> combined = pd.concat(results_list)
+    >>> ds.pl.heatmap_perturbation(combined)
+    """
+    import pandas as pd
+    from scipy import stats
+
+    # Get gene names from mdata
+    gene_names = list(mdata.mod["rna"].var_names)
+
+    if logFC.shape[1] != len(gene_names):
+        raise ValueError(
+            f"logFC has {logFC.shape[1]} genes but mdata has {len(gene_names)} genes"
+        )
+
+    # Handle tf_name as string or list
+    if isinstance(tf_name, str):
+        tf_label = tf_name
+    else:
+        tf_label = "+".join(tf_name)  # e.g., "SOX10+MITF" for multi-TF
+
+    # Compute mean logFC per gene (across cells)
+    mean_logfc = logFC.mean(axis=0)
+
+    # Build result DataFrame
+    result = pd.DataFrame({
+        "gene": gene_names,
+        "tf": tf_label,
+        "log2fc": mean_logfc,
+        "abs_log2fc": np.abs(mean_logfc),
+    })
+
+    # Compute p-values if requested
+    if compute_pvalues:
+        # One-sample t-test: is mean logFC significantly different from 0?
+        # Handle edge case of zero variance
+        pvalues = np.ones(len(gene_names))
+        for i in range(len(gene_names)):
+            gene_logfc = logFC[:, i]
+            if gene_logfc.std() > 0:
+                _, pval = stats.ttest_1samp(gene_logfc, 0)
+                pvalues[i] = pval
+        result["pvalue"] = pvalues
+
+    # Filter to gene subset if provided
+    if gene_subset is not None:
+        result = result[result["gene"].isin(gene_subset)].copy()
+
+    return result

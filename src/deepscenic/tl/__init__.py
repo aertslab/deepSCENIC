@@ -20,7 +20,11 @@ from ._model import (
     load_legacy_model,
     load_model,
 )
-from ._perturbation import simulate_multi_perturbation, simulate_perturbation
+from ._perturbation import (
+    process_perturbation_results,
+    simulate_multi_perturbation,
+    simulate_perturbation,
+)
 from ._train import finetune_e2, train
 from ._training_state import (
     EarlyStopping,
@@ -47,6 +51,7 @@ __all__ = [
     # Perturbation
     "simulate_perturbation",
     "simulate_multi_perturbation",
+    "process_perturbation_results",
     # GRN extraction
     "extract_grn",
     "extract_e1_matrix",
