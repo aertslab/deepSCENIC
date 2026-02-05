@@ -75,6 +75,7 @@ myst_heading_anchors = 6
 nb_execution_mode = "off"  # Don't execute notebooks during build
 nb_output_stderr = "remove"
 
+
 # Intersphinx mappings
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3", None),

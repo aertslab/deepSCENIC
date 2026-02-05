@@ -142,7 +142,8 @@ python = ["3.12"]
 features = ["doc"]
 
 [tool.hatch.envs.docs.scripts]
-build = "sphinx-build -M html docs docs/_build -W {args}"
+build = "sphinx-build -M html docs docs/_build {args}"
+build-strict = "sphinx-build -M html docs docs/_build -W {args}"
 open = "python -m webbrowser -t docs/_build/html/index.html"
 clean = "rm -rf docs/_build docs/api/_autosummary"
 linkcheck = "sphinx-build -b linkcheck docs docs/_build/linkcheck {args}"

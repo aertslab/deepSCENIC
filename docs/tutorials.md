@@ -11,8 +11,9 @@ notebooks/01_data_preparation
 notebooks/02_training
 notebooks/03_model_diagnosis
 notebooks/04_grn_analysis
-notebooks/05_visualization
-notebooks/06_legacy_migration
+notebooks/05_perturbation_analysis
+notebooks/06_advanced_visualization
+notebooks/07_legacy_migration
 ```
 
 ## Prerequisites
@@ -28,11 +29,12 @@ Before starting, ensure you have:
 | Tutorial | Topic | Key Functions |
 |----------|-------|---------------|
 | 01 | Data Preparation | `ds.pp.create_mudata()`, `ds.pp.mark_tfs()`, `ds.pp.compute_r2g_penalty()` |
-| 02 | Training | `ds.tl.train()`, `ds.pl.loss_curves()` |
-| 03 | Model Diagnosis | Training diagnostics and model evaluation |
-| 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.pl.network_*()` |
-| 05 | Visualization | `ds.pl.genome_browser()`, `ds.pl.arc_plot()` |
-| 06 | Legacy Migration | Migrating from legacy deepSCENIC |
+| 02 | Training | `ds.tl.train()`, `ds.tl.finetune_e2()` |
+| 03 | Model Diagnosis | `ds.tl.to_latent()`, `ds.pl.latent_umap()` |
+| 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.tl.compute_celltype_enhancer_activity()` |
+| 05 | Perturbation Analysis | `ds.tl.simulate_perturbation()`, `ds.pl.volcano_perturbation()` |
+| 06 | Advanced Visualization | `ds.pl.genome_browser()`, `ds.pl.arc_plot()` |
+| 07 | Legacy Migration | Migrating from legacy deepSCENIC format |
 
 ## Data Requirements
 

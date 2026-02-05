@@ -597,9 +597,7 @@ def tf_activity_clustermap(
     else:
         # Compute from model mode
         if model is None or mdata is None or groupby is None:
-            raise ValueError(
-                "When scores is not provided, model, mdata, and groupby are required"
-            )
+            raise ValueError("When scores is not provided, model, mdata, and groupby are required")
 
         import torch
 
