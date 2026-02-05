@@ -528,7 +528,7 @@ def train(
 
     # Train sequence dataloader (for sequencenet + motifnet training)
     train_region_mask = mdata.mod["atac"].var["split"] == "train"
-    region_names = list(mdata.mod["atac"].var_names[train_region_mask])
+    train_region_names = list(mdata.mod["atac"].var_names[train_region_mask])
     # Map from train-only indices (0..n_train-1) to global indices (into full adj_E1_cache)
     train_region_global_indices = np.where(train_region_mask)[0]
 
@@ -548,7 +548,7 @@ def train(
             dar_indices = None
 
     train_seq_loader = build_sequence_dataloader(
-        regions=region_names,
+        regions=train_region_names,
         batch_size=seq_batch_size,
         shuffle=True,
         shift_augs=(-3, 3),
