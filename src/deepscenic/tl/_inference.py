@@ -19,6 +19,7 @@ def to_latent(
     model: DeepSCENICModel,
     mdata: md.MuData,
     batch_size: int = 256,
+    region_chunk_size: int = 50000,
     device: str | torch.device | None = None,
     key_prefix: str = "X_deepscenic_",
 ) -> None:
@@ -45,6 +46,11 @@ def to_latent(
         Embeddings will be stored in mdata.obsm.
     batch_size
         Cells per batch for inference
+    region_chunk_size
+        Number of regions to decode at once through the ATAC decoder.
+        The ATAC decoder creates (batch, n_regions, 128) intermediate
+        tensors. With 281k regions this is ~37 GB per layer, exceeding
+        most GPUs. Chunking to 50k regions reduces this to ~1.6 GB.
     device
         Device for inference (None = use model's current device)
     key_prefix
@@ -84,6 +90,7 @@ def to_latent(
         rna = rna.toarray()
 
     n_cells = rna.shape[0]
+    n_regions = len(model.region_names)
 
     # Initialize output arrays
     outputs: dict[str, list[np.ndarray]] = {
@@ -101,17 +108,28 @@ def to_latent(
 
             x_rna = torch.FloatTensor(rna[i:end_idx]).to(device)
 
+            # Skip ATAC decoder in main forward pass to avoid OOM.
+            # The ATAC decoder creates (batch, n_regions, 128) tensors
+            # which is ~37 GB for 281k regions — exceeds most GPUs.
             output = model.vae(
                 x_rna,
                 model.adj_E1,
-                use_mean=True,  # Deterministic inference
+                use_mean=True,
+                skip_atac=True,
             )
 
             outputs["z_tf"].append(output.z_tf.cpu().numpy())
             outputs["enh_act"].append(output.enh_act.cpu().numpy())
             outputs["z_rna"].append(output.z_rna.cpu().numpy())
             outputs["rna_rec"].append(output.x_rna_rec.cpu().numpy())
-            outputs["atac_rec"].append(output.x_atac_rec.cpu().numpy())
+
+            # Decode ATAC in region chunks to avoid OOM
+            enh_act = output.enh_act  # (batch, n_regions) — stays on GPU
+            atac_chunks = []
+            for j in range(0, n_regions, region_chunk_size):
+                chunk = enh_act[:, j : j + region_chunk_size]
+                atac_chunks.append(model.vae.decoder_atac(chunk).cpu().numpy())
+            outputs["atac_rec"].append(np.concatenate(atac_chunks, axis=1))
 
     # Concatenate batches and store in mdata.obsm
     for key, values in outputs.items():

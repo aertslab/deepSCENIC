@@ -16,7 +16,7 @@ class VAEOutput:
     """Container for VAE forward pass outputs."""
 
     x_rna_rec: Tensor  # Reconstructed RNA (n_cells, n_genes)
-    x_atac_rec: Tensor  # Reconstructed ATAC (n_cells, n_regions)
+    x_atac_rec: Tensor | None  # Reconstructed ATAC (n_cells, n_regions), None if skip_atac
     z_tf: Tensor  # Latent TF activity (n_cells, n_tfs)
     mu: Tensor  # Encoder mean (n_cells, n_tfs)
     logvar: Tensor  # Encoder log variance (n_cells, n_tfs)
@@ -169,6 +169,7 @@ class DeepSCENICVAE(nn.Module):
         adj_E1: Tensor,
         use_mean: bool = False,
         batch_id: Tensor | None = None,
+        skip_atac: bool = False,
     ) -> VAEOutput:
         """
         Forward pass through VAE.
@@ -183,11 +184,17 @@ class DeepSCENICVAE(nn.Module):
             If True, use encoder mean instead of sampling
         batch_id
             One-hot batch identifiers (n_cells, n_batches) for batch correction
+        skip_atac
+            If True, skip ATAC decoder to save memory. The ATAC decoder
+            creates (batch, n_regions, 128) intermediate tensors (~37 GB
+            for 281k regions). Set True when only RNA outputs are needed
+            (e.g., perturbation simulation).
 
         Returns
         -------
         VAEOutput
-            Container with all intermediate and final outputs
+            Container with all intermediate and final outputs.
+            ``x_atac_rec`` is None when ``skip_atac=True``.
         """
         # Extract TF expression
         x_rna_tfs = x_rna[:, self.tf_indices]
@@ -210,7 +217,7 @@ class DeepSCENICVAE(nn.Module):
 
         # Decoders
         x_rna_rec = self.decoder_rna(z_rna)
-        x_atac_rec = self.decoder_atac(enh_act)
+        x_atac_rec = self.decoder_atac(enh_act) if not skip_atac else None
 
         return VAEOutput(
             x_rna_rec=x_rna_rec,

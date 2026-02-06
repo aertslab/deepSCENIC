@@ -117,10 +117,13 @@ def simulate_perturbation(
             x_rna = torch.FloatTensor(batch_rna).to(device)
 
             # Get original z_rna (baseline gene regulatory signal)
+            # skip_atac=True: only z_rna is needed, skipping ATAC decoder
+            # saves ~37 GB VRAM per MLP layer (281k regions × 128 hidden)
             output_orig = model.vae(
                 x_rna,
                 model.adj_E1,
                 use_mean=True,
+                skip_atac=True,
             )
             z_rna_orig = output_orig.z_rna
 
@@ -138,11 +141,12 @@ def simulate_perturbation(
                 # Set TF expression to perturbation level
                 perturbed_rna[:, tf_gene_idx] = level
 
-                # Forward pass with perturbed input
+                # Forward pass with perturbed input (skip ATAC decoder)
                 output_pert = model.vae(
                     perturbed_rna,
                     model.adj_E1,
                     use_mean=True,
+                    skip_atac=True,
                 )
 
                 # Compute logFC in latent space, then decode the DIFFERENCE
@@ -262,10 +266,13 @@ def simulate_multi_perturbation(
             x_rna = torch.FloatTensor(batch_rna).to(device)
 
             # Get original z_rna (baseline)
+            # skip_atac=True: only z_rna is needed, skipping ATAC decoder
+            # saves ~37 GB VRAM per MLP layer (281k regions × 128 hidden)
             output_orig = model.vae(
                 x_rna,
                 model.adj_E1,
                 use_mean=True,
+                skip_atac=True,
             )
             z_rna_orig = output_orig.z_rna
 
@@ -284,10 +291,12 @@ def simulate_multi_perturbation(
                 for tf_gene_idx, lv in zip(tf_gene_indices, levels, strict=False):
                     perturbed_rna[:, tf_gene_idx] = lv
 
+                # Forward pass with perturbed input (skip ATAC decoder)
                 output_pert = model.vae(
                     perturbed_rna,
                     model.adj_E1,
                     use_mean=True,
+                    skip_atac=True,
                 )
 
                 # Compute logFC in latent space, then decode the DIFFERENCE
