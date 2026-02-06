@@ -232,19 +232,33 @@ class DeepSCENICModel:
         # Reconstruct VAE (PPI removed for initial release - legacy PPI weights are ignored)
         if data.get("use_ppi", False):
             log.info("  Note: Legacy checkpoint had PPI enabled - PPI is removed in this release")
+
+        # Ensure index tensors have correct dtype (int64) for scatter operations
+        # This fixes checkpoints saved before the dtype fix
+        r2g_indices = data["r2g_indices"].to(torch.long)
+        tf_indices = data["tf_indices"].to(torch.long)
+        gene_indices = data["gene_indices"].to(torch.long)
+        region_indices = data["region_indices"].to(torch.long)
+
         vae = DeepSCENICVAE(
             n_tfs=data["n_tfs"],
             n_genes=data["n_genes"],
             n_regions=data["n_regions"],
-            r2g_indices=data["r2g_indices"],
+            r2g_indices=r2g_indices,
             r2g_distances=data["r2g_distances"],
-            tf_indices=data["tf_indices"],
-            gene_indices=data["gene_indices"],
-            region_indices=data["region_indices"],
+            tf_indices=tf_indices,
+            gene_indices=gene_indices,
+            region_indices=region_indices,
             n_hidden=data["n_hidden"],
             n_batches=data.get("n_batches", 0),
         )
-        vae.load_state_dict(data["vae_state_dict"])
+
+        # Fix dtypes in state dict before loading (buffers would overwrite our fixed tensors)
+        vae_state = data["vae_state_dict"]
+        for key in ["r2g_indices", "tf_indices", "gene_indices", "region_indices"]:
+            if key in vae_state:
+                vae_state[key] = vae_state[key].to(torch.long)
+        vae.load_state_dict(vae_state)
         vae.to(device)
         vae.eval()
 

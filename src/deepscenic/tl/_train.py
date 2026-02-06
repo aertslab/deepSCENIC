@@ -440,7 +440,7 @@ def train(
     n_regions = len(region_names)
 
     # Compute TF indices from is_tf mask
-    tf_indices = torch.tensor(np.where(tf_mask)[0])
+    tf_indices = torch.tensor(np.where(tf_mask)[0], dtype=torch.long)
 
     # Validate split columns exist
     if "split" not in rna.var.columns:
@@ -453,18 +453,18 @@ def train(
     gene_split = rna.var["split"]
     # Include genes with split='train' or 'both' (TFs get 'both' by default)
     train_gene_mask = gene_split.isin(["train", "both"])
-    gene_indices = torch.tensor(np.where(train_gene_mask)[0])
+    gene_indices = torch.tensor(np.where(train_gene_mask)[0], dtype=torch.long)
     log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train + 'both (TFs)' splits)")
 
     # Compute region_indices for ATAC reconstruction loss: only TRAIN regions
     region_split = atac.var["split"]
     train_region_mask = region_split == "train"
-    region_indices = torch.tensor(np.where(train_region_mask)[0])
+    region_indices = torch.tensor(np.where(train_region_mask)[0], dtype=torch.long)
     log.info(f"Using {len(region_indices)}/{n_regions} regions for ATAC reconstruction (train split)")
 
     # Get r2g sparse matrix info (convert CSR to COO for indices)
     r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
-    r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]))
+    r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]), dtype=torch.long)
     r2g_distances = torch.tensor(r2g_coo.data).float()
 
     # Batch correction
@@ -1149,7 +1149,7 @@ def finetune_e2(
         raise ValueError(f"Invalid feature_split: {feature_split}. Must be 'train' or 'test'.")
 
     # Compute gene_indices for loss computation
-    gene_indices = torch.tensor(np.where(gene_mask)[0], device=device)
+    gene_indices = torch.tensor(np.where(gene_mask)[0], dtype=torch.long, device=device)
     log.info(f"Using {len(gene_indices)}/{len(rna_var)} genes for loss (feature_split='{feature_split}')")
 
     # Compute E2 link mask: only links where BOTH region AND gene match the split

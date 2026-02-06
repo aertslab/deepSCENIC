@@ -318,7 +318,7 @@ def build_test_sequence_dataloader(
     # Get test region mask and indices
     atac_var = mdata.mod["atac"].var
     test_mask = atac_var["split"] == "test"
-    test_region_indices = torch.tensor(np.where(test_mask)[0])
+    test_region_indices = torch.tensor(np.where(test_mask)[0], dtype=torch.long)
     test_region_names = mdata.mod["atac"].var_names[test_mask].tolist()
 
     # Build dataset WITHOUT augmentation
