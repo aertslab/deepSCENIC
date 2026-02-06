@@ -355,8 +355,9 @@ def process_perturbation_results(
     -------
     pd.DataFrame
         DataFrame with columns: 'gene', 'tf', 'log2fc', 'abs_log2fc',
-        and optionally 'pvalue'. Ready for volcano_perturbation,
-        heatmap_perturbation, or dotplot_perturbation.
+        and optionally 'pvalue' and 'padj' (Benjamini-Hochberg adjusted).
+        Ready for volcano_perturbation, heatmap_perturbation, or
+        dotplot_perturbation.
 
     Examples
     --------
@@ -411,6 +412,16 @@ def process_perturbation_results(
                 _, pval = stats.ttest_1samp(gene_logfc, 0)
                 pvalues[i] = pval
         result["pvalue"] = pvalues
+
+        # Benjamini-Hochberg FDR correction
+        n = len(pvalues)
+        ranked_idx = np.argsort(pvalues)
+        padj = np.empty(n)
+        padj[ranked_idx] = pvalues[ranked_idx] * n / np.arange(1, n + 1)
+        # Enforce monotonicity (step-down)
+        padj[ranked_idx] = np.minimum.accumulate(padj[ranked_idx][::-1])[::-1]
+        padj = np.clip(padj, 0.0, 1.0)
+        result["padj"] = padj
 
     # Filter to gene subset if provided
     if gene_subset is not None:

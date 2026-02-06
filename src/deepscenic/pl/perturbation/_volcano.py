@@ -18,9 +18,9 @@ def volcano_perturbation(
     results: pd.DataFrame,
     *,
     logfc_col: str = "log2fc",
-    pval_col: str = "pvalue",
+    pval_col: str = "padj",
     gene_col: str = "gene",
-    logfc_threshold: float = 0.5,
+    logfc_threshold: float = 0.05,
     pval_threshold: float = 0.05,
     top_n_labels: int = 10,
     highlight_genes: list[str] | None = None,
@@ -41,7 +41,8 @@ def volcano_perturbation(
     logfc_col
         Column name for log2 fold change.
     pval_col
-        Column name for p-value.
+        Column name for p-value. Defaults to 'padj' (adjusted p-value);
+        falls back to 'pvalue' if 'padj' is not present.
     gene_col
         Column name for gene names.
     logfc_threshold
@@ -77,8 +78,13 @@ def volcano_perturbation(
     """
     df = results.copy()
 
-    # Compute -log10(pval)
+    # Fallback to pvalue if padj not available
+    if pval_col == "padj" and pval_col not in df.columns and "pvalue" in df.columns:
+        pval_col = "pvalue"
+
+    # Compute -log10(pval), capped at 50 to prevent extreme y-values
     df["neg_log_pval"] = -np.log10(df[pval_col].clip(lower=1e-300))
+    df["neg_log_pval"] = df["neg_log_pval"].clip(upper=50)
 
     # Classify points
     df["significant"] = (df[logfc_col].abs() >= logfc_threshold) & (df[pval_col] <= pval_threshold)

@@ -20,6 +20,7 @@ def heatmap_perturbation(
     *,
     tfs: list[str] | None = None,
     genes: list[str] | None = None,
+    top_n: int | None = None,
     value_col: str = "log2fc",
     tf_col: str = "tf",
     gene_col: str = "gene",
@@ -44,6 +45,9 @@ def heatmap_perturbation(
         TFs to include.
     genes
         Genes to include.
+    top_n
+        If provided, only include the top N genes by maximum absolute effect
+        across all TFs.
     value_col
         Column for heatmap values.
     tf_col
@@ -86,6 +90,12 @@ def heatmap_perturbation(
     if genes is not None:
         df = df[df[gene_col].isin(genes)]
 
+    # Filter to top N genes by max absolute effect
+    if top_n is not None:
+        gene_effect = df.groupby(gene_col)[value_col].apply(lambda x: x.abs().max())
+        top_genes = gene_effect.nlargest(top_n).index.tolist()
+        df = df[df[gene_col].isin(top_genes)]
+
     # Pivot
     pivot = df.pivot_table(
         index=tf_col,
@@ -93,6 +103,12 @@ def heatmap_perturbation(
         values=value_col,
         fill_value=0,
     )
+
+    # Auto-disable clustering when dimensions are too small
+    if len(pivot) <= 1:
+        cluster_rows = False
+    if len(pivot.columns) <= 1:
+        cluster_cols = False
 
     # Clustermap
     g = sns.clustermap(
