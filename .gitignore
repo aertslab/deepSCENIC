@@ -6,6 +6,7 @@ scripts/
 *.slurm
 CLAUDE.md
 pyrightconfig.json
+docs/notebooks/data
 
 # Python
 *__pycache__*
