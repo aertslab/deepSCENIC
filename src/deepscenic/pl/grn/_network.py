@@ -95,7 +95,7 @@ def network_grn(
     tf_list = tfs if tfs is not None else model.tf_names[:20]
 
     for tf in tf_list:
-        targets = get_tf_targets(model, tf, threshold=threshold, top_k=top_k)
+        targets = get_tf_targets(model, tf, e1_threshold=threshold, top_k=top_k)
         if len(targets) == 0:
             continue
 
@@ -233,7 +233,7 @@ def network_tf_targets(
     """
     from deepscenic.tl import get_tf_targets
 
-    targets = get_tf_targets(model, tf, threshold=threshold, top_k=top_k)
+    targets = get_tf_targets(model, tf, e1_threshold=threshold, top_k=top_k)
 
     if len(targets) == 0:
         raise ValueError(f"No targets found for TF '{tf}'")
@@ -346,7 +346,7 @@ def network_gene_regulators(
     """
     from deepscenic.tl import get_gene_regulators
 
-    regulators = get_gene_regulators(model, gene, threshold=threshold, top_k=top_k)
+    regulators = get_gene_regulators(model, gene, e1_threshold=threshold, top_k=top_k)
 
     if len(regulators) == 0:
         raise ValueError(f"No regulators found for gene '{gene}'")

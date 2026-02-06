@@ -6,7 +6,6 @@ from ._utils import get_cmap_colors, parse_region, savefig_or_show, setup_axes
 from .genomics import arc_plot, genome_browser
 from .grn import (
     heatmap_celltype_activity,
-    heatmap_e1,
     heatmap_e2,
     heatmap_grn,
     network_gene_regulators,
@@ -39,7 +38,6 @@ __all__ = [
     # Embedding Visualization
     "embedding_umap",
     # GRN
-    "heatmap_e1",
     "heatmap_e2",
     "heatmap_grn",
     "network_grn",

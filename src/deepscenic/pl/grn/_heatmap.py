@@ -15,94 +15,6 @@ if TYPE_CHECKING:
 from .._utils import savefig_or_show, setup_axes
 
 
-def heatmap_e1(
-    model: DeepSCENICModel,
-    *,
-    tfs: list[str] | None = None,
-    regions: list[str] | None = None,
-    top_k: int | None = 50,
-    ax: Axes | None = None,
-    cmap: str = "viridis",
-    show: bool | None = None,
-    save: str | bool | None = None,
-    return_fig: bool = False,
-    figsize: tuple[float, float] = (10, 8),
-    **kwargs,
-) -> Axes | Figure | None:
-    """
-    Plot E1 (TF->region) heatmap.
-
-    Parameters
-    ----------
-    model
-        Trained DeepSCENICModel.
-    tfs
-        TFs to include. If None, use top by variance.
-    regions
-        Regions to include. If None, use top by variance.
-    top_k
-        Number of top TFs/regions to show if not specified.
-    ax
-        Pre-existing axes.
-    cmap
-        Colormap.
-    show
-        Display figure.
-    save
-        Save figure.
-    return_fig
-        Return Figure instead of Axes.
-    figsize
-        Figure size.
-    **kwargs
-        Passed to seaborn.heatmap.
-
-    Returns
-    -------
-    Axes, Figure, or None depending on parameters.
-
-    Examples
-    --------
-    >>> model = ds.tl.load_model("model.pt")
-    >>> ds.pl.heatmap_e1(model, top_k=30)
-    """
-    from deepscenic.tl import extract_e1_matrix
-
-    # Get E1 matrix
-    E1_df = extract_e1_matrix(model)
-
-    # Filter TFs
-    if tfs is not None:
-        E1_df = E1_df[tfs]
-    elif top_k is not None:
-        tf_var = E1_df.var()
-        top_tfs = tf_var.nlargest(top_k).index.tolist()
-        E1_df = E1_df[top_tfs]
-
-    # Filter regions
-    if regions is not None:
-        E1_df = E1_df.loc[regions]
-    elif top_k is not None:
-        region_var = E1_df.var(axis=1)
-        top_regions = region_var.nlargest(top_k).index.tolist()
-        E1_df = E1_df.loc[top_regions]
-
-    # Create plot
-    fig, ax = setup_axes(ax, figsize=figsize)
-    sns.heatmap(E1_df, ax=ax, cmap=cmap, **kwargs)
-    ax.set_xlabel("Transcription Factors")
-    ax.set_ylabel("Regions")
-    ax.set_title("E1: TF -> Region Binding")
-
-    savefig_or_show("heatmap_e1", show=show, save=save)
-
-    if return_fig:
-        return fig
-    if show is False:
-        return ax
-    return None
-
-
 def heatmap_e2(
     model: DeepSCENICModel,
     *,
@@ -153,8 +65,8 @@ def heatmap_e2(
     """
     from deepscenic.tl import extract_e2_matrix
 
-    # Get E2 as sparse df, pivot to dense for selected genes
-    E2_sparse = extract_e2_matrix(model, as_sparse=True)
+    # Get E2 as edge list, pivot to dense for selected genes
+    E2_sparse = extract_e2_matrix(model, as_edgelist=True)
 
     # Filter genes
     if genes is not None:
@@ -195,6 +107,7 @@ def heatmap_grn(
     tfs: list[str] | None = None,
     genes: list[str] | None = None,
     top_k: int | None = 30,
+    normalize: str | None = "zscore",
     ax: Axes | None = None,
     cmap: str = "RdBu_r",
     center: float = 0,
@@ -207,6 +120,10 @@ def heatmap_grn(
     """
     Plot combined TF->gene GRN heatmap (E1 @ E2).
 
+    Computes TF-gene regulatory weights by multiplying E1 (TF->region) and
+    E2 (region->gene) matrices. By default, values are z-score normalized
+    per TF to highlight gene-specific regulation patterns.
+
     Parameters
     ----------
     model
@@ -217,6 +134,10 @@ def heatmap_grn(
         Genes to include.
     top_k
         Number of top TFs/genes to show.
+    normalize
+        Normalization method for the GRN matrix.
+        ``'zscore'`` (default): Z-score per TF (row), matching legacy workflow.
+        ``None``: Raw E1 @ E2 values.
     ax
         Pre-existing axes.
     cmap
@@ -243,26 +164,54 @@ def heatmap_grn(
     >>> model = ds.tl.load_model("model.pt")
     >>> ds.pl.heatmap_grn(model, top_k=20)
     """
-    from deepscenic.tl import extract_e1_matrix, extract_e2_matrix
+    import numpy as np
+    import pandas as pd
+    import torch
+    from scipy.sparse import coo_matrix
 
-    # Get matrices
+    from deepscenic.tl import extract_e1_matrix
+
+    # Get E1 as dense DataFrame (n_regions, n_tfs)
     E1_df = extract_e1_matrix(model)
-    E2_sparse = extract_e2_matrix(model, as_sparse=True)
 
-    # Compute TF->gene via matrix multiplication
-    # First need dense E2
-    E2_pivot = E2_sparse.pivot_table(index="region", columns="gene", values="weight", fill_value=0)
-    # Align indices
-    common_regions = E1_df.index.intersection(E2_pivot.index)
-    E1_aligned = E1_df.loc[common_regions]
-    E2_aligned = E2_pivot.loc[common_regions]
+    # Build sparse E2 matrix using scipy (avoids dense materialization)
+    with torch.no_grad():
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[union-attr]
+        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[union-attr]
 
-    # TF->gene = E1.T @ E2
-    grn_matrix = E1_aligned.T @ E2_aligned
+    E2_scipy = coo_matrix(
+        (adj_E2, (r2g_indices[0], r2g_indices[1])),
+        shape=(len(model.region_names), len(model.gene_names)),
+    ).tocsr()
+
+    # Sparse matrix multiplication: GRN = E1.T @ E2 -> (n_tfs, n_genes)
+    grn_values = E1_df.values.T @ E2_scipy
+
+    grn_matrix = pd.DataFrame(
+        grn_values.toarray() if hasattr(grn_values, "toarray") else np.asarray(grn_values),
+        index=model.tf_names,
+        columns=model.gene_names,
+    )
+
+    # Remove all-zero columns (genes with no E2 links)
+    grn_matrix = grn_matrix.loc[:, (grn_matrix != 0).any(axis=0)]
+
+    # Normalize
+    if normalize == "zscore":
+        # Z-score per TF (row): (value - row_mean) / row_std
+        row_mean = grn_matrix.mean(axis=1)
+        row_std = grn_matrix.std(axis=1)
+        # Avoid division by zero for TFs with zero variance
+        row_std = row_std.replace(0, np.nan)
+        grn_matrix = grn_matrix.sub(row_mean, axis=0).div(row_std, axis=0)
+        # Drop TFs with zero variance (all NaN after zscore)
+        grn_matrix = grn_matrix.dropna(how="all")
+    elif normalize is not None:
+        raise ValueError(f"Unknown normalize method: {normalize!r}. Use 'zscore' or None.")
 
     # Filter TFs
     if tfs is not None:
-        grn_matrix = grn_matrix.loc[tfs]
+        grn_matrix = grn_matrix.loc[[t for t in tfs if t in grn_matrix.index]]
     elif top_k is not None:
         tf_var = grn_matrix.var(axis=1)
         top_tfs = tf_var.nlargest(top_k).index.tolist()
@@ -270,7 +219,6 @@ def heatmap_grn(
 
     # Filter genes
     if genes is not None:
-        # Only keep genes that exist in the matrix
         valid_genes = [g for g in genes if g in grn_matrix.columns]
         if valid_genes:
             grn_matrix = grn_matrix[valid_genes]
@@ -284,7 +232,10 @@ def heatmap_grn(
     sns.heatmap(grn_matrix, ax=ax, cmap=cmap, center=center, **kwargs)
     ax.set_xlabel("Target Genes")
     ax.set_ylabel("Transcription Factors")
-    ax.set_title("GRN: TF -> Gene Regulatory Weights")
+    title = "GRN: TF -> Gene Regulatory Weights"
+    if normalize:
+        title += f" ({normalize})"
+    ax.set_title(title)
 
     savefig_or_show("heatmap_grn", show=show, save=save)
 

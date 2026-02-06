@@ -16,7 +16,6 @@ Visualization functions for GRN analysis, perturbation results, and model diagno
 ### Heatmaps
 
 ```{eval-rst}
-.. autofunction:: deepscenic.pl.heatmap_e1
 .. autofunction:: deepscenic.pl.heatmap_e2
 .. autofunction:: deepscenic.pl.heatmap_grn
 ```
