@@ -19,7 +19,7 @@ api/data
 |--------|---------|---------------|
 | `ds.pp` | Preprocessing | `create_mudata`, `mark_tfs`, `compute_r2g_penalty`, `split_cells` |
 | `ds.tl` | Training & Analysis | `train`, `finetune_e2`, `extract_grn`, `simulate_perturbation` |
-| `ds.pl` | Plotting | `loss_curves`, `heatmap_grn`, `volcano_perturbation`, `genome_browser` |
+| `ds.pl` | Plotting | `loss_curves`, `heatmap_grn`, `waterfall_perturbation`, `genome_browser` |
 
 ## Root-Level Functions
 

@@ -1,4 +1,4 @@
-"""Volcano plot for perturbation results."""
+"""Waterfall plot for perturbation results."""
 
 from __future__ import annotations
 
@@ -14,15 +14,12 @@ if TYPE_CHECKING:
 from .._utils import COLORS, savefig_or_show, setup_axes
 
 
-def volcano_perturbation(
+def waterfall_perturbation(
     results: pd.DataFrame,
     *,
+    top_n: int = 20,
     logfc_col: str = "log2fc",
-    pval_col: str = "padj",
     gene_col: str = "gene",
-    logfc_threshold: float = 0.05,
-    pval_threshold: float = 0.05,
-    top_n_labels: int = 10,
     highlight_genes: list[str] | None = None,
     ax: Axes | None = None,
     show: bool | None = None,
@@ -32,27 +29,27 @@ def volcano_perturbation(
     title: str | None = None,
 ) -> Axes | Figure | None:
     """
-    Volcano plot of perturbation effects.
+    Waterfall plot of top up- and down-regulated genes from perturbation.
+
+    Shows the top N most affected genes ranked by effect size (log fold
+    change), with upregulated genes on the right and downregulated genes
+    on the left. This is the recommended visualization for perturbation
+    results, as standard volcano plots are not meaningful for deterministic
+    model simulations where p-values are always ~0.
 
     Parameters
     ----------
     results
-        DataFrame with log2fc, pvalue, and gene columns.
+        DataFrame from :func:`~deepscenic.tl.process_perturbation_results`
+        with ``log2fc`` and ``gene`` columns.
+    top_n
+        Number of top genes to show per direction (up and down).
     logfc_col
-        Column name for log2 fold change.
-    pval_col
-        Column name for p-value. Defaults to 'padj' (adjusted p-value);
-        falls back to 'pvalue' if 'padj' is not present.
+        Column name for log fold change values.
     gene_col
         Column name for gene names.
-    logfc_threshold
-        Threshold for significant fold change.
-    pval_threshold
-        Threshold for significant p-value.
-    top_n_labels
-        Number of top genes to label.
     highlight_genes
-        Specific genes to highlight.
+        Specific genes to highlight with bold labels.
     ax
         Pre-existing axes.
     show
@@ -73,76 +70,65 @@ def volcano_perturbation(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> results = ds.tl.simulate_perturbation(model, mdata, "SOX2")
-    >>> ds.pl.volcano_perturbation(results)
+    >>> logFC = ds.tl.simulate_perturbation(model, mdata, "SOX10")
+    >>> results = ds.tl.process_perturbation_results(logFC, mdata, "SOX10")
+    >>> ds.pl.waterfall_perturbation(results, highlight_genes=["MITF", "DCT"])
     """
     df = results.copy()
 
-    # Fallback to pvalue if padj not available
-    if pval_col == "padj" and pval_col not in df.columns and "pvalue" in df.columns:
-        pval_col = "pvalue"
+    # Get top up and down regulated genes
+    top_up = df.nlargest(top_n, logfc_col)
+    top_down = df.nsmallest(top_n, logfc_col)
 
-    # Compute -log10(pval), capped at 50 to prevent extreme y-values
-    df["neg_log_pval"] = -np.log10(df[pval_col].clip(lower=1e-300))
-    df["neg_log_pval"] = df["neg_log_pval"].clip(upper=50)
+    # Combine and sort by logfc (ascending so most downregulated at bottom)
+    import pandas as pd
 
-    # Classify points
-    df["significant"] = (df[logfc_col].abs() >= logfc_threshold) & (df[pval_col] <= pval_threshold)
-    df["direction"] = np.where(df[logfc_col] > 0, "up", "down")
+    combined = pd.concat([top_up, top_down]).drop_duplicates(subset=[gene_col]).sort_values(logfc_col, ascending=True)
 
     fig, ax = setup_axes(ax, figsize=figsize)
 
-    # Non-significant points
-    non_sig = df[~df["significant"]]
-    ax.scatter(non_sig[logfc_col], non_sig["neg_log_pval"], c="gray", alpha=0.5, s=20, label="Not significant")
+    # Color bars by direction
+    colors = [COLORS["gene"] if v < 0 else COLORS["tf"] for v in combined[logfc_col]]
 
-    # Significant up
-    sig_up = df[df["significant"] & (df["direction"] == "up")]
-    ax.scatter(sig_up[logfc_col], sig_up["neg_log_pval"], c=COLORS["tf"], alpha=0.7, s=30, label="Up-regulated")
+    y_pos = np.arange(len(combined))
+    ax.barh(y_pos, combined[logfc_col].values, color=colors, alpha=0.8, edgecolor="none")
 
-    # Significant down
-    sig_down = df[df["significant"] & (df["direction"] == "down")]
-    ax.scatter(sig_down[logfc_col], sig_down["neg_log_pval"], c=COLORS["gene"], alpha=0.7, s=30, label="Down-regulated")
+    # Gene labels
+    gene_names = combined[gene_col].values
+    for i, gene in enumerate(gene_names):
+        is_highlight = highlight_genes and gene in highlight_genes
+        ax.text(
+            0,
+            i,
+            f"  {gene}  ",
+            va="center",
+            ha="right" if combined[logfc_col].iloc[i] >= 0 else "left",
+            fontsize=8,
+            fontweight="bold" if is_highlight else "normal",
+            color="black" if is_highlight else "dimgray",
+        )
 
-    # Threshold lines
-    ax.axhline(-np.log10(pval_threshold), linestyle="--", color="gray", alpha=0.5)
-    ax.axvline(logfc_threshold, linestyle="--", color="gray", alpha=0.5)
-    ax.axvline(-logfc_threshold, linestyle="--", color="gray", alpha=0.5)
+    # Reference line at 0
+    ax.axvline(0, color="black", linewidth=0.8)
 
-    # Labels for top genes
-    if top_n_labels > 0 and len(df[df["significant"]]) > 0:
-        sig_df = df[df["significant"]].nlargest(top_n_labels, "neg_log_pval")
-        for _, row in sig_df.iterrows():
-            ax.annotate(
-                row[gene_col],
-                (row[logfc_col], row["neg_log_pval"]),
-                fontsize=8,
-                alpha=0.8,
-            )
-
-    # Highlight specific genes
-    if highlight_genes:
-        for gene in highlight_genes:
-            if gene in df[gene_col].values:
-                row = df[df[gene_col] == gene].iloc[0]
-                ax.scatter(row[logfc_col], row["neg_log_pval"], c="black", s=100, marker="*", zorder=10)
-                ax.annotate(
-                    gene,
-                    (row[logfc_col], row["neg_log_pval"]),
-                    fontsize=10,
-                    fontweight="bold",
-                )
-
-    ax.set_xlabel("log2(Fold Change)")
-    ax.set_ylabel("-log10(p-value)")
-    ax.legend(loc="upper right")
+    # Clean up axes
+    ax.set_yticks([])
+    ax.set_xlabel("Effect size (log fold change)")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["left"].set_visible(False)
 
     if title:
         ax.set_title(title)
     else:
-        ax.set_title("Perturbation Effects")
+        # Infer TF name from results if available
+        if "tf" in df.columns:
+            tf_name = df["tf"].iloc[0]
+            ax.set_title(f"{tf_name} Perturbation — Top Affected Genes")
+        else:
+            ax.set_title("Perturbation — Top Affected Genes")
 
-    savefig_or_show("volcano_perturbation", show=show, save=save)
+    savefig_or_show("waterfall_perturbation", show=show, save=save)
 
     if return_fig:
         return fig

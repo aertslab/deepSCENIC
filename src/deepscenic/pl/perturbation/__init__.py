@@ -1,10 +1,10 @@
 """Perturbation visualization functions."""
 
 from ._heatmap import dotplot_perturbation, heatmap_perturbation
-from ._volcano import volcano_perturbation
+from ._volcano import waterfall_perturbation
 
 __all__ = [
-    "volcano_perturbation",
+    "waterfall_perturbation",
     "heatmap_perturbation",
     "dotplot_perturbation",
 ]

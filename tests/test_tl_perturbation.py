@@ -174,7 +174,6 @@ class TestProcessPerturbationResults:
         assert "tf" in result.columns
         assert "log2fc" in result.columns
         assert "abs_log2fc" in result.columns
-        assert "pvalue" in result.columns
 
     def test_output_rows(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
         """Should have one row per gene."""
@@ -190,8 +189,8 @@ class TestProcessPerturbationResults:
 
         assert len(result) == minimal_dims["n_genes"]
 
-    def test_no_pvalues(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Should work without computing pvalues."""
+    def test_no_pvalue_columns(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Should not include pvalue/padj columns (removed from API)."""
         logFC = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
@@ -200,9 +199,10 @@ class TestProcessPerturbationResults:
             batch_size=4,
             device="cpu",
         )
-        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0", compute_pvalues=False)
+        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0")
 
         assert "pvalue" not in result.columns
+        assert "padj" not in result.columns
 
     def test_gene_subset(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should filter to gene subset."""
@@ -241,56 +241,3 @@ class TestProcessPerturbationResults:
 
         with pytest.raises(ValueError, match="genes"):
             process_perturbation_results(logFC, mock_mdata_for_model, "TF0")
-
-    def test_process_results_has_padj(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Should include padj column when pvalues are computed."""
-        logFC = simulate_perturbation(
-            mock_deepscenic_model,
-            mock_mdata_for_model,
-            tf_name="TF0",
-            n_iter=2,
-            batch_size=4,
-            device="cpu",
-        )
-        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0")
-        assert "padj" in result.columns
-
-    def test_padj_geq_pvalue(self, mock_deepscenic_model, mock_mdata_for_model):
-        """FDR-adjusted p-values should be >= raw p-values."""
-        logFC = simulate_perturbation(
-            mock_deepscenic_model,
-            mock_mdata_for_model,
-            tf_name="TF0",
-            n_iter=2,
-            batch_size=4,
-            device="cpu",
-        )
-        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0")
-        assert (result["padj"] >= result["pvalue"] - 1e-10).all()
-
-    def test_padj_valid_range(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Adjusted p-values should be in [0, 1]."""
-        logFC = simulate_perturbation(
-            mock_deepscenic_model,
-            mock_mdata_for_model,
-            tf_name="TF0",
-            n_iter=2,
-            batch_size=4,
-            device="cpu",
-        )
-        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0")
-        assert (result["padj"] >= 0).all()
-        assert (result["padj"] <= 1).all()
-
-    def test_no_padj_when_no_pvalues(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Should not include padj when compute_pvalues=False."""
-        logFC = simulate_perturbation(
-            mock_deepscenic_model,
-            mock_mdata_for_model,
-            tf_name="TF0",
-            n_iter=2,
-            batch_size=4,
-            device="cpu",
-        )
-        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0", compute_pvalues=False)
-        assert "padj" not in result.columns

@@ -329,14 +329,14 @@ def process_perturbation_results(
     mdata: md.MuData,
     tf_name: str | list[str],
     *,
-    compute_pvalues: bool = True,
     gene_subset: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Process perturbation results into a DataFrame for plotting.
 
-    Computes mean log2 fold change across cells and optional p-values
-    (one-sample t-test vs 0) for each gene.
+    Computes mean log fold change across cells for each gene. The values
+    represent the decoder-space effect of the perturbation (not literal
+    log2 fold changes).
 
     Parameters
     ----------
@@ -346,24 +346,21 @@ def process_perturbation_results(
         MuData used for simulation (provides gene names)
     tf_name
         Name of perturbed TF(s) - used for the 'tf' column
-    compute_pvalues
-        Whether to compute p-values via one-sample t-test
     gene_subset
         If provided, only include these genes in output
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: 'gene', 'tf', 'log2fc', 'abs_log2fc',
-        and optionally 'pvalue' and 'padj' (Benjamini-Hochberg adjusted).
-        Ready for volcano_perturbation, heatmap_perturbation, or
+        DataFrame with columns: 'gene', 'tf', 'log2fc', 'abs_log2fc'.
+        Ready for waterfall_perturbation, heatmap_perturbation, or
         dotplot_perturbation.
 
     Examples
     --------
     >>> logFC = ds.tl.simulate_perturbation(model, mdata, "SOX10")
     >>> results = ds.tl.process_perturbation_results(logFC, mdata, "SOX10")
-    >>> ds.pl.volcano_perturbation(results)
+    >>> ds.pl.waterfall_perturbation(results)
 
     >>> # For multi-TF comparison heatmaps
     >>> results_list = []
@@ -374,7 +371,6 @@ def process_perturbation_results(
     >>> ds.pl.heatmap_perturbation(combined)
     """
     import pandas as pd
-    from scipy import stats
 
     # Get gene names from mdata
     gene_names = list(mdata.mod["rna"].var_names)
@@ -400,28 +396,6 @@ def process_perturbation_results(
             "abs_log2fc": np.abs(mean_logfc),
         }
     )
-
-    # Compute p-values if requested
-    if compute_pvalues:
-        # One-sample t-test: is mean logFC significantly different from 0?
-        # Handle edge case of zero variance
-        pvalues = np.ones(len(gene_names))
-        for i in range(len(gene_names)):
-            gene_logfc = logFC[:, i]
-            if gene_logfc.std() > 0:
-                _, pval = stats.ttest_1samp(gene_logfc, 0)
-                pvalues[i] = pval
-        result["pvalue"] = pvalues
-
-        # Benjamini-Hochberg FDR correction
-        n = len(pvalues)
-        ranked_idx = np.argsort(pvalues)
-        padj = np.empty(n)
-        padj[ranked_idx] = pvalues[ranked_idx] * n / np.arange(1, n + 1)
-        # Enforce monotonicity (step-down)
-        padj[ranked_idx] = np.minimum.accumulate(padj[ranked_idx][::-1])[::-1]
-        padj = np.clip(padj, 0.0, 1.0)
-        result["padj"] = padj
 
     # Filter to gene subset if provided
     if gene_subset is not None:

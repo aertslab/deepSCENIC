@@ -52,7 +52,7 @@ Visualization functions for GRN analysis, perturbation results, and model diagno
 ## Perturbation Results
 
 ```{eval-rst}
-.. autofunction:: deepscenic.pl.volcano_perturbation
+.. autofunction:: deepscenic.pl.waterfall_perturbation
 .. autofunction:: deepscenic.pl.heatmap_perturbation
 .. autofunction:: deepscenic.pl.dotplot_perturbation
 ```

@@ -16,7 +16,7 @@ from .grn import (
 from .perturbation import (
     dotplot_perturbation,
     heatmap_perturbation,
-    volcano_perturbation,
+    waterfall_perturbation,
 )
 from .sequence import ism_heatmap, logo_attribution, logo_motif
 from .training import (
@@ -50,7 +50,7 @@ __all__ = [
     "logo_motif",
     "ism_heatmap",
     # Perturbation
-    "volcano_perturbation",
+    "waterfall_perturbation",
     "heatmap_perturbation",
     "dotplot_perturbation",
     # Genomics
