@@ -20,43 +20,54 @@ def to_latent(
     mdata: md.MuData,
     batch_size: int = 256,
     device: str | torch.device | None = None,
-    split: str | None = None,
-) -> dict[str, np.ndarray]:
+    key_prefix: str = "X_deepscenic_",
+) -> None:
     """
-    Extract latent embeddings from trained model.
+    Extract latent embeddings from trained model and store in mdata.obsm.
 
     Runs the model encoder on RNA expression to extract TF activity,
     enhancer activity, and gene regulatory signals. Only RNA data is
     required - ATAC reconstruction is predicted from the latent space.
+
+    Results are stored in ``mdata.obsm`` with the specified prefix:
+    - ``{key_prefix}z_tf``: TF latent activity (n_cells, n_tfs)
+    - ``{key_prefix}enh_act``: Region activity (n_cells, n_regions)
+    - ``{key_prefix}z_rna``: Gene regulatory signal (n_cells, n_genes)
+    - ``{key_prefix}rna_rec``: Reconstructed RNA (n_cells, n_genes)
+    - ``{key_prefix}atac_rec``: Reconstructed ATAC (n_cells, n_regions)
 
     Parameters
     ----------
     model
         Trained DeepSCENICModel
     mdata
-        MuData with RNA modality (ATAC not required for inference)
+        MuData with RNA modality (ATAC not required for inference).
+        Embeddings will be stored in mdata.obsm.
     batch_size
         Cells per batch for inference
     device
         Device for inference (None = use model's current device)
-    split
-        If specified, only process cells from this split ('train' or 'test')
+    key_prefix
+        Prefix for keys stored in mdata.obsm. Default: "X_deepscenic_"
 
     Returns
     -------
-    dict[str, np.ndarray]
-        Dictionary with embeddings:
-        - 'z_tf': TF latent activity (n_cells, n_tfs)
-        - 'enh_act': Region activity (n_cells, n_regions)
-        - 'z_rna': Gene regulatory signal (n_cells, n_genes)
-        - 'x_rna_rec': Reconstructed RNA (n_cells, n_genes)
-        - 'x_atac_rec': Reconstructed ATAC (n_cells, n_regions)
+    None
+        Embeddings are stored in mdata.obsm in-place.
 
     Examples
     --------
     >>> model = ds.tl.load_model("model.pt")
-    >>> embeddings = ds.tl.to_latent(model, mdata)
-    >>> z_tf = embeddings['z_tf']  # (n_cells, n_tfs)
+    >>> ds.tl.to_latent(model, mdata)
+    >>>
+    >>> # Embeddings now in mdata.obsm:
+    >>> z_tf = mdata.obsm["X_deepscenic_z_tf"]  # (n_cells, n_tfs)
+    >>>
+    >>> # Use scanpy for UMAP visualization
+    >>> import scanpy as sc
+    >>> sc.pp.neighbors(mdata, use_rep="X_deepscenic_z_tf")
+    >>> sc.tl.umap(mdata)
+    >>> sc.pl.umap(mdata, color="cell_state")
     """
     model.eval()
 
@@ -66,11 +77,7 @@ def to_latent(
         model.to(device)
 
     # Get RNA data (ATAC not needed for inference)
-    if split is not None:
-        mask = mdata.obs["split"] == split
-        rna = mdata.mod["rna"][mask].X
-    else:
-        rna = mdata.mod["rna"].X
+    rna = mdata.mod["rna"].X
 
     # Convert sparse to dense
     if issparse(rna):
@@ -83,8 +90,8 @@ def to_latent(
         "z_tf": [],
         "enh_act": [],
         "z_rna": [],
-        "x_rna_rec": [],
-        "x_atac_rec": [],
+        "rna_rec": [],
+        "atac_rec": [],
     }
 
     # Process in batches
@@ -103,8 +110,9 @@ def to_latent(
             outputs["z_tf"].append(output.z_tf.cpu().numpy())
             outputs["enh_act"].append(output.enh_act.cpu().numpy())
             outputs["z_rna"].append(output.z_rna.cpu().numpy())
-            outputs["x_rna_rec"].append(output.x_rna_rec.cpu().numpy())
-            outputs["x_atac_rec"].append(output.x_atac_rec.cpu().numpy())
+            outputs["rna_rec"].append(output.x_rna_rec.cpu().numpy())
+            outputs["atac_rec"].append(output.x_atac_rec.cpu().numpy())
 
-    # Concatenate batches
-    return {k: np.concatenate(v, axis=0) for k, v in outputs.items()}
+    # Concatenate batches and store in mdata.obsm
+    for key, values in outputs.items():
+        mdata.obsm[f"{key_prefix}{key}"] = np.concatenate(values, axis=0)

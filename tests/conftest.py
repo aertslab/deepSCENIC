@@ -1,6 +1,9 @@
 """Shared fixtures for deepSCENIC tests."""
 
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import anndata as ad
 import mudata as md
@@ -10,6 +13,9 @@ import pytest
 import scanpy as sc
 import torch
 from scipy.sparse import csr_matrix
+
+if TYPE_CHECKING:
+    from deepscenic.tl._model import DeepSCENICModel
 
 MINIMAL_DIMS = {
     "n_tfs": 5,
@@ -370,9 +376,9 @@ def pipeline_gene_annotation() -> pd.DataFrame:
     """
     data = {
         "Chromosome": (
-            ["chr1"] * 10 +   # GENE0-9 on chr1
-            ["chr7"] * 5 +    # GENE10-14 on chr7 (test)
-            ["chr1"] * 5      # GENE15-19 on chr1
+            ["chr1"] * 10  # GENE0-9 on chr1
+            + ["chr7"] * 5  # GENE10-14 on chr7 (test)
+            + ["chr1"] * 5  # GENE15-19 on chr1
         ),
         "Transcription_Start_Site": [i * 5000 for i in range(20)],
     }
@@ -443,7 +449,7 @@ def tmp_fasta_path(tmp_path: Path) -> Path:
             # Write sequence in 80-char lines
             seq = "".join(np.random.choice(list(bases), seq_len))
             for i in range(0, len(seq), 80):
-                f.write(seq[i:i+80] + "\n")
+                f.write(seq[i : i + 80] + "\n")
 
     return fasta_path
 
@@ -452,7 +458,7 @@ def tmp_fasta_path(tmp_path: Path) -> Path:
 def pipeline_trained_model(
     preprocessed_mdata: md.MuData,
     tmp_fasta_path: Path,
-) -> "DeepSCENICModel":
+) -> DeepSCENICModel:
     """Create trained model through actual training API with MockEnformer.
 
     Runs Tutorial 2 training with minimal epochs and mock sequence model.

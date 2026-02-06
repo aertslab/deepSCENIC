@@ -14,11 +14,8 @@ Pipeline flow:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
-import pytest
 
 import deepscenic as ds
 
@@ -26,9 +23,7 @@ import deepscenic as ds
 class TestPreprocessingPipeline:
     """Test Tutorial 1: Data Preparation flow."""
 
-    def test_mark_tfs_creates_is_tf_column(
-        self, raw_rna_adata, pipeline_tf_list
-    ):
+    def test_mark_tfs_creates_is_tf_column(self, raw_rna_adata, pipeline_tf_list):
         """Verify mark_tfs adds boolean is_tf column."""
         ds.pp.mark_tfs(raw_rna_adata, pipeline_tf_list)
 
@@ -36,9 +31,7 @@ class TestPreprocessingPipeline:
         assert raw_rna_adata.var["is_tf"].dtype == bool
         assert raw_rna_adata.var["is_tf"].sum() == len(pipeline_tf_list)
 
-    def test_add_gene_annotation_creates_required_columns(
-        self, raw_rna_adata, pipeline_gene_annotation
-    ):
+    def test_add_gene_annotation_creates_required_columns(self, raw_rna_adata, pipeline_gene_annotation):
         """Verify add_gene_annotation adds chromosome and tss."""
         ds.pp.add_gene_annotation(raw_rna_adata, pipeline_gene_annotation)
 
@@ -106,9 +99,7 @@ class TestPreprocessingPipeline:
         issues = ds.validate_schema(preprocessed_mdata, mode="training")
         assert len(issues) == 0
 
-    def test_write_read_roundtrip_preserves_schema(
-        self, preprocessed_mdata, tmp_path
-    ):
+    def test_write_read_roundtrip_preserves_schema(self, preprocessed_mdata, tmp_path):
         """Verify I/O roundtrip preserves all required fields."""
         path = tmp_path / "test_mdata.h5mu"
 
@@ -144,12 +135,10 @@ class TestTrainingPipeline:
         assert genome is not None
         assert "chr1" in genome.chromosomes
 
-    def test_train_with_mock_enformer(
-        self, preprocessed_mdata, tmp_fasta_path
-    ):
+    def test_train_with_mock_enformer(self, preprocessed_mdata, tmp_fasta_path):
         """Verify training runs with MockEnformer and preprocessed data."""
-        from tests.conftest import MockEnformer
         from deepscenic.tl._training_state import ModelConfig
+        from tests.conftest import MockEnformer
 
         ds.register_genome(tmp_fasta_path)
 
@@ -177,9 +166,7 @@ class TestTrainingPipeline:
         assert hasattr(model, "tf_names")
         assert len(model.tf_names) == 5  # 5 TFs
 
-    def test_trained_model_has_correct_dimensions(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
+    def test_trained_model_has_correct_dimensions(self, pipeline_trained_model, preprocessed_mdata):
         """Verify trained model dimensions match input data."""
         model = pipeline_trained_model
 
@@ -194,9 +181,7 @@ class TestTrainingPipeline:
         assert model.adj_E1.shape[0] == preprocessed_mdata["atac"].n_vars  # All regions
         assert model.adj_E1.shape[1] == len(model.tf_names)  # All TFs
 
-    def test_model_save_load_roundtrip(
-        self, pipeline_trained_model, tmp_path
-    ):
+    def test_model_save_load_roundtrip(self, pipeline_trained_model, tmp_path):
         """Verify model save/load preserves weights and config."""
         from tests.conftest import MockEnformer
 
@@ -216,9 +201,7 @@ class TestTrainingPipeline:
         assert loaded.tf_names == model.tf_names
         assert loaded.gene_names == model.gene_names
 
-    def test_finetune_e2_with_trained_model(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
+    def test_finetune_e2_with_trained_model(self, pipeline_trained_model, preprocessed_mdata):
         """Verify E2 finetuning works with trained model."""
         model = pipeline_trained_model
 
@@ -241,43 +224,38 @@ class TestTrainingPipeline:
 class TestAnalysisPipeline:
     """Test Tutorials 3-4: Model Diagnosis and GRN Analysis flow."""
 
-    def test_to_latent_extracts_embeddings(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
-        """Verify to_latent extracts all embedding types (Tutorial 3)."""
-        embeddings = ds.tl.to_latent(
+    def test_to_latent_stores_embeddings_in_obsm(self, pipeline_trained_model, preprocessed_mdata):
+        """Verify to_latent stores all embedding types in mdata.obsm (Tutorial 3)."""
+        ds.tl.to_latent(
             pipeline_trained_model,
             preprocessed_mdata,
             batch_size=8,
         )
 
-        assert "z_tf" in embeddings
-        assert "enh_act" in embeddings
-        assert "z_rna" in embeddings
+        assert "X_deepscenic_z_tf" in preprocessed_mdata.obsm
+        assert "X_deepscenic_enh_act" in preprocessed_mdata.obsm
+        assert "X_deepscenic_z_rna" in preprocessed_mdata.obsm
 
         # Check shapes
         n_cells = preprocessed_mdata.n_obs
         n_tfs = len(pipeline_trained_model.tf_names)
         n_genes = len(pipeline_trained_model.gene_names)
 
-        assert embeddings["z_tf"].shape == (n_cells, n_tfs)
-        assert embeddings["enh_act"].shape[0] == n_cells
-        assert embeddings["z_rna"].shape == (n_cells, n_genes)
+        assert preprocessed_mdata.obsm["X_deepscenic_z_tf"].shape == (n_cells, n_tfs)
+        assert preprocessed_mdata.obsm["X_deepscenic_enh_act"].shape[0] == n_cells
+        assert preprocessed_mdata.obsm["X_deepscenic_z_rna"].shape == (n_cells, n_genes)
 
-    def test_to_latent_with_split(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
-        """Verify to_latent respects cell split parameter."""
-        # Get embeddings for test cells only
-        embeddings = ds.tl.to_latent(
+    def test_to_latent_custom_key_prefix(self, pipeline_trained_model, preprocessed_mdata):
+        """Verify to_latent respects custom key_prefix parameter."""
+        ds.tl.to_latent(
             pipeline_trained_model,
             preprocessed_mdata,
-            split="test",
+            key_prefix="X_custom_",
             batch_size=8,
         )
 
-        n_test_cells = (preprocessed_mdata.obs["split"] == "test").sum()
-        assert embeddings["z_tf"].shape[0] == n_test_cells
+        assert "X_custom_z_tf" in preprocessed_mdata.obsm
+        assert "X_custom_enh_act" in preprocessed_mdata.obsm
 
     def test_extract_grn_returns_matrices(self, pipeline_trained_model):
         """Verify extract_grn returns E1, E2 DataFrames (Tutorial 4)."""
@@ -330,9 +308,7 @@ class TestAnalysisPipeline:
 class TestPerturbationPipeline:
     """Test Tutorial 5: Perturbation Analysis flow."""
 
-    def test_simulate_perturbation_returns_logfc(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
+    def test_simulate_perturbation_returns_logfc(self, pipeline_trained_model, preprocessed_mdata):
         """Verify simulate_perturbation returns log fold change array."""
         tf_name = pipeline_trained_model.tf_names[0]
 
@@ -341,7 +317,7 @@ class TestPerturbationPipeline:
             preprocessed_mdata,
             tf_name=tf_name,
             level=0.0,  # Knockout
-            n_iter=2,   # Minimal iterations for speed
+            n_iter=2,  # Minimal iterations for speed
             batch_size=8,
         )
 
@@ -353,9 +329,7 @@ class TestPerturbationPipeline:
         # Should not contain NaN/Inf
         assert np.isfinite(logFC).all()
 
-    def test_simulate_perturbation_with_split(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
+    def test_simulate_perturbation_with_split(self, pipeline_trained_model, preprocessed_mdata):
         """Verify perturbation respects cell split."""
         tf_name = pipeline_trained_model.tf_names[0]
 
@@ -372,9 +346,7 @@ class TestPerturbationPipeline:
         n_test_cells = (preprocessed_mdata.obs["split"] == "test").sum()
         assert logFC.shape[0] == n_test_cells
 
-    def test_simulate_perturbation_intermediate(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
+    def test_simulate_perturbation_intermediate(self, pipeline_trained_model, preprocessed_mdata):
         """Verify return_intermediate returns dict with per-iteration results."""
         tf_name = pipeline_trained_model.tf_names[0]
 
@@ -392,9 +364,7 @@ class TestPerturbationPipeline:
         assert len(logFC_dict) == 3  # 3 iterations
         assert 1 in logFC_dict and 2 in logFC_dict and 3 in logFC_dict
 
-    def test_process_perturbation_results(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
+    def test_process_perturbation_results(self, pipeline_trained_model, preprocessed_mdata):
         """Verify process_perturbation_results creates summary DataFrame."""
         tf_name = pipeline_trained_model.tf_names[0]
 
@@ -420,9 +390,7 @@ class TestPerturbationPipeline:
         # Should have key columns
         assert "gene" in results.columns or results.index.name == "gene"
 
-    def test_simulate_multi_perturbation(
-        self, pipeline_trained_model, preprocessed_mdata
-    ):
+    def test_simulate_multi_perturbation(self, pipeline_trained_model, preprocessed_mdata):
         """Verify multi-TF perturbation works."""
         tf_names = pipeline_trained_model.tf_names[:2]  # First 2 TFs
 
@@ -456,8 +424,9 @@ class TestFullPipeline:
         5. Perturbation simulation
         """
         import anndata as ad
-        from tests.conftest import MockEnformer
+
         from deepscenic.tl._training_state import ModelConfig
+        from tests.conftest import MockEnformer
 
         # ====================================================================
         # Tutorial 1: Data Preparation
@@ -475,10 +444,9 @@ class TestFullPipeline:
 
         # Create raw ATAC data
         n_regions = 20
-        region_names = (
-            [f"chr1:{i*1000}-{i*1000+640}" for i in range(15)] +
-            [f"chr7:{i*1000}-{i*1000+640}" for i in range(5)]
-        )
+        region_names = [f"chr1:{i*1000}-{i*1000+640}" for i in range(15)] + [
+            f"chr7:{i*1000}-{i*1000+640}" for i in range(5)
+        ]
         atac = ad.AnnData(
             X=np.random.rand(n_cells, n_regions).astype(np.float32),
             obs=pd.DataFrame(index=[f"cell_{i}" for i in range(n_cells)]),
@@ -487,10 +455,13 @@ class TestFullPipeline:
 
         # TF list and gene annotation
         tf_list = ["G0", "G1", "G2"]  # First 3 genes are TFs
-        gene_annot = pd.DataFrame({
-            "Chromosome": ["chr1"] * 10 + ["chr7"] * 5,
-            "Transcription_Start_Site": [i * 2000 for i in range(n_genes)],
-        }, index=[f"G{i}" for i in range(n_genes)])
+        gene_annot = pd.DataFrame(
+            {
+                "Chromosome": ["chr1"] * 10 + ["chr7"] * 5,
+                "Transcription_Start_Site": [i * 2000 for i in range(n_genes)],
+            },
+            index=[f"G{i}" for i in range(n_genes)],
+        )
 
         # Preprocessing steps
         ds.pp.mark_tfs(rna, tf_list)
@@ -521,7 +492,7 @@ class TestFullPipeline:
                 f.write(f">{chrom}\n")
                 seq = "".join(np.random.choice(list("ACGT"), 100000))
                 for i in range(0, len(seq), 80):
-                    f.write(seq[i:i+80] + "\n")
+                    f.write(seq[i : i + 80] + "\n")
 
         ds.register_genome(fasta_path)
 
@@ -548,11 +519,11 @@ class TestFullPipeline:
         # Tutorial 3: Model Diagnosis
         # ====================================================================
 
-        embeddings = ds.tl.to_latent(model, mdata, batch_size=8)
+        ds.tl.to_latent(model, mdata, batch_size=8)
 
-        assert "z_tf" in embeddings
-        assert embeddings["z_tf"].shape == (n_cells, 3)  # 3 TFs
-        assert np.isfinite(embeddings["z_tf"]).all()
+        assert "X_deepscenic_z_tf" in mdata.obsm
+        assert mdata.obsm["X_deepscenic_z_tf"].shape == (n_cells, 3)  # 3 TFs
+        assert np.isfinite(mdata.obsm["X_deepscenic_z_tf"]).all()
 
         # ====================================================================
         # Tutorial 4: GRN Analysis

@@ -200,9 +200,7 @@ class TestProcessPerturbationResults:
             batch_size=4,
             device="cpu",
         )
-        result = process_perturbation_results(
-            logFC, mock_mdata_for_model, "TF0", compute_pvalues=False
-        )
+        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0", compute_pvalues=False)
 
         assert "pvalue" not in result.columns
 
@@ -218,9 +216,7 @@ class TestProcessPerturbationResults:
         )
 
         gene_names = list(mock_mdata_for_model.mod["rna"].var_names[:3])
-        result = process_perturbation_results(
-            logFC, mock_mdata_for_model, "TF0", gene_subset=gene_names
-        )
+        result = process_perturbation_results(logFC, mock_mdata_for_model, "TF0", gene_subset=gene_names)
 
         assert len(result) == 3
         assert set(result["gene"]) == set(gene_names)

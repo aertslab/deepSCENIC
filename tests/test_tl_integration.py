@@ -217,7 +217,7 @@ class TestEndToEndMockTraining:
                 adj_E1_batch=adj_E1[seq_idx],
                 adj_E2=vae.adj_E2,
                 r2g_distances=training_setup["r2g_distances"],
-                    gene_indices=training_setup["gene_indices"],
+                gene_indices=training_setup["gene_indices"],
                 region_indices=training_setup["region_indices"],
             )
 

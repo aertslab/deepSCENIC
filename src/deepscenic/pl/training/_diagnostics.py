@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-import numpy as np
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -265,136 +264,6 @@ def sparsity_histogram(
         return None
 
 
-def latent_umap(
-    model: DeepSCENICModel,
-    mdata: MuData,
-    *,
-    color: str | None = None,
-    n_neighbors: int = 15,
-    min_dist: float = 0.5,
-    ax: Axes | None = None,
-    show: bool | None = None,
-    save: str | bool | None = None,
-    return_fig: bool = False,
-    figsize: tuple[float, float] = (8, 6),
-    **kwargs,
-) -> Axes | Figure | None:
-    """
-    UMAP of latent TF activity space.
-
-    Parameters
-    ----------
-    model
-        Trained DeepSCENICModel.
-    mdata
-        MuData with cell annotations.
-    color
-        Column in mdata.obs to color by.
-    n_neighbors
-        UMAP n_neighbors parameter.
-    min_dist
-        UMAP min_dist parameter.
-    ax
-        Pre-existing axes.
-    show
-        Display figure.
-    save
-        Save figure.
-    return_fig
-        Return Figure.
-    figsize
-        Figure size.
-    **kwargs
-        Passed to scatter plot.
-
-    Returns
-    -------
-    Axes, Figure, or None depending on parameters.
-
-    Examples
-    --------
-    >>> model = ds.tl.load_model("model.pt")
-    >>> ds.pl.latent_umap(model, mdata, color="celltype")
-    """
-    import torch
-    from sklearn.preprocessing import StandardScaler
-
-    try:
-        from umap import UMAP
-    except ImportError as e:
-        raise ImportError("umap-learn is required for latent_umap. Install with: pip install umap-learn") from e
-
-    # Get latent representations
-    with torch.no_grad():
-        # Get device from model
-        device = model.adj_E1.device
-
-        # Get TF expression from RNA modality
-        rna_data = mdata.mod["rna"].X
-        if hasattr(rna_data, "toarray"):
-            rna_data = rna_data.toarray()
-
-        # Get TF indices and extract TF expression
-        tf_indices = model.vae.tf_indices.cpu().numpy()
-        tf_expression = rna_data[:, tf_indices]
-
-        # Pass through encoder to get latent (returns z, mu, logvar)
-        tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
-        _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
-        z_tf = mu.squeeze(-1).cpu().numpy()
-
-    # Standardize
-    scaler = StandardScaler()
-    z_scaled = scaler.fit_transform(z_tf)
-
-    # UMAP
-    reducer = UMAP(n_neighbors=n_neighbors, min_dist=min_dist, random_state=42)
-    embedding = reducer.fit_transform(z_scaled)
-
-    fig, ax = setup_axes(ax, figsize=figsize)
-
-    # Color by annotation if provided
-    if color is not None and color in mdata.obs.columns:
-        categories = mdata.obs[color]
-        if hasattr(categories, "cat"):
-            # Categorical
-            unique_cats = categories.cat.categories
-            cmap = plt.colormaps.get_cmap("tab20")
-            colors_map = cmap(np.linspace(0, 1, len(unique_cats)))
-            for i, cat in enumerate(unique_cats):
-                mask = categories == cat
-                ax.scatter(
-                    embedding[mask, 0],
-                    embedding[mask, 1],
-                    c=[colors_map[i]],
-                    label=cat,
-                    alpha=0.7,
-                    s=10,
-                    **kwargs,
-                )
-            ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=8)
-        else:
-            # Continuous
-            scatter = ax.scatter(
-                embedding[:, 0], embedding[:, 1], c=categories, cmap="viridis", alpha=0.7, s=10, **kwargs
-            )
-            plt.colorbar(scatter, ax=ax, label=color)
-    else:
-        ax.scatter(embedding[:, 0], embedding[:, 1], alpha=0.7, s=10, **kwargs)
-
-    ax.set_xlabel("UMAP 1")
-    ax.set_ylabel("UMAP 2")
-    ax.set_title("Latent TF Activity Space")
-
-    savefig_or_show("latent_umap", show=show, save=save)
-
-    if return_fig:
-        return fig
-    if show is False:
-        return ax
-    return None
-
-
 def enhancer_activity_histogram(
     model: DeepSCENICModel,
     mdata: MuData,
@@ -501,11 +370,9 @@ def enhancer_activity_histogram(
 
 
 def tf_activity_clustermap(
-    model: DeepSCENICModel | None = None,
-    mdata: MuData | None = None,
+    scores: pd.DataFrame,
     *,
-    groupby: str | None = None,
-    scores: pd.DataFrame | None = None,
+    xlabel: str = "Cell Type",
     top_n_tfs: int | None = 50,
     tfs: list[str] | None = None,
     cluster_rows: bool = True,
@@ -521,27 +388,16 @@ def tf_activity_clustermap(
     """
     Clustered heatmap of TF activities per cell group.
 
-    Use to diagnose if the model learned cell-type-specific TF activity patterns.
-    A well-trained model should show distinct TF activity profiles that
-    correlate with known biology (e.g., lineage-specific TFs).
-
-    Can be used in two modes:
-    1. Compute TF activity from model: provide model, mdata, and groupby
-    2. Use pre-computed scores: provide scores DataFrame directly
+    Use to visualize cell-type-specific TF activity patterns. Requires
+    pre-computed TF activity scores from ``ds.tl.compute_tf_activity_scores()``.
 
     Parameters
     ----------
-    model
-        Trained DeepSCENICModel. Required if scores not provided.
-    mdata
-        MuData with cell annotations. Required if scores not provided.
-    groupby
-        Column in mdata.obs to group cells by (e.g., 'celltype').
-        Required if scores not provided.
     scores
-        Pre-computed TF activity scores as DataFrame with TF names as index
-        and cell groups as columns. If provided, model/mdata/groupby are ignored.
-        Typically from compute_tf_activity_scores().
+        TF activity scores as DataFrame with TF names as index and cell groups
+        as columns. Typically from ``compute_tf_activity_scores()``.
+    xlabel
+        Label for x-axis (cell group axis). Default: "Cell Type"
     top_n_tfs
         Number of top TFs to show (by variance across groups).
         Ignored if tfs is provided.
@@ -572,63 +428,25 @@ def tf_activity_clustermap(
 
     Examples
     --------
-    Compute from model:
-
     >>> import deepscenic as ds
     >>> model = ds.tl.load_model("model.pt")
-    >>> ds.pl.tf_activity_clustermap(model, mdata, groupby="celltype")
-
-    Use pre-computed scores from cell-type workflow:
-
-    >>> enhancer_activity = ds.tl.compute_celltype_enhancer_activity(model, mdata, "celltype")
-    >>> active_enhancers = ds.tl.identify_active_enhancers(enhancer_activity)
-    >>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enhancers)
-    >>> ds.pl.tf_activity_clustermap(scores=tf_scores)
+    >>>
+    >>> # Compute TF activity scores
+    >>> enh_activity = ds.tl.compute_celltype_enhancer_activity(model, mdata, "celltype")
+    >>> active_enh = ds.tl.identify_active_enhancers(enh_activity)
+    >>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enh)
+    >>>
+    >>> # Plot clustermap
+    >>> ds.pl.tf_activity_clustermap(tf_scores, xlabel="celltype")
     """
     import pandas as pd
     import seaborn as sns
 
-    # Determine which mode we're in
-    if scores is not None:
-        # Pre-computed scores mode
-        df_grouped = scores.copy()
-        if not isinstance(df_grouped.index, pd.Index):
-            raise ValueError("scores must have TF names as index")
-    else:
-        # Compute from model mode
-        if model is None or mdata is None or groupby is None:
-            raise ValueError("When scores is not provided, model, mdata, and groupby are required")
+    df_grouped = scores.copy()
+    if not isinstance(df_grouped.index, pd.Index):
+        raise ValueError("scores must have TF names as index")
 
-        import torch
-
-        # Get TF activity from model
-        with torch.no_grad():
-            # Get device from model
-            device = model.adj_E1.device
-
-            rna_data = mdata.mod["rna"].X
-            if hasattr(rna_data, "toarray"):
-                rna_data = rna_data.toarray()
-
-            tf_indices = model.vae.tf_indices.cpu().numpy()
-            tf_expression = rna_data[:, tf_indices]
-
-            # Get z_tf from encoder
-            tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
-            _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
-            z_tf = mu.squeeze(-1).cpu().numpy()
-
-        # Get TF names
-        tf_names = model.tf_names
-
-        # Create DataFrame with TF activity per cell
-        df_tf = pd.DataFrame(z_tf, index=mdata.obs_names, columns=tf_names)
-
-        # Group by annotation and compute mean
-        groups = mdata.obs[groupby]
-        df_grouped = df_tf.groupby(groups).mean().T
-
-    # Select TFs to display (same logic for both modes)
+    # Select TFs to display
     if tfs is not None:
         df_grouped = df_grouped.loc[df_grouped.index.isin(tfs)]
     elif top_n_tfs is not None and top_n_tfs < len(df_grouped):
@@ -651,12 +469,12 @@ def tf_activity_clustermap(
         cbar_pos=(0.02, 0.8, 0.03, 0.15),
         **kwargs,
     )
-    g.ax_heatmap.set_xlabel(groupby)
+    g.ax_heatmap.set_xlabel(xlabel)
     g.ax_heatmap.set_ylabel("TF")
-    g.fig.suptitle(f"TF Activity by {groupby}", y=1.02)
+    g.figure.suptitle(f"TF Activity by {xlabel}", y=1.02)
 
     savefig_or_show("tf_activity_clustermap", show=show, save=save)
 
     if return_fig:
-        return g.fig
+        return g.figure
     return None

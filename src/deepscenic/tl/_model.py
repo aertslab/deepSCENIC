@@ -70,7 +70,7 @@ class DeepSCENICModel:
     >>> model = ds.tl.train(mdata, epochs=100)
     >>> model.save("model.pt")
     >>> loaded = ds.tl.load_model("model.pt")
-    >>> embeddings = ds.tl.to_latent(loaded, mdata)
+    >>> ds.tl.to_latent(loaded, mdata)  # stores in mdata.obsm
     """
 
     vae: DeepSCENICVAE

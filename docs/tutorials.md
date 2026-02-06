@@ -30,7 +30,7 @@ Before starting, ensure you have:
 |----------|-------|---------------|
 | 01 | Data Preparation | `ds.pp.create_mudata()`, `ds.pp.mark_tfs()`, `ds.pp.compute_r2g_penalty()` |
 | 02 | Training | `ds.tl.train()`, `ds.tl.finetune_e2()` |
-| 03 | Model Diagnosis | `ds.tl.to_latent()`, `ds.pl.latent_umap()` |
+| 03 | Model Diagnosis | `ds.tl.to_latent()`, `sc.tl.umap()` |
 | 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.tl.compute_celltype_enhancer_activity()` |
 | 05 | Perturbation Analysis | `ds.tl.simulate_perturbation()`, `ds.pl.volcano_perturbation()` |
 | 06 | Advanced Visualization | `ds.pl.genome_browser()`, `ds.pl.arc_plot()` |

@@ -1,6 +1,5 @@
 """Tests for training state management."""
 
-
 from deepscenic.tl._training_state import (
     EarlyStopping,
 )

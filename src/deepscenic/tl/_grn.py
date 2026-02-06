@@ -407,6 +407,7 @@ def compute_celltype_enhancer_activity(
     model: DeepSCENICModel,
     mdata: md.MuData,
     celltype_key: str,
+    key_prefix: str = "X_deepscenic_",
 ) -> pd.DataFrame:
     """
     Compute mean enhancer activity per cell type.
@@ -419,6 +420,8 @@ def compute_celltype_enhancer_activity(
         MuData with RNA modality
     celltype_key
         Column in mdata.obs containing cell type labels
+    key_prefix
+        Prefix for obsm keys. Default: "X_deepscenic_"
 
     Returns
     -------
@@ -428,9 +431,11 @@ def compute_celltype_enhancer_activity(
     """
     from ._inference import to_latent
 
-    # Get enhancer activity from VAE forward pass
-    latent = to_latent(model, mdata)
-    enh_act = latent["enh_act"]  # (n_cells, n_regions)
+    # Get enhancer activity from mdata.obsm, computing if needed
+    enh_act_key = f"{key_prefix}enh_act"
+    if enh_act_key not in mdata.obsm:
+        to_latent(model, mdata, key_prefix=key_prefix)
+    enh_act = mdata.obsm[enh_act_key]  # (n_cells, n_regions)
 
     # Get cell type labels
     celltypes = mdata.obs[celltype_key]
@@ -492,6 +497,7 @@ def compute_tf_activity_scores(
     mdata: md.MuData,
     celltype_key: str,
     active_enhancers: dict[str, list[str]],
+    key_prefix: str = "X_deepscenic_",
 ) -> pd.DataFrame:
     """
     Compute TF activity scores weighted by binding to active enhancers.
@@ -506,6 +512,8 @@ def compute_tf_activity_scores(
         Column in mdata.obs containing cell type labels
     active_enhancers
         Active enhancers per cell type from identify_active_enhancers()
+    key_prefix
+        Prefix for obsm keys. Default: "X_deepscenic_"
 
     Returns
     -------
@@ -519,9 +527,11 @@ def compute_tf_activity_scores(
     """
     from ._inference import to_latent
 
-    # Get TF activity from VAE forward pass
-    latent = to_latent(model, mdata)
-    tf_act = latent["z_tf"]  # (n_cells, n_tfs)
+    # Get TF activity from mdata.obsm, computing if needed
+    z_tf_key = f"{key_prefix}z_tf"
+    if z_tf_key not in mdata.obsm:
+        to_latent(model, mdata, key_prefix=key_prefix)
+    tf_act = mdata.obsm[z_tf_key]  # (n_cells, n_tfs)
 
     # Get E1 matrix
     with torch.no_grad():

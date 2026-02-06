@@ -121,12 +121,8 @@ class TestGetGeneRegulators:
 
     def test_e2_threshold_filter(self, mock_deepscenic_model):
         """E2 threshold should filter results."""
-        no_thresh = get_gene_regulators(
-            mock_deepscenic_model, "GENE0", e1_threshold=0.0, e2_threshold=0.0
-        )
-        high_thresh = get_gene_regulators(
-            mock_deepscenic_model, "GENE0", e1_threshold=0.0, e2_threshold=100.0
-        )
+        no_thresh = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0, e2_threshold=0.0)
+        high_thresh = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0, e2_threshold=100.0)
         assert len(high_thresh) <= len(no_thresh)
 
 
@@ -137,9 +133,7 @@ class TestOtsuThreshold:
         """Otsu should compute threshold for bimodal distribution."""
         # Create bimodal distribution
         rng = np.random.default_rng(42)
-        values = np.concatenate(
-            [rng.normal(0.2, 0.05, 100), rng.normal(0.8, 0.05, 100)]
-        )
+        values = np.concatenate([rng.normal(0.2, 0.05, 100), rng.normal(0.8, 0.05, 100)])
         thresh, used_otsu = _get_otsu_threshold(values, fallback=0.5)
 
         assert used_otsu is True
@@ -219,12 +213,8 @@ class TestGetTFTargetsExtended:
 
     def test_e2_threshold_filter(self, mock_deepscenic_model):
         """E2 threshold should filter results."""
-        no_thresh = get_tf_targets(
-            mock_deepscenic_model, "TF0", e1_threshold=0.0, e2_threshold=0.0
-        )
-        high_thresh = get_tf_targets(
-            mock_deepscenic_model, "TF0", e1_threshold=0.0, e2_threshold=100.0
-        )
+        no_thresh = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0, e2_threshold=0.0)
+        high_thresh = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0, e2_threshold=100.0)
         assert len(high_thresh) <= len(no_thresh)
 
 
@@ -239,9 +229,7 @@ class TestComputeCelltypeEnhancerActivity:
     def test_output_shape(self, mock_deepscenic_model, mock_mdata_for_model):
         """Output should have regions as index, celltypes as columns."""
         mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
-        result = compute_celltype_enhancer_activity(
-            mock_deepscenic_model, mock_mdata_for_model, "celltype"
-        )
+        result = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
 
         assert list(result.index) == mock_deepscenic_model.region_names
         assert set(result.columns) == {"A", "B"}
@@ -249,9 +237,7 @@ class TestComputeCelltypeEnhancerActivity:
     def test_output_is_dataframe(self, mock_deepscenic_model, mock_mdata_for_model):
         """Output should be a DataFrame."""
         mock_mdata_for_model.obs["celltype"] = ["TypeA"] * len(mock_mdata_for_model.obs)
-        result = compute_celltype_enhancer_activity(
-            mock_deepscenic_model, mock_mdata_for_model, "celltype"
-        )
+        result = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
 
         assert isinstance(result, pd.DataFrame)
 
@@ -291,14 +277,10 @@ class TestComputeTFActivityScores:
         mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
 
         # First compute enhancer activity and identify active enhancers
-        enh_activity = compute_celltype_enhancer_activity(
-            mock_deepscenic_model, mock_mdata_for_model, "celltype"
-        )
+        enh_activity = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         active_enh = identify_active_enhancers(enh_activity)
 
-        result = compute_tf_activity_scores(
-            mock_deepscenic_model, mock_mdata_for_model, "celltype", active_enh
-        )
+        result = compute_tf_activity_scores(mock_deepscenic_model, mock_mdata_for_model, "celltype", active_enh)
 
         assert list(result.index) == mock_deepscenic_model.tf_names
         assert set(result.columns) == {"A", "B"}
@@ -375,9 +357,7 @@ class TestCelltypeWorkflowIntegration:
         mock_mdata_for_model.obs["celltype"] = ["TypeA", "TypeB"] * (n_cells // 2)
 
         # Step 1: Compute enhancer activity
-        enh_activity = compute_celltype_enhancer_activity(
-            mock_deepscenic_model, mock_mdata_for_model, "celltype"
-        )
+        enh_activity = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         assert enh_activity.shape[0] > 0
         assert set(enh_activity.columns) == {"TypeA", "TypeB"}
 
@@ -387,9 +367,7 @@ class TestCelltypeWorkflowIntegration:
         assert "TypeA" in active_enh and "TypeB" in active_enh
 
         # Step 3: Compute TF scores
-        tf_scores = compute_tf_activity_scores(
-            mock_deepscenic_model, mock_mdata_for_model, "celltype", active_enh
-        )
+        tf_scores = compute_tf_activity_scores(mock_deepscenic_model, mock_mdata_for_model, "celltype", active_enh)
         assert tf_scores.shape[0] > 0
         assert set(tf_scores.columns) == {"TypeA", "TypeB"}
 
@@ -407,9 +385,7 @@ class TestCelltypeWorkflowIntegration:
         """Workflow should work with single cell type."""
         mock_mdata_for_model.obs["celltype"] = ["SingleType"] * len(mock_mdata_for_model.obs)
 
-        enh_activity = compute_celltype_enhancer_activity(
-            mock_deepscenic_model, mock_mdata_for_model, "celltype"
-        )
+        enh_activity = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         assert "SingleType" in enh_activity.columns
 
         active_enh = identify_active_enhancers(enh_activity)

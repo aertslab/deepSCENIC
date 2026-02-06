@@ -2,7 +2,6 @@
 
 from ._diagnostics import (
     enhancer_activity_histogram,
-    latent_umap,
     loss_curves,
     sparsity_histogram,
     tf_activity_clustermap,
@@ -11,7 +10,6 @@ from ._diagnostics import (
 __all__ = [
     "loss_curves",
     "sparsity_histogram",
-    "latent_umap",
     "enhancer_activity_histogram",
     "tf_activity_clustermap",
 ]

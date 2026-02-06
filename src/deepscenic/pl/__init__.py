@@ -21,7 +21,6 @@ from .perturbation import (
 from .sequence import ism_heatmap, logo_attribution, logo_motif
 from .training import (
     enhancer_activity_histogram,
-    latent_umap,
     loss_curves,
     sparsity_histogram,
     tf_activity_clustermap,
@@ -59,7 +58,6 @@ __all__ = [
     # Training / Diagnostics
     "loss_curves",
     "sparsity_histogram",
-    "latent_umap",
     "enhancer_activity_histogram",
     "tf_activity_clustermap",
 ]
