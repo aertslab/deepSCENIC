@@ -1,6 +1,7 @@
 """Plotting functions for deepSCENIC."""
 
 from ._colors import get_colors, set_colors
+from ._embedding import embedding_umap
 from ._utils import get_cmap_colors, parse_region, savefig_or_show, setup_axes
 from .genomics import arc_plot, genome_browser
 from .grn import (
@@ -16,6 +17,7 @@ from .grn import (
 from .perturbation import (
     dotplot_perturbation,
     heatmap_perturbation,
+    perturbation_coembedding,
     volcano_perturbation,
 )
 from .sequence import ism_heatmap, logo_attribution, logo_motif
@@ -34,6 +36,8 @@ __all__ = [
     "parse_region",
     "set_colors",
     "get_colors",
+    # Embedding Visualization
+    "embedding_umap",
     # GRN
     "heatmap_e1",
     "heatmap_e2",
@@ -52,6 +56,7 @@ __all__ = [
     "volcano_perturbation",
     "heatmap_perturbation",
     "dotplot_perturbation",
+    "perturbation_coembedding",
     # Genomics
     "genome_browser",
     "arc_plot",
