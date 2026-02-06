@@ -56,6 +56,7 @@ dependencies = [
     # Visualization
     "matplotlib>=3.7",
     "seaborn>=0.12",
+    "upsetplot>=0.8",
 
     # Utilities
     "tqdm>=4.65",
@@ -77,9 +78,6 @@ enformer = [
 ]
 sequence = [
     "logomaker>=0.8",
-]
-celltype = [
-    "upsetplot>=0.8",
 ]
 dev = [
     "pre-commit>=3.0",

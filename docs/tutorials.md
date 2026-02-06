@@ -12,8 +12,7 @@ notebooks/02_training
 notebooks/03_model_diagnosis
 notebooks/04_grn_analysis
 notebooks/05_perturbation_analysis
-notebooks/06_advanced_visualization
-notebooks/07_legacy_migration
+notebooks/06_legacy_migration
 ```
 
 ## Prerequisites
@@ -33,13 +32,4 @@ Before starting, ensure you have:
 | 03 | Model Diagnosis | `ds.tl.to_latent()`, `sc.tl.umap()` |
 | 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.tl.compute_celltype_enhancer_activity()` |
 | 05 | Perturbation Analysis | `ds.tl.simulate_perturbation()`, `ds.pl.waterfall_perturbation()` |
-| 06 | Advanced Visualization | `ds.pl.genome_browser()`, `ds.pl.arc_plot()` |
-| 07 | Legacy Migration | Migrating from legacy deepSCENIC format |
-
-## Data Requirements
-
-Tutorials use the MM_lines dataset (melanoma cell lines):
-- **scRNA-seq**: ~40,000 cells, ~16,000 genes
-- **scATAC-seq**: ~40,000 cells, ~440,000 regions (pyCisTopic imputed)
-
-Download instructions are provided in the first tutorial.
+| 06 | Legacy Migration | Migrating from legacy deepSCENIC format |
