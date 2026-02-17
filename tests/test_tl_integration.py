@@ -43,7 +43,7 @@ def training_setup(minimal_dims):
         emb_len=d["emb_len"],
     )
 
-    adj_E1 = torch.abs(torch.randn(d["n_regions"], d["n_tfs"])) + 0.1
+    adj_tf2r = torch.abs(torch.randn(d["n_regions"], d["n_tfs"])) + 0.1
 
     x_rna = torch.rand(n_cells, d["n_genes"])
     x_atac = torch.rand(n_cells, d["n_regions"])
@@ -51,7 +51,7 @@ def training_setup(minimal_dims):
     return {
         "vae": vae,
         "tf2rnet": tf2rnet,
-        "adj_E1": adj_E1,
+        "adj_tf2r": adj_tf2r,
         "x_rna": x_rna,
         "x_atac": x_atac,
         "dims": d,
@@ -74,7 +74,7 @@ class TestGradientFlow:
 
         output = vae(
             training_setup["x_rna"],
-            training_setup["adj_E1"],
+            training_setup["adj_tf2r"],
             use_mean=False,
         )
 
@@ -85,8 +85,8 @@ class TestGradientFlow:
             x_atac_rec=output.x_atac_rec,
             mu=output.mu,
             logvar=output.logvar,
-            adj_E1_batch=training_setup["adj_E1"],
-            adj_E2=vae.adj_E2,
+            adj_tf2r_batch=training_setup["adj_tf2r"],
+            adj_r2g=vae.adj_r2g,
             r2g_distances=training_setup["r2g_distances"],
             gene_indices=training_setup["gene_indices"],
             region_indices=training_setup["region_indices"],
@@ -111,7 +111,7 @@ class TestLossComputation:
         vae = training_setup["vae"]
         output = vae(
             training_setup["x_rna"],
-            training_setup["adj_E1"],
+            training_setup["adj_tf2r"],
             use_mean=False,
         )
 
@@ -122,8 +122,8 @@ class TestLossComputation:
             x_atac_rec=output.x_atac_rec,
             mu=output.mu,
             logvar=output.logvar,
-            adj_E1_batch=training_setup["adj_E1"],
-            adj_E2=vae.adj_E2,
+            adj_tf2r_batch=training_setup["adj_tf2r"],
+            adj_r2g=vae.adj_r2g,
             r2g_distances=training_setup["r2g_distances"],
             gene_indices=training_setup["gene_indices"],
             region_indices=training_setup["region_indices"],
@@ -144,7 +144,7 @@ class TestOptimizerStep:
 
         output = vae(
             training_setup["x_rna"],
-            training_setup["adj_E1"],
+            training_setup["adj_tf2r"],
             use_mean=False,
         )
 
@@ -155,8 +155,8 @@ class TestOptimizerStep:
             x_atac_rec=output.x_atac_rec,
             mu=output.mu,
             logvar=output.logvar,
-            adj_E1_batch=training_setup["adj_E1"],
-            adj_E2=vae.adj_E2,
+            adj_tf2r_batch=training_setup["adj_tf2r"],
+            adj_r2g=vae.adj_r2g,
             r2g_distances=training_setup["r2g_distances"],
             gene_indices=training_setup["gene_indices"],
             region_indices=training_setup["region_indices"],
@@ -182,7 +182,7 @@ class TestEndToEndMockTraining:
         """Run a minimal training loop to verify all components work together."""
         vae = training_setup["vae"]
         tf2rnet = training_setup["tf2rnet"]
-        adj_E1_cache = training_setup["adj_E1"].clone()
+        adj_tf2r_cache = training_setup["adj_tf2r"].clone()
         d = training_setup["dims"]
 
         optimizer_vae = torch.optim.Adam(vae.parameters(), lr=1e-3)
@@ -198,14 +198,14 @@ class TestEndToEndMockTraining:
             optimizer_tf2rnet.zero_grad()
             tf_pred = tf2rnet(emb)
 
-            adj_E1 = adj_E1_cache.clone()
-            adj_E1[seq_idx] = tf_pred
+            adj_tf2r = adj_tf2r_cache.clone()
+            adj_tf2r[seq_idx] = tf_pred
 
             with torch.no_grad():
-                adj_E1_cache[seq_idx] = tf_pred.detach()
+                adj_tf2r_cache[seq_idx] = tf_pred.detach()
 
             optimizer_vae.zero_grad()
-            output = vae(x_rna, adj_E1, use_mean=False)
+            output = vae(x_rna, adj_tf2r, use_mean=False)
 
             losses = compute_total_loss(
                 x_rna=x_rna,
@@ -214,21 +214,21 @@ class TestEndToEndMockTraining:
                 x_atac_rec=output.x_atac_rec,
                 mu=output.mu,
                 logvar=output.logvar,
-                adj_E1_batch=adj_E1[seq_idx],
-                adj_E2=vae.adj_E2,
+                adj_tf2r_batch=adj_tf2r[seq_idx],
+                adj_r2g=vae.adj_r2g,
                 r2g_distances=training_setup["r2g_distances"],
                 gene_indices=training_setup["gene_indices"],
                 region_indices=training_setup["region_indices"],
             )
 
-            e1_sparse = tf_pred.abs().mean() * 0.01
-            total_loss = losses["total"] + e1_sparse
+            tf2r_sparse = tf_pred.abs().mean() * 0.01
+            total_loss = losses["total"] + tf2r_sparse
 
             total_loss.backward()
             optimizer_vae.step()
             optimizer_tf2rnet.step()
 
         vae.eval()
-        output = vae(x_rna, adj_E1_cache, use_mean=True)
+        output = vae(x_rna, adj_tf2r_cache, use_mean=True)
         assert torch.isfinite(output.x_rna_rec).all()
         assert torch.isfinite(output.x_atac_rec).all()

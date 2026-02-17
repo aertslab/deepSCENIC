@@ -56,7 +56,7 @@ class DeepSCENICVAE(nn.Module):
 
     Attributes
     ----------
-    adj_E2
+    adj_r2g
         Learnable region->gene weights (n_links,)
     """
 
@@ -93,9 +93,9 @@ class DeepSCENICVAE(nn.Module):
         self.register_buffer("r2g_indices", r2g_indices)
         self.register_buffer("r2g_distances", r2g_distances)
 
-        # Learnable E2 weights (region->gene)
+        # Learnable region->gene weights
         n_links = r2g_indices.shape[1]
-        self.adj_E2 = nn.Parameter(torch.zeros(n_links) + 1e-4)
+        self.adj_r2g = nn.Parameter(torch.zeros(n_links) + 1e-4)
 
         # Core networks
         self.encoder = InferenceNet(n_hidden=n_hidden)
@@ -149,7 +149,7 @@ class DeepSCENICVAE(nn.Module):
         # r2g_indices: (2, n_links) - row 0 = region indices, row 1 = gene indices
         region_idx = self.r2g_indices[0]  # (n_links,) # type: ignore
         gene_idx = self.r2g_indices[1]  # (n_links,) # type: ignore
-        weights = self.adj_E2.abs()  # (n_links,)
+        weights = self.adj_r2g.abs()  # (n_links,)
 
         # Gather region activities for each link and weight them
         # enh_act[:, region_idx]: (n_cells, n_links)
@@ -166,7 +166,7 @@ class DeepSCENICVAE(nn.Module):
     def forward(
         self,
         x_rna: Tensor,
-        adj_E1: Tensor,
+        adj_tf2r: Tensor,
         use_mean: bool = False,
         batch_id: Tensor | None = None,
         skip_atac: bool = False,
@@ -178,7 +178,7 @@ class DeepSCENICVAE(nn.Module):
         ----------
         x_rna
             RNA expression (n_cells, n_genes)
-        adj_E1
+        adj_tf2r
             TF->region matrix from TF2rNet (n_regions, n_tfs)
         use_mean
             If True, use encoder mean instead of sampling
@@ -203,7 +203,7 @@ class DeepSCENICVAE(nn.Module):
         z_tf, mu, logvar = self.encoder(x_rna_tfs, use_mean=use_mean)
 
         # TF activity -> region activity via E1
-        enh_act = z_tf @ adj_E1.T
+        enh_act = z_tf @ adj_tf2r.T
 
         # Region activity -> gene signal via E2 (scatter_add for memory efficiency)
         z_rna = self._region_to_gene(enh_act)

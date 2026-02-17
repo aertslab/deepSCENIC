@@ -121,7 +121,7 @@ def simulate_perturbation(
             # saves ~37 GB VRAM per MLP layer (281k regions × 128 hidden)
             output_orig = model.vae(
                 x_rna,
-                model.adj_E1,
+                model.adj_tf2r,
                 use_mean=True,
                 skip_atac=True,
             )
@@ -144,7 +144,7 @@ def simulate_perturbation(
                 # Forward pass with perturbed input (skip ATAC decoder)
                 output_pert = model.vae(
                     perturbed_rna,
-                    model.adj_E1,
+                    model.adj_tf2r,
                     use_mean=True,
                     skip_atac=True,
                 )
@@ -270,7 +270,7 @@ def simulate_multi_perturbation(
             # saves ~37 GB VRAM per MLP layer (281k regions × 128 hidden)
             output_orig = model.vae(
                 x_rna,
-                model.adj_E1,
+                model.adj_tf2r,
                 use_mean=True,
                 skip_atac=True,
             )
@@ -294,7 +294,7 @@ def simulate_multi_perturbation(
                 # Forward pass with perturbed input (skip ATAC decoder)
                 output_pert = model.vae(
                     perturbed_rna,
-                    model.adj_E1,
+                    model.adj_tf2r,
                     use_mean=True,
                     skip_atac=True,
                 )

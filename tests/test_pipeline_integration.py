@@ -162,7 +162,7 @@ class TestTrainingPipeline:
         # Verify model structure
         assert hasattr(model, "vae")
         assert hasattr(model, "motifnet")
-        assert hasattr(model, "adj_E1")
+        assert hasattr(model, "adj_tf2r")
         assert hasattr(model, "tf_names")
         assert len(model.tf_names) == 5  # 5 TFs
 
@@ -176,10 +176,10 @@ class TestTrainingPipeline:
         # Gene count
         assert len(model.gene_names) == preprocessed_mdata["rna"].n_vars
 
-        # E1 matrix covers all regions (train + test) for all TFs
-        # Note: model.region_names may only include train regions, but adj_E1 includes all
-        assert model.adj_E1.shape[0] == preprocessed_mdata["atac"].n_vars  # All regions
-        assert model.adj_E1.shape[1] == len(model.tf_names)  # All TFs
+        # tf2r matrix covers all regions (train + test) for all TFs
+        # Note: model.region_names may only include train regions, but adj_tf2r includes all
+        assert model.adj_tf2r.shape[0] == preprocessed_mdata["atac"].n_vars  # All regions
+        assert model.adj_tf2r.shape[1] == len(model.tf_names)  # All TFs
 
     def test_model_save_load_roundtrip(self, pipeline_trained_model, tmp_path):
         """Verify model save/load preserves weights and config."""
@@ -201,12 +201,12 @@ class TestTrainingPipeline:
         assert loaded.tf_names == model.tf_names
         assert loaded.gene_names == model.gene_names
 
-    def test_finetune_e2_with_trained_model(self, pipeline_trained_model, preprocessed_mdata):
-        """Verify E2 finetuning works with trained model."""
+    def test_finetune_r2g_with_trained_model(self, pipeline_trained_model, preprocessed_mdata):
+        """Verify r2g finetuning works with trained model."""
         model = pipeline_trained_model
 
         # Finetune on test cells
-        model = ds.tl.finetune_e2(
+        model = ds.tl.finetune_r2g(
             model,
             preprocessed_mdata,
             cell_split="test",
@@ -216,9 +216,9 @@ class TestTrainingPipeline:
 
         # Model should still be valid after finetuning
         assert hasattr(model, "vae")
-        assert hasattr(model, "adj_E1")
-        # E1 should still have TFs as second dimension
-        assert model.adj_E1.shape[1] == len(model.tf_names)
+        assert hasattr(model, "adj_tf2r")
+        # tf2r should still have TFs as second dimension
+        assert model.adj_tf2r.shape[1] == len(model.tf_names)
 
 
 class TestAnalysisPipeline:
@@ -258,19 +258,19 @@ class TestAnalysisPipeline:
         assert "X_custom_enh_act" in preprocessed_mdata.obsm
 
     def test_extract_grn_returns_matrices(self, pipeline_trained_model):
-        """Verify extract_grn returns E1, E2 DataFrames (Tutorial 4)."""
+        """Verify extract_grn returns tf2r, r2g DataFrames (Tutorial 4)."""
         grn = ds.tl.extract_grn(pipeline_trained_model)
 
-        assert "E1" in grn
-        assert "E2" in grn
-        assert isinstance(grn["E1"], pd.DataFrame)
-        assert isinstance(grn["E2"], pd.DataFrame)
+        assert "tf2r" in grn
+        assert "r2g" in grn
+        assert isinstance(grn["tf2r"], pd.DataFrame)
+        assert isinstance(grn["r2g"], pd.DataFrame)
 
-        # E1 should have region-TF structure
-        assert len(grn["E1"]) > 0
+        # tf2r should have region-TF structure
+        assert len(grn["tf2r"]) > 0
 
-        # E2 should be edge list with region, gene, weight
-        assert "region" in grn["E2"].columns or len(grn["E2"].columns) >= 3
+        # r2g should be edge list with region, gene, weight
+        assert "region" in grn["r2g"].columns or len(grn["r2g"].columns) >= 3
 
     def test_get_tf_targets(self, pipeline_trained_model):
         """Verify get_tf_targets returns target genes for a TF."""
@@ -285,7 +285,7 @@ class TestAnalysisPipeline:
         assert isinstance(targets, pd.DataFrame)
         # May be empty if no strong targets, but should have correct columns
         if len(targets) > 0:
-            assert "gene" in targets.columns or "E1_weight" in targets.columns
+            assert "gene" in targets.columns or "tf2r_weight" in targets.columns
 
     def test_get_gene_regulators(self, pipeline_trained_model):
         """Verify get_gene_regulators returns TFs for a gene."""
@@ -530,8 +530,8 @@ class TestFullPipeline:
         # ====================================================================
 
         grn = ds.tl.extract_grn(model)
-        assert "E1" in grn
-        assert "E2" in grn
+        assert "tf2r" in grn
+        assert "r2g" in grn
 
         # Get TF targets
         targets = ds.tl.get_tf_targets(model, tf_name="G0", top_k=5)

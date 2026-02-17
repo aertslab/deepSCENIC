@@ -28,7 +28,7 @@ Before starting, ensure you have:
 | Tutorial | Topic | Key Functions |
 |----------|-------|---------------|
 | 01 | Data Preparation | `ds.pp.create_mudata()`, `ds.pp.mark_tfs()`, `ds.pp.compute_r2g_penalty()` |
-| 02 | Training | `ds.tl.train()`, `ds.tl.finetune_e2()` |
+| 02 | Training | `ds.tl.train()`, `ds.tl.finetune_r2g()` |
 | 03 | Model Diagnosis | `ds.tl.to_latent()`, `sc.tl.umap()` |
 | 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.tl.compute_celltype_enhancer_activity()` |
 | 05 | Perturbation Analysis | `ds.tl.simulate_perturbation()`, `ds.pl.waterfall_perturbation()` |

@@ -203,14 +203,14 @@ def mock_motifnet():
 
 
 @pytest.fixture
-def mock_adj_E1():
-    """Create a mock E1 adjacency matrix with positive values."""
+def mock_adj_tf2r():
+    """Create a mock tf2r adjacency matrix with positive values."""
     d = MINIMAL_DIMS
     return torch.abs(torch.randn(d["n_regions"], d["n_tfs"])) + 0.1
 
 
 @pytest.fixture
-def mock_deepscenic_model(mock_vae, mock_motifnet, mock_adj_E1):
+def mock_deepscenic_model(mock_vae, mock_motifnet, mock_adj_tf2r):
     """Create a complete DeepSCENICModel for testing."""
     from deepscenic.tl._model import DeepSCENICModel
     from deepscenic.tl._training_state import ModelConfig, TrainingHistory
@@ -232,7 +232,7 @@ def mock_deepscenic_model(mock_vae, mock_motifnet, mock_adj_E1):
             bottleneck_size=d["bottleneck_size"],
             emb_len=d["emb_len"],
         ),
-        adj_E1=mock_adj_E1,
+        adj_tf2r=mock_adj_tf2r,
         config=config,
         tf_names=[f"TF{i}" for i in range(d["n_tfs"])],
         gene_names=[f"GENE{i}" for i in range(d["n_genes"])],

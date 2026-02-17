@@ -9,10 +9,10 @@ TF expression
   ↓ PPI modulation
   ↓ InferenceNet (per-TF MLP)
   ↓ z_tf (latent TF activity)
-  ↓ × E1 (TF→region weights)
+  ↓ × tf2r (TF→region weights)
   ↓ region_activity
   ├──→ GenerativeNet_ATAC → ATAC reconstruction
-  ↓ × E2 (region→gene weights)
+  ↓ × r2g (region→gene weights)
   ↓ gene_signal
   └──→ GenerativeNet_RNA → RNA reconstruction
 ```
@@ -24,7 +24,7 @@ TF expression
 Predicts TF binding potential from DNA sequence:
 - **Enformer**: Pretrained DNA sequence transformer (processes ~640bp regions)
 - **MotifNet**: Context head that learns TF binding patterns
-- **Output**: E1 matrix (n_regions × n_tfs)
+- **Output**: tf2r matrix (n_regions × n_tfs)
 
 ### 2. PPI Network
 
@@ -42,14 +42,14 @@ Transforms TF expression to regulatory activity:
 
 ### 4. GRN Matrices
 
-- **E1 (TF→region)**: Learned from DNA sequence via TF2rNet
-- **E2 (region→gene)**: Sparse learnable matrix, distance-constrained
+- **tf2r (TF→region)**: Learned from DNA sequence via TF2rNet
+- **r2g (region→gene)**: Sparse learnable matrix, distance-constrained
 
 ## Training Strategy
 
 Training proceeds in stages:
 
-1. **warmup_vae** epochs: Train VAE only (E1 frozen)
+1. **warmup_vae** epochs: Train VAE only (tf2r frozen)
 2. **warmup_grn** epochs: Enable TF2rNet updates
 3. **Remaining epochs**: Enable PPI network
 
@@ -60,8 +60,8 @@ Total Loss =
   + loss_rec_rna      # RNA reconstruction
   + loss_rec_atac     # ATAC reconstruction
   + loss_gauss_rna    # KL divergence (VAE regularization)
-  + E1_sparse         # L1 sparsity on TF→region
-  + E2_sparse         # L1 sparsity on region→gene (distance-weighted)
+  + tf2r_sparse         # L1 sparsity on TF→region
+  + r2g_sparse         # L1 sparsity on region→gene (distance-weighted)
   + ppi_loss          # PPI network activation
 ```
 
@@ -74,7 +74,7 @@ perturbed_matrix[:, 'SOX10'] = 0
 # Iterate to steady state
 for i in range(n_iter):
     z_tf_pert = InferenceNet(perturbed_TF_expression)
-    gene_signal_pert = z_tf_pert @ (E1 @ E2)
+    gene_signal_pert = z_tf_pert @ (tf2r @ r2g)
     logFC = gene_signal_pert - gene_signal_orig
 ```
 
@@ -101,14 +101,14 @@ Input:
   - DNA sequences: (n_regions, 640bp)
 
 Processing:
-  1. TF2rNet: DNA → E1 (TF binding predictions)
+  1. TF2rNet: DNA → tf2r (TF binding predictions)
   2. PPI Network: All genes → TF modulation weights
   3. InferenceNet: TF expression × PPI → z_tf (latent activity)
-  4. E1 × E2: z_tf → region activity → gene signal
+  4. tf2r × r2g: z_tf → region activity → gene signal
   5. Decoders: Reconstruct RNA and ATAC
 
 Output:
-  - Trained GRN (E1, E2 matrices)
+  - Trained GRN (tf2r, r2g matrices)
   - Perturbation predictions
   - Latent TF activity space
 ```

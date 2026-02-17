@@ -113,7 +113,7 @@ def to_latent(
             # which is ~37 GB for 281k regions — exceeds most GPUs.
             output = model.vae(
                 x_rna,
-                model.adj_E1,
+                model.adj_tf2r,
                 use_mean=True,
                 skip_atac=True,
             )

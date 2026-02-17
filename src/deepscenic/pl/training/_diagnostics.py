@@ -185,14 +185,14 @@ def sparsity_histogram(
     figsize: tuple[float, float] = (10, 4),
 ) -> Axes | Figure | None:
     """
-    Histogram of E1/E2 weight distributions.
+    Histogram of tf2r/r2g weight distributions.
 
     Parameters
     ----------
     model
         Trained DeepSCENICModel.
     which
-        'E1', 'E2', or 'both'.
+        'tf2r', 'r2g', or 'both'.
     bins
         Number of histogram bins.
     threshold
@@ -220,23 +220,23 @@ def sparsity_histogram(
     import torch
 
     with torch.no_grad():
-        E1_vals = model.adj_E1.flatten().cpu().numpy()
-        E2_vals = model.vae.adj_E2.abs().flatten().cpu().numpy()
+        tf2r_vals = model.adj_tf2r.flatten().cpu().numpy()
+        r2g_vals = model.vae.adj_r2g.abs().flatten().cpu().numpy()
 
     if which == "both":
         fig, axes = plt.subplots(1, 2, figsize=figsize)
 
-        axes[0].hist(E1_vals, bins=bins, alpha=0.7, color=COLORS["tf"])
+        axes[0].hist(tf2r_vals, bins=bins, alpha=0.7, color=COLORS["tf"])
         axes[0].set_xlabel("Weight")
         axes[0].set_ylabel("Count")
-        e1_sparsity = (E1_vals < threshold).mean()
-        axes[0].set_title(f"E1 (TF->Region)\nSparsity: {e1_sparsity:.1%}")
+        tf2r_sparsity = (tf2r_vals < threshold).mean()
+        axes[0].set_title(f"TF->Region (tf2r)\nSparsity: {tf2r_sparsity:.1%}")
 
-        axes[1].hist(E2_vals, bins=bins, alpha=0.7, color=COLORS["gene"])
+        axes[1].hist(r2g_vals, bins=bins, alpha=0.7, color=COLORS["gene"])
         axes[1].set_xlabel("Weight")
         axes[1].set_ylabel("Count")
-        e2_sparsity = (E2_vals < threshold).mean()
-        axes[1].set_title(f"E2 (Region->Gene)\nSparsity: {e2_sparsity:.1%}")
+        r2g_sparsity = (r2g_vals < threshold).mean()
+        axes[1].set_title(f"Region->Gene (r2g)\nSparsity: {r2g_sparsity:.1%}")
 
         plt.tight_layout()
         savefig_or_show("sparsity_histogram", show=show, save=save)
@@ -246,8 +246,8 @@ def sparsity_histogram(
         return None
     else:
         fig, ax = setup_axes(ax, figsize=(figsize[0] // 2, figsize[1]))
-        vals = E1_vals if which == "E1" else E2_vals
-        color = COLORS["tf"] if which == "E1" else COLORS["gene"]
+        vals = tf2r_vals if which == "tf2r" else r2g_vals
+        color = COLORS["tf"] if which == "tf2r" else COLORS["gene"]
 
         ax.hist(vals, bins=bins, alpha=0.7, color=color)
         ax.set_xlabel("Weight")
@@ -322,7 +322,7 @@ def enhancer_activity_histogram(
     # Get enhancer activity from model forward pass
     with torch.no_grad():
         # Get device from model
-        device = model.adj_E1.device
+        device = model.adj_tf2r.device
 
         rna_data = mdata.mod["rna"].X
         if hasattr(rna_data, "toarray"):
@@ -340,7 +340,7 @@ def enhancer_activity_histogram(
         z_tf = mu.squeeze(-1)
 
         # Compute enhancer activity: z_tf @ E1
-        enh_act = (z_tf @ model.adj_E1).cpu().numpy()
+        enh_act = (z_tf @ model.adj_tf2r).cpu().numpy()
 
     # Flatten and optionally exclude zeros
     values = enh_act.flatten()

@@ -48,8 +48,8 @@ class DeepSCENICModel:
         Trained MotifNet context head.
     sequence_model
         Sequence embedding model (Enformer or custom nn.Module).
-    adj_E1
-        Cached E1 matrix (n_regions, n_tfs).
+    adj_tf2r
+        Cached TF->region matrix (n_regions, n_tfs).
     config
         Model configuration.
     tf_names
@@ -76,7 +76,7 @@ class DeepSCENICModel:
     vae: DeepSCENICVAE
     motifnet: MotifNet
     sequence_model: nn.Module
-    adj_E1: torch.Tensor
+    adj_tf2r: torch.Tensor
     config: ModelConfig
     tf_names: list[str]
     gene_names: list[str]
@@ -135,7 +135,7 @@ class DeepSCENICModel:
             "vae_state_dict": self.vae.state_dict(),
             "motifnet_state_dict": self.motifnet.state_dict(),
             "sequence_model_state_dict": self.sequence_model.state_dict(),
-            "adj_E1": self.adj_E1,
+            "adj_tf2r": self.adj_tf2r,
             "config": self.config.to_dict(),
             "tf_names": self.tf_names,
             "gene_names": self.gene_names,
@@ -316,7 +316,7 @@ class DeepSCENICModel:
             vae=vae,
             motifnet=motifnet,
             sequence_model=seq_model,
-            adj_E1=data["adj_E1"].to(device),
+            adj_tf2r=data.get("adj_tf2r", data.get("adj_E1")).to(device),
             config=config,
             tf_names=data["tf_names"],
             gene_names=data["gene_names"],
@@ -330,7 +330,7 @@ class DeepSCENICModel:
         self.vae.to(device)
         self.motifnet.to(device)
         self.sequence_model.to(device)
-        self.adj_E1 = self.adj_E1.to(device)
+        self.adj_tf2r = self.adj_tf2r.to(device)
         return self
 
     def eval(self) -> DeepSCENICModel:
@@ -629,7 +629,7 @@ def load_legacy_model(
         {'epoch': int, 'model_state_dict': OrderedDict, 'optimizer_state_dict': ...}
 
     The state dict keys are identical between legacy and new code:
-        - VAE: 'adj_E2', 'inference_rna.*', 'generative_rna.*', 'generative_atac.*'
+        - VAE: 'adj_r2g' (legacy: 'adj_E2'), 'inference_rna.*', 'generative_rna.*', 'generative_atac.*'
         - MotifNet: 'ctx_head_layer.weight', 'ctx_lin.weight', 'ctx_lin.bias'
         - Enformer: Full Enformer state dict
         - Note: 'PPInet.*' keys in legacy models are ignored (PPI removed in this release)
@@ -801,8 +801,8 @@ def load_legacy_model(
         log.info(f"Loading E1 from {e1_path}...")
         e1_df = pd.read_pickle(e1_path)
         # E1.pkl is (n_tfs, n_regions), we need (n_regions, n_tfs)
-        adj_E1 = torch.tensor(e1_df.values.T, dtype=torch.float32, device=device)
-        log.info(f"  E1 shape: {adj_E1.shape}")
+        adj_tf2r = torch.tensor(e1_df.values.T, dtype=torch.float32, device=device)
+        log.info(f"  E1 shape: {adj_tf2r.shape}")
     else:
         # Reconstruct from model weights
         from tqdm import tqdm
@@ -836,7 +836,7 @@ def load_legacy_model(
         )
 
         # Compute E1
-        adj_E1 = torch.zeros(n_regions, n_tfs, device=device)
+        adj_tf2r = torch.zeros(n_regions, n_tfs, device=device)
         enformer.eval()
         motifnet.eval()
 
@@ -849,9 +849,9 @@ def load_legacy_model(
                 emb = emb.reshape(emb.shape[0], -1).float()
                 # Get TF predictions from MotifNet
                 tf_pred = motifnet(emb)
-                adj_E1[seq_idx] = tf_pred
+                adj_tf2r[seq_idx] = tf_pred
 
-        log.info(f"  E1 shape: {adj_E1.shape}")
+        log.info(f"  E1 shape: {adj_tf2r.shape}")
 
     # =========================================================================
     # Step 7: Package into DeepSCENICModel
@@ -866,7 +866,7 @@ def load_legacy_model(
         vae=vae,
         motifnet=motifnet,
         sequence_model=enformer,
-        adj_E1=adj_E1,
+        adj_tf2r=adj_tf2r,
         config=config,
         tf_names=tf_names,
         gene_names=gene_names,
@@ -936,7 +936,10 @@ def _map_legacy_vae_state_dict(state_dict: dict) -> dict:
         elif old_key.startswith("PPInet."):
             new_key = "ppi." + old_key[7:]  # Remove "PPInet." and add "ppi."
             new_state_dict[new_key] = value
-        # Keep other keys as-is (e.g., adj_E2, batch_layer_*)
+        # Map adj_E2 → adj_r2g for legacy checkpoints
+        elif old_key == "adj_E2":
+            new_state_dict["adj_r2g"] = value
+        # Keep other keys as-is (e.g., batch_layer_*)
         else:
             new_state_dict[old_key] = value
 

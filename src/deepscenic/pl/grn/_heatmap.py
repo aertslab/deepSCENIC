@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 from .._utils import savefig_or_show, setup_axes
 
 
-def heatmap_e2(
+def heatmap_r2g(
     model: DeepSCENICModel,
     *,
     genes: list[str] | None = None,
@@ -61,12 +61,12 @@ def heatmap_e2(
     Examples
     --------
     >>> model = ds.tl.load_model("model.pt")
-    >>> ds.pl.heatmap_e2(model, top_k=30)
+    >>> ds.pl.heatmap_r2g(model, top_k=30)
     """
-    from deepscenic.tl import extract_e2_matrix
+    from deepscenic.tl import extract_r2g_matrix
 
     # Get E2 as edge list, pivot to dense for selected genes
-    E2_sparse = extract_e2_matrix(model, as_edgelist=True)
+    E2_sparse = extract_r2g_matrix(model, as_edgelist=True)
 
     # Filter genes
     if genes is not None:
@@ -90,9 +90,9 @@ def heatmap_e2(
     sns.heatmap(E2_pivot, ax=ax, cmap=cmap, **kwargs)
     ax.set_xlabel("Genes")
     ax.set_ylabel("Regions")
-    ax.set_title("E2: Region -> Gene Links")
+    ax.set_title("Region -> Gene Links (r2g)")
 
-    savefig_or_show("heatmap_e2", show=show, save=save)
+    savefig_or_show("heatmap_r2g", show=show, save=save)
 
     if return_fig:
         return fig
@@ -169,18 +169,18 @@ def heatmap_grn(
     import torch
     from scipy.sparse import coo_matrix
 
-    from deepscenic.tl import extract_e1_matrix
+    from deepscenic.tl import extract_tf2r_matrix
 
     # Get E1 as dense DataFrame (n_regions, n_tfs)
-    E1_df = extract_e1_matrix(model)
+    E1_df = extract_tf2r_matrix(model)
 
     # Build sparse E2 matrix using scipy (avoids dense materialization)
     with torch.no_grad():
         r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[union-attr]
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[union-attr]
+        adj_r2g = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[union-attr]
 
     E2_scipy = coo_matrix(
-        (adj_E2, (r2g_indices[0], r2g_indices[1])),
+        (adj_r2g, (r2g_indices[0], r2g_indices[1])),
         shape=(len(model.region_names), len(model.gene_names)),
     ).tocsr()
 
