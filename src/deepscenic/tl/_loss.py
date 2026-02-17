@@ -103,34 +103,45 @@ def tf2r_sparsity_loss(adj_tf2r: Tensor, seq_idx: Tensor | None = None) -> Tenso
     return adj_tf2r.abs().mean()
 
 
-def f1_score_binary(prediction: Tensor, target: Tensor) -> Tensor:
+def f1_score_binary(prediction: Tensor, target: Tensor, threshold: float = 0.5) -> Tensor:
     """Binary F1 score for ATAC predictions.
 
     Only meaningful when binary_atac=True.
+    Equivalent to torchmetrics BinaryF1Score with default settings.
 
     Parameters
     ----------
     prediction
-        Model predictions (logits)
+        Model predictions (logits).
     target
-        Ground truth binary values
+        Ground truth binary values.
+    threshold
+        Probability threshold for binary classification.
 
     Returns
     -------
     Tensor
-        F1 score (scalar)
+        F1 score (scalar).
     """
-    from torchmetrics.classification import BinaryF1Score
-
     # Mask invalid entries (all -1)
     mask = ~(target == -1).all(dim=1)
     if mask.sum() == 0:
         return torch.tensor(0.0, device=prediction.device)
 
-    f1 = BinaryF1Score().to(prediction.device)
-    # Apply sigmoid to convert logits to probabilities
-    pred_probs = torch.sigmoid(prediction[mask]).ravel()
-    return f1(pred_probs, target[mask].int().ravel())
+    # Apply sigmoid to convert logits to probabilities, then threshold (strict >)
+    pred_binary = (torch.sigmoid(prediction[mask]).ravel() > threshold).long()
+    target_binary = target[mask].int().ravel()
+
+    # Compute confusion matrix counts
+    tp = ((pred_binary == target_binary) & (target_binary == 1)).sum()
+    fn = ((pred_binary != target_binary) & (target_binary == 1)).sum()
+    fp = ((pred_binary != target_binary) & (target_binary == 0)).sum()
+
+    # F1 = 2*TP / (2*TP + FP + FN)
+    denom = 2 * tp + fp + fn
+    if denom == 0:
+        return torch.tensor(0.0, device=prediction.device)
+    return (2.0 * tp / denom).float()
 
 
 def r2g_sparsity_loss(adj_r2g: Tensor, r2g_distances: Tensor) -> Tensor:

@@ -1,4 +1,4 @@
-"""Sequence logo visualizations using tangermeme/logomaker."""
+"""Sequence logo visualizations using logomaker."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def logo_attribution(
     title: str | None = None,
 ) -> Axes | Figure | None:
     """
-    Plot sequence attribution logo using tangermeme.
+    Plot sequence attribution logo using logomaker.
 
     Parameters
     ----------
@@ -59,7 +59,7 @@ def logo_attribution(
     Raises
     ------
     ImportError
-        If tangermeme is not installed.
+        If logomaker is not installed.
 
     Examples
     --------
@@ -69,9 +69,11 @@ def logo_attribution(
     >>> ds.pl.logo_attribution(attrs)
     """
     try:
-        from tangermeme.plot import plot_logo
+        import logomaker
     except ImportError as e:
-        raise ImportError("tangermeme is required for logo_attribution. Install with: pip install tangermeme") from e
+        raise ImportError("logomaker is required for logo_attribution. Install with: pip install logomaker") from e
+
+    import pandas as pd
 
     # Ensure shape is (seq_len, 4)
     if attributions.shape[0] == 4 and attributions.shape[1] != 4:
@@ -90,7 +92,10 @@ def logo_attribution(
         attributions = attributions * sequence
 
     fig, ax = setup_axes(ax, figsize=figsize)
-    plot_logo(attributions, ax=ax)
+
+    # Create DataFrame with ACGT columns for logomaker
+    attr_df = pd.DataFrame(attributions, columns=["A", "C", "G", "T"])
+    logomaker.Logo(attr_df, ax=ax)
 
     if title:
         ax.set_title(title)
