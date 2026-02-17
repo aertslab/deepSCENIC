@@ -80,17 +80,17 @@ def kl_divergence(mu: Tensor, logvar: Tensor) -> Tensor:
     return -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
 
 
-def e1_sparsity_loss(adj_E1: Tensor, seq_idx: Tensor | None = None) -> Tensor:
+def tf2r_sparsity_loss(adj_tf2r: Tensor, seq_idx: Tensor | None = None) -> Tensor:
     """
-    L1 sparsity penalty on E1 (TF->region weights).
+    L1 sparsity penalty on TF->region weights.
 
     Parameters
     ----------
-    adj_E1
-        E1 weights (full matrix or subset)
+    adj_tf2r
+        TF->region weights (full matrix or subset)
     seq_idx
         Indices of regions to compute sparsity on (legacy behavior).
-        If None, computes sparsity over entire E1 matrix.
+        If None, computes sparsity over entire matrix.
 
     Returns
     -------
@@ -99,8 +99,8 @@ def e1_sparsity_loss(adj_E1: Tensor, seq_idx: Tensor | None = None) -> Tensor:
     """
     if seq_idx is not None:
         # Legacy behavior: only compute on sampled batch indices
-        return adj_E1[seq_idx, :].abs().mean()
-    return adj_E1.abs().mean()
+        return adj_tf2r[seq_idx, :].abs().mean()
+    return adj_tf2r.abs().mean()
 
 
 def f1_score_binary(prediction: Tensor, target: Tensor) -> Tensor:
@@ -133,16 +133,16 @@ def f1_score_binary(prediction: Tensor, target: Tensor) -> Tensor:
     return f1(pred_probs, target[mask].int().ravel())
 
 
-def e2_sparsity_loss(adj_E2: Tensor, r2g_distances: Tensor) -> Tensor:
+def r2g_sparsity_loss(adj_r2g: Tensor, r2g_distances: Tensor) -> Tensor:
     """
-    Distance-weighted L1 sparsity on E2 (region->gene weights).
+    Distance-weighted L1 sparsity on region->gene weights.
 
     Combines L1 penalty with distance penalty to encourage nearby links.
 
     Parameters
     ----------
-    adj_E2
-        Learnable E2 weights
+    adj_r2g
+        Learnable region->gene weights
     r2g_distances
         Distance penalties (higher = farther from TSS)
 
@@ -151,7 +151,7 @@ def e2_sparsity_loss(adj_E2: Tensor, r2g_distances: Tensor) -> Tensor:
     Tensor
         Sparsity loss (scalar)
     """
-    return (adj_E2.abs() * r2g_distances).mean()
+    return (adj_r2g.abs() * r2g_distances).mean()
 
 
 def compute_total_loss(
@@ -161,8 +161,8 @@ def compute_total_loss(
     x_atac_rec: Tensor,
     mu: Tensor,
     logvar: Tensor,
-    adj_E1_batch: Tensor,
-    adj_E2: Tensor,
+    adj_tf2r_batch: Tensor,
+    adj_r2g: Tensor,
     r2g_distances: Tensor,
     gene_indices: Tensor,
     region_indices: Tensor,
@@ -175,7 +175,7 @@ def compute_total_loss(
     gamma: float = 1.0,
     rna_tau: float = 1.0,
     atac_tau: float = 1.0,
-    include_e1_sparsity: bool = True,
+    include_tf2r_sparsity: bool = True,
     seq_idx: Tensor | None = None,
 ) -> dict[str, Tensor]:
     """
@@ -195,12 +195,12 @@ def compute_total_loss(
         Encoder mean
     logvar
         Encoder log variance
-    adj_E1_batch
-        E1 weights being updated this iteration
-    adj_E2
-        All E2 weights
+    adj_tf2r_batch
+        TF->region weights being updated this iteration
+    adj_r2g
+        All region->gene weights
     r2g_distances
-        Distance penalties for E2
+        Distance penalties for region->gene links
     gene_indices
         Indices of TRAIN genes to compute RNA reconstruction loss on.
         Only these genes contribute to the reconstruction loss, while E2 links
@@ -226,11 +226,11 @@ def compute_total_loss(
         RNA reconstruction weight
     atac_tau
         ATAC reconstruction weight
-    include_e1_sparsity
-        Whether to include E1 sparsity in the total loss.
+    include_tf2r_sparsity
+        Whether to include TF->region sparsity in the total loss.
     seq_idx
-        Indices of regions being updated this iteration (for E1 sparsity).
-        If provided, E1 sparsity is computed only on these regions (legacy behavior).
+        Indices of regions being updated this iteration (for TF->region sparsity).
+        If provided, sparsity is computed only on these regions (legacy behavior).
 
     Returns
     -------
@@ -252,29 +252,29 @@ def compute_total_loss(
     loss_kl = kl_divergence(mu, logvar) * beta
 
     # Sparsity losses
-    # E1 sparsity: only on sampled batch
-    loss_e1_sparse = e1_sparsity_loss(adj_E1_batch, seq_idx=seq_idx) * alpha
-    loss_e2_sparse = e2_sparsity_loss(adj_E2, r2g_distances) * gamma
+    # TF->region sparsity: only on sampled batch
+    loss_tf2r_sparse = tf2r_sparsity_loss(adj_tf2r_batch, seq_idx=seq_idx) * alpha
+    loss_r2g_sparse = r2g_sparsity_loss(adj_r2g, r2g_distances) * gamma
 
     # Total loss for backpropagation
-    total = loss_rec_rna + loss_rec_atac + loss_kl + loss_e2_sparse
-    if include_e1_sparsity:
-        total = total + loss_e1_sparse
+    total = loss_rec_rna + loss_rec_atac + loss_kl + loss_r2g_sparse
+    if include_tf2r_sparsity:
+        total = total + loss_tf2r_sparse
 
     return {
         "total": total,
         "rna_recon": loss_rec_rna.detach(),
         "atac_recon": loss_rec_atac.detach(),
         "kl_div": loss_kl.detach(),
-        "e1_l1": loss_e1_sparse.detach(),
-        "e2_l1": loss_e2_sparse.detach(),
+        "tf2r_l1": loss_tf2r_sparse.detach(),
+        "r2g_l1": loss_r2g_sparse.detach(),
     }
 
 
 def compute_test_chromosome_loss(
     x_atac: Tensor,
     x_atac_rec_test: Tensor,
-    adj_E1_test: Tensor,
+    adj_tf2r_test: Tensor,
     test_region_indices: Tensor,
     loss_atac: str,
     alpha: float,
@@ -293,8 +293,8 @@ def compute_test_chromosome_loss(
         Ground truth ATAC (n_cells, n_all_regions)
     x_atac_rec_test
         Reconstructed ATAC for test regions (n_cells, n_test_regions)
-    adj_E1_test
-        E1 matrix for test regions (n_test_regions, n_tfs)
+    adj_tf2r_test
+        TF->region matrix for test regions (n_test_regions, n_tfs)
     test_region_indices
         Global indices of test regions
     loss_atac
@@ -316,7 +316,7 @@ def compute_test_chromosome_loss(
 
     Returns
     -------
-    dict with keys: total, atac_recon, e1_l1, and optionally rna_recon
+    dict with keys: total, atac_recon, tf2r_l1, and optionally rna_recon
     """
     # Extract ground truth for test regions
     x_atac_test = x_atac[:, test_region_indices]
@@ -324,13 +324,13 @@ def compute_test_chromosome_loss(
     # ATAC reconstruction loss
     loss_rec_atac = reconstruction_loss(x_atac_rec_test, x_atac_test, loss_atac) * atac_tau
 
-    # E1 sparsity on test E1
-    loss_e1_sparse = e1_sparsity_loss(adj_E1_test) * alpha
+    # TF->region sparsity on test regions
+    loss_tf2r_sparse = tf2r_sparsity_loss(adj_tf2r_test) * alpha
 
     result = {
-        "total": loss_rec_atac + loss_e1_sparse,
+        "total": loss_rec_atac + loss_tf2r_sparse,
         "atac_recon": loss_rec_atac.detach(),
-        "e1_l1": loss_e1_sparse.detach(),
+        "tf2r_l1": loss_tf2r_sparse.detach(),
     }
 
     # Add RNA reconstruction if provided

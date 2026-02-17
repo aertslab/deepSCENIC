@@ -6,9 +6,9 @@ from trained deepSCENIC models.
 
 Basic Extraction
 ----------------
-- extract_grn: Extract E1 and E2 matrices as DataFrames
-- extract_e1_matrix: Extract TF→region binding matrix
-- extract_e2_matrix: Extract region→gene regulatory matrix
+- extract_grn: Extract tf2r and r2g matrices as DataFrames
+- extract_tf2r_matrix: Extract TF→region binding matrix
+- extract_r2g_matrix: Extract region→gene regulatory matrix
 
 Query Functions
 ---------------
@@ -63,8 +63,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Column definitions for typed DataFrames
-_TF_TARGETS_COLUMNS = ["tf", "region", "E1_weight", "gene", "E2_weight", "combined_weight"]
-_GENE_REGULATORS_COLUMNS = ["gene", "tf", "region", "E1_weight", "E2_weight", "combined_weight"]
+_TF_TARGETS_COLUMNS = ["tf", "region", "tf2r_weight", "gene", "r2g_weight", "combined_weight"]
+_GENE_REGULATORS_COLUMNS = ["gene", "tf", "region", "tf2r_weight", "r2g_weight", "combined_weight"]
 
 
 def _get_otsu_threshold(values: np.ndarray, fallback: float) -> tuple[float, bool]:
@@ -88,7 +88,7 @@ def _get_otsu_threshold(values: np.ndarray, fallback: float) -> tuple[float, boo
 
 def extract_grn(model: DeepSCENICModel) -> dict[str, pd.DataFrame]:
     """
-    Extract GRN matrices as DataFrames with names.
+    Extract GRN matrices (tf2r and r2g) as DataFrames with names.
 
     Parameters
     ----------
@@ -99,25 +99,25 @@ def extract_grn(model: DeepSCENICModel) -> dict[str, pd.DataFrame]:
     -------
     dict[str, pd.DataFrame]
         Dictionary with:
-        - 'E1': DataFrame (n_regions, n_tfs) with region/TF names
-        - 'E2': DataFrame (sparse format) with region/gene links
+        - 'tf2r': DataFrame (n_regions, n_tfs) with region/TF names
+        - 'r2g': DataFrame (sparse format) with region/gene links
 
     Examples
     --------
     >>> model = ds.tl.load_model("model.pt")
     >>> grn = ds.tl.extract_grn(model)
-    >>> E1 = grn['E1']  # TF → region weights
-    >>> E2 = grn['E2']  # region → gene weights
+    >>> tf2r = grn['tf2r']  # TF → region weights
+    >>> r2g = grn['r2g']  # region → gene weights
     """
     return {
-        "E1": extract_e1_matrix(model),
-        "E2": extract_e2_matrix(model, as_edgelist=True),
+        "tf2r": extract_tf2r_matrix(model),
+        "r2g": extract_r2g_matrix(model, as_edgelist=True),
     }
 
 
-def extract_e1_matrix(model: DeepSCENICModel) -> pd.DataFrame:
+def extract_tf2r_matrix(model: DeepSCENICModel) -> pd.DataFrame:
     """
-    Extract E1 (TF→region) matrix as DataFrame.
+    Extract TF→region (tf2r) matrix as DataFrame.
 
     Parameters
     ----------
@@ -127,10 +127,10 @@ def extract_e1_matrix(model: DeepSCENICModel) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        E1 matrix (n_regions, n_tfs) with region/TF names
+        tf2r matrix (n_regions, n_tfs) with region/TF names
     """
     with torch.no_grad():
-        E1_values = model.adj_E1.cpu().numpy()
+        E1_values = model.adj_tf2r.cpu().numpy()
 
     return pd.DataFrame(
         E1_values,
@@ -139,12 +139,12 @@ def extract_e1_matrix(model: DeepSCENICModel) -> pd.DataFrame:
     )
 
 
-def extract_e2_matrix(
+def extract_r2g_matrix(
     model: DeepSCENICModel,
     as_edgelist: bool = True,
 ) -> pd.DataFrame:
     """
-    Extract E2 (region→gene) matrix.
+    Extract region→gene (r2g) matrix.
 
     Parameters
     ----------
@@ -157,11 +157,11 @@ def extract_e2_matrix(
     Returns
     -------
     pd.DataFrame
-        E2 matrix in edge list or dense format
+        r2g matrix in edge list or dense format
     """
     with torch.no_grad():
         r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[operator]
+        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
 
     if as_edgelist:
         # Edge list format: (region, gene, weight) rows
@@ -169,21 +169,21 @@ def extract_e2_matrix(
             {
                 "region": [model.region_names[idx] for idx in r2g_indices[0]],
                 "gene": [model.gene_names[idx] for idx in r2g_indices[1]],
-                "weight": adj_E2,
+                "weight": r2g_vals,
             }
         )
     else:
         # Dense format using torch sparse tensor (faster than Python loop)
         # Warning: may be very large for real datasets
-        E2_sparse = torch.sparse_coo_tensor(
+        r2g_sparse = torch.sparse_coo_tensor(
             torch.from_numpy(r2g_indices),
-            torch.from_numpy(adj_E2),
+            torch.from_numpy(r2g_vals),
             size=(len(model.region_names), len(model.gene_names)),
         )
-        E2_dense = E2_sparse.to_dense().numpy()
+        r2g_dense = r2g_sparse.to_dense().numpy()
 
         return pd.DataFrame(
-            E2_dense,
+            r2g_dense,
             index=model.region_names,  # type: ignore[arg-type]
             columns=model.gene_names,  # type: ignore[arg-type]
         )
@@ -192,8 +192,8 @@ def extract_e2_matrix(
 def get_tf_targets(
     model: DeepSCENICModel,
     tf_name: str,
-    e1_threshold: float | None = None,
-    e2_threshold: float = 0.0,
+    tf2r_threshold: float | None = None,
+    r2g_threshold: float = 0.0,
     top_k: int | None = None,
 ) -> pd.DataFrame:
     """
@@ -205,25 +205,25 @@ def get_tf_targets(
         Trained DeepSCENICModel
     tf_name
         Name of the TF
-    e1_threshold
-        Threshold for E1 (TF→region) weights. If None (default), uses Otsu's
+    tf2r_threshold
+        Threshold for tf2r (TF→region) weights. If None (default), uses Otsu's
         method to automatically determine threshold.
-    e2_threshold
-        Threshold for E2 (region→gene) weights. Default 0.0.
+    r2g_threshold
+        Threshold for r2g (region→gene) weights. Default 0.0.
     top_k
         If specified, return only top K targets
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: tf, region, E1_weight, gene, E2_weight, combined_weight
+        DataFrame with columns: tf, region, tf2r_weight, gene, r2g_weight, combined_weight
 
     Notes
     -----
-    - E1 values can be positive or negative (activation/repression)
+    - tf2r values can be positive or negative (activation/repression)
     - Thresholding is applied to absolute values
     - Results are sorted by absolute combined_weight (strongest effects first)
-    - The original sign is preserved in E1_weight and combined_weight columns
+    - The original sign is preserved in tf2r_weight and combined_weight columns
     """
     if tf_name not in model.tf_names:
         raise ValueError(f"TF '{tf_name}' not found")
@@ -231,47 +231,47 @@ def get_tf_targets(
     tf_idx = model.tf_names.index(tf_name)
 
     with torch.no_grad():
-        # Get E1 weights for this TF
-        E1_tf = model.adj_E1[:, tf_idx].cpu().numpy()
+        # Get tf2r weights for this TF
+        tf2r_tf = model.adj_tf2r[:, tf_idx].cpu().numpy()
 
-        # Get E2 sparse info
+        # Get r2g sparse info
         r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[operator]
+        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
 
-    # Determine E1 threshold (Otsu by default, computed on absolute values)
-    E1_tf_abs = np.abs(E1_tf)
-    if e1_threshold is None:
-        e1_thresh, used_otsu = _get_otsu_threshold(E1_tf_abs, fallback=0.0)
+    # Determine tf2r threshold (Otsu by default, computed on absolute values)
+    tf2r_tf_abs = np.abs(tf2r_tf)
+    if tf2r_threshold is None:
+        tf2r_thresh, used_otsu = _get_otsu_threshold(tf2r_tf_abs, fallback=0.0)
         if used_otsu:
-            logger.info(f"TF '{tf_name}': using Otsu E1 threshold = {e1_thresh:.4f}")
+            logger.info(f"TF '{tf_name}': using Otsu tf2r threshold = {tf2r_thresh:.4f}")
         else:
-            logger.info(f"TF '{tf_name}': Otsu failed, using E1 threshold = {e1_thresh:.4f}")
+            logger.info(f"TF '{tf_name}': Otsu failed, using tf2r threshold = {tf2r_thresh:.4f}")
     else:
-        e1_thresh = e1_threshold
-        logger.info(f"TF '{tf_name}': using manual E1 threshold = {e1_thresh:.4f}")
+        tf2r_thresh = tf2r_threshold
+        logger.info(f"TF '{tf_name}': using manual tf2r threshold = {tf2r_thresh:.4f}")
 
-    # Find regions with E1 weight above threshold (using absolute values)
+    # Find regions with tf2r weight above threshold (using absolute values)
     results = []
-    for region_idx in np.where(E1_tf_abs > e1_thresh)[0]:
-        e1_weight = E1_tf[region_idx]
+    for region_idx in np.where(tf2r_tf_abs > tf2r_thresh)[0]:
+        tf2r_w = tf2r_tf[region_idx]
         region_name = model.region_names[region_idx]
 
         # Find genes linked to this region
         link_mask = r2g_indices[0] == region_idx
         if link_mask.any():
             gene_indices = r2g_indices[1, link_mask]
-            e2_weights = adj_E2[link_mask]
+            r2g_weights = r2g_vals[link_mask]
 
-            for gene_idx, e2_weight in zip(gene_indices, e2_weights, strict=False):
-                if e2_weight > e2_threshold:
+            for gene_idx, r2g_w in zip(gene_indices, r2g_weights, strict=False):
+                if r2g_w > r2g_threshold:
                     results.append(
                         {
                             "tf": tf_name,
                             "region": region_name,
-                            "E1_weight": e1_weight,
+                            "tf2r_weight": tf2r_w,
                             "gene": model.gene_names[gene_idx],
-                            "E2_weight": e2_weight,
-                            "combined_weight": e1_weight * e2_weight,
+                            "r2g_weight": r2g_w,
+                            "combined_weight": tf2r_w * r2g_w,
                         }
                     )
 
@@ -293,8 +293,8 @@ def get_tf_targets(
 def get_gene_regulators(
     model: DeepSCENICModel,
     gene_name: str,
-    e1_threshold: float | None = None,
-    e2_threshold: float = 0.0,
+    tf2r_threshold: float | None = None,
+    r2g_threshold: float = 0.0,
     top_k: int | None = None,
 ) -> pd.DataFrame:
     """
@@ -306,25 +306,25 @@ def get_gene_regulators(
         Trained DeepSCENICModel
     gene_name
         Name of the gene
-    e1_threshold
-        Threshold for E1 (TF→region) weights. If None (default), uses Otsu's
+    tf2r_threshold
+        Threshold for tf2r (TF→region) weights. If None (default), uses Otsu's
         method to automatically determine threshold from linked regions.
-    e2_threshold
-        Threshold for E2 (region→gene) weights. Default 0.0.
+    r2g_threshold
+        Threshold for r2g (region→gene) weights. Default 0.0.
     top_k
         If specified, return only top K regulators
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns: gene, tf, region, E1_weight, E2_weight, combined_weight
+        DataFrame with columns: gene, tf, region, tf2r_weight, r2g_weight, combined_weight
 
     Notes
     -----
-    - E1 values can be positive or negative (activation/repression)
+    - tf2r values can be positive or negative (activation/repression)
     - Thresholding is applied to absolute values
     - Results are sorted by absolute combined_weight (strongest effects first)
-    - The original sign is preserved in E1_weight and combined_weight columns
+    - The original sign is preserved in tf2r_weight and combined_weight columns
     """
     if gene_name not in model.gene_names:
         raise ValueError(f"Gene '{gene_name}' not found")
@@ -332,9 +332,9 @@ def get_gene_regulators(
     gene_idx = model.gene_names.index(gene_name)
 
     with torch.no_grad():
-        E1 = model.adj_E1.cpu().numpy()
+        tf2r_matrix = model.adj_tf2r.cpu().numpy()
         r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
-        adj_E2 = model.vae.adj_E2.abs().cpu().numpy()  # type: ignore[operator]
+        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
 
     # Find regions linked to this gene
     link_mask = r2g_indices[1] == gene_idx
@@ -342,44 +342,44 @@ def get_gene_regulators(
         return pd.DataFrame(columns=_GENE_REGULATORS_COLUMNS)
 
     region_indices = r2g_indices[0, link_mask]
-    e2_weights_for_gene = adj_E2[link_mask]
+    r2g_weights_for_gene = r2g_vals[link_mask]
 
     # Pre-compute per-TF thresholds if using automatic thresholding
-    if e1_threshold is None:
+    if tf2r_threshold is None:
         # Compute Otsu threshold for each TF (same as get_tf_targets)
         tf_thresholds = {}
-        for tf_idx in range(E1.shape[1]):
-            E1_tf_abs = np.abs(E1[:, tf_idx])
-            tf_thresh, _ = _get_otsu_threshold(E1_tf_abs, fallback=0.0)
+        for tf_idx in range(tf2r_matrix.shape[1]):
+            tf2r_tf_abs = np.abs(tf2r_matrix[:, tf_idx])
+            tf_thresh, _ = _get_otsu_threshold(tf2r_tf_abs, fallback=0.0)
             tf_thresholds[tf_idx] = tf_thresh
         logger.info(f"Gene '{gene_name}': using per-TF Otsu thresholds")
     else:
         tf_thresholds = None  # Use manual threshold for all TFs
-        logger.info(f"Gene '{gene_name}': using manual E1 threshold = {e1_threshold:.4f}")
+        logger.info(f"Gene '{gene_name}': using manual tf2r threshold = {tf2r_threshold:.4f}")
 
     results = []
-    for region_idx, e2_weight in zip(region_indices, e2_weights_for_gene, strict=False):
-        if e2_weight <= e2_threshold:
+    for region_idx, r2g_w in zip(region_indices, r2g_weights_for_gene, strict=False):
+        if r2g_w <= r2g_threshold:
             continue
 
         region_name = model.region_names[region_idx]
-        e1_weights_region = E1[region_idx, :]
-        e1_weights_region_abs = np.abs(e1_weights_region)
+        tf2r_weights_region = tf2r_matrix[region_idx, :]
+        tf2r_weights_region_abs = np.abs(tf2r_weights_region)
 
         for tf_idx in range(len(model.tf_names)):
             # Use per-TF threshold or manual threshold
-            thresh = tf_thresholds[tf_idx] if tf_thresholds else e1_threshold
+            thresh = tf_thresholds[tf_idx] if tf_thresholds else tf2r_threshold
 
-            if e1_weights_region_abs[tf_idx] > thresh:
-                e1_weight = e1_weights_region[tf_idx]
+            if tf2r_weights_region_abs[tf_idx] > thresh:
+                tf2r_w = tf2r_weights_region[tf_idx]
                 results.append(
                     {
                         "gene": gene_name,
                         "tf": model.tf_names[tf_idx],
                         "region": region_name,
-                        "E1_weight": e1_weight,
-                        "E2_weight": e2_weight,
-                        "combined_weight": e1_weight * e2_weight,
+                        "tf2r_weight": tf2r_w,
+                        "r2g_weight": r2g_w,
+                        "combined_weight": tf2r_w * r2g_w,
                     }
                 )
 
@@ -535,7 +535,7 @@ def compute_tf_activity_scores(
 
     # Get E1 matrix
     with torch.no_grad():
-        E1 = model.adj_E1.cpu().numpy()  # (n_regions, n_tfs)
+        E1 = model.adj_tf2r.cpu().numpy()  # (n_regions, n_tfs)
 
     # Get cell type labels
     celltypes = mdata.obs[celltype_key]
@@ -618,7 +618,7 @@ def identify_key_tfs(
 def build_grn_for_tfs(
     model: DeepSCENICModel,
     tf_names: list[str],
-    e2_threshold: float = 0.0,
+    r2g_threshold: float = 0.0,
 ) -> pd.DataFrame:
     """
     Build GRN DataFrame for a specific set of TFs.
@@ -629,8 +629,8 @@ def build_grn_for_tfs(
         Trained DeepSCENICModel
     tf_names
         List of TF names to include
-    e2_threshold
-        Minimum E2 weight to include links. Default 0.0.
+    r2g_threshold
+        Minimum r2g weight to include links. Default 0.0.
 
     Returns
     -------
@@ -646,15 +646,15 @@ def build_grn_for_tfs(
             continue
 
         # Get targets with per-TF Otsu threshold
-        targets = get_tf_targets(model, tf_name, e1_threshold=None, e2_threshold=e2_threshold)
+        targets = get_tf_targets(model, tf_name, tf2r_threshold=None, r2g_threshold=r2g_threshold)
 
         if len(targets) > 0:
             # Rename columns to match legacy format
             targets = targets.rename(
                 columns={
                     "tf": "TF",
-                    "E1_weight": "tf2r_score",
-                    "E2_weight": "r2g_score",
+                    "tf2r_weight": "tf2r_score",
+                    "r2g_weight": "r2g_score",
                     "combined_weight": "tf2g_score",
                 }
             )

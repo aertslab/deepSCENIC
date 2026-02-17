@@ -10,10 +10,10 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 .. autofunction:: deepscenic.tl.train
 ```
 
-### Phases 2-3: E2 Finetuning
+### Phases 2-3: R2G Finetuning
 
 ```{eval-rst}
-.. autofunction:: deepscenic.tl.finetune_e2
+.. autofunction:: deepscenic.tl.finetune_r2g
 ```
 
 ## Model
@@ -66,8 +66,8 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 
 ```{eval-rst}
 .. autofunction:: deepscenic.tl.extract_grn
-.. autofunction:: deepscenic.tl.extract_e1_matrix
-.. autofunction:: deepscenic.tl.extract_e2_matrix
+.. autofunction:: deepscenic.tl.extract_tf2r_matrix
+.. autofunction:: deepscenic.tl.extract_r2g_matrix
 ```
 
 ### Query Functions

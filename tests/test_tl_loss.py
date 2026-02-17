@@ -5,10 +5,10 @@ import torch
 
 from deepscenic.tl._loss import (
     compute_total_loss,
-    e1_sparsity_loss,
-    e2_sparsity_loss,
     kl_divergence,
+    r2g_sparsity_loss,
     reconstruction_loss,
+    tf2r_sparsity_loss,
 )
 
 
@@ -108,46 +108,46 @@ class TestKLDivergence:
         assert logvar.grad is not None
 
 
-class TestE1SparsityLoss:
-    """Tests for e1_sparsity_loss function."""
+class TestTf2rSparsityLoss:
+    """Tests for tf2r_sparsity_loss function."""
 
     def test_zero_for_zeros(self):
         """Should be zero for zero weights."""
-        adj_E1 = torch.zeros(100, 50)
-        loss = e1_sparsity_loss(adj_E1)
+        adj_tf2r = torch.zeros(100, 50)
+        loss = tf2r_sparsity_loss(adj_tf2r)
         assert torch.isclose(loss, torch.tensor(0.0))
 
     def test_positive_for_nonzero(self):
         """Should be positive for non-zero weights."""
-        adj_E1 = torch.ones(100, 50)
-        loss = e1_sparsity_loss(adj_E1)
+        adj_tf2r = torch.ones(100, 50)
+        loss = tf2r_sparsity_loss(adj_tf2r)
         assert torch.isclose(loss, torch.tensor(1.0))
 
     def test_handles_negative_values(self):
         """Should take absolute value of weights."""
-        adj_E1 = torch.full((100, 50), -1.0)
-        loss = e1_sparsity_loss(adj_E1)
+        adj_tf2r = torch.full((100, 50), -1.0)
+        loss = tf2r_sparsity_loss(adj_tf2r)
         assert torch.isclose(loss, torch.tensor(1.0))
 
 
-class TestE2SparsityLoss:
-    """Tests for e2_sparsity_loss function."""
+class TestR2gSparsityLoss:
+    """Tests for r2g_sparsity_loss function."""
 
     def test_weighted_by_distance(self):
         """Should be weighted by distance penalties."""
-        adj_E2 = torch.ones(100)
+        adj_r2g = torch.ones(100)
         # Higher distance = higher penalty
         r2g_distances = torch.linspace(0.1, 1.0, 100)
-        loss = e2_sparsity_loss(adj_E2, r2g_distances)
+        loss = r2g_sparsity_loss(adj_r2g, r2g_distances)
         # Average of distances times weights (all 1s)
         expected = r2g_distances.mean()
         assert torch.isclose(loss, expected)
 
     def test_zero_for_zero_weights(self):
         """Should be zero for zero weights regardless of distance."""
-        adj_E2 = torch.zeros(100)
+        adj_r2g = torch.zeros(100)
         r2g_distances = torch.ones(100)
-        loss = e2_sparsity_loss(adj_E2, r2g_distances)
+        loss = r2g_sparsity_loss(adj_r2g, r2g_distances)
         assert torch.isclose(loss, torch.tensor(0.0))
 
 
@@ -170,8 +170,8 @@ class TestComputeTotalLoss:
             "x_atac_rec": torch.randn(n_cells, n_regions),
             "mu": torch.randn(n_cells, n_tfs),
             "logvar": torch.randn(n_cells, n_tfs),
-            "adj_E1_batch": torch.randn(100, n_tfs),
-            "adj_E2": torch.randn(n_links),
+            "adj_tf2r_batch": torch.randn(100, n_tfs),
+            "adj_r2g": torch.randn(n_links),
             "r2g_distances": torch.rand(n_links),
             "gene_indices": torch.arange(n_genes),
             "region_indices": torch.arange(n_regions),
@@ -185,8 +185,8 @@ class TestComputeTotalLoss:
         assert "rna_recon" in result
         assert "atac_recon" in result
         assert "kl_div" in result
-        assert "e1_l1" in result
-        assert "e2_l1" in result
+        assert "tf2r_l1" in result
+        assert "r2g_l1" in result
 
     def test_gradient_flows_through_total(self, loss_inputs):
         """Gradients should flow through total loss."""
@@ -195,30 +195,30 @@ class TestComputeTotalLoss:
         result["total"].backward()
         assert loss_inputs["x_rna_rec"].grad is not None
 
-    def test_e1_sparsity_excluded_when_disabled(self, loss_inputs):
-        """E1 sparsity should be excluded from total when include_e1_sparsity=False."""
-        result_with = compute_total_loss(**loss_inputs, include_e1_sparsity=True)
-        result_without = compute_total_loss(**loss_inputs, include_e1_sparsity=False)
+    def test_tf2r_sparsity_excluded_when_disabled(self, loss_inputs):
+        """tf2r sparsity should be excluded from total when include_tf2r_sparsity=False."""
+        result_with = compute_total_loss(**loss_inputs, include_tf2r_sparsity=True)
+        result_without = compute_total_loss(**loss_inputs, include_tf2r_sparsity=False)
 
-        # E1 sparsity should still be computed for logging
-        assert result_without["e1_l1"] > 0
+        # tf2r sparsity should still be computed for logging
+        assert result_without["tf2r_l1"] > 0
 
-        # Total should differ by the E1 sparsity amount
+        # Total should differ by the tf2r sparsity amount
         diff = result_with["total"] - result_without["total"]
-        expected_diff = result_with["e1_l1"]
+        expected_diff = result_with["tf2r_l1"]
         assert torch.isclose(diff, expected_diff, rtol=1e-4)
 
-    def test_e1_sparsity_zero_in_total_when_disabled(self, loss_inputs):
-        """Total should not include E1 sparsity when include_e1_sparsity=False."""
+    def test_tf2r_sparsity_zero_in_total_when_disabled(self, loss_inputs):
+        """Total should not include tf2r sparsity when include_tf2r_sparsity=False."""
         # Set E1 to have a significant value
-        loss_inputs["adj_E1_batch"] = torch.ones(100, 50) * 10.0
+        loss_inputs["adj_tf2r_batch"] = torch.ones(100, 50) * 10.0
 
-        result = compute_total_loss(**loss_inputs, include_e1_sparsity=False, alpha=1.0)
+        result = compute_total_loss(**loss_inputs, include_tf2r_sparsity=False, alpha=1.0)
 
-        # E1 sparsity should be 10.0 (mean of all 10s) times alpha
-        assert torch.isclose(result["e1_l1"], torch.tensor(10.0))
+        # tf2r sparsity should be 10.0 (mean of all 10s) times alpha
+        assert torch.isclose(result["tf2r_l1"], torch.tensor(10.0))
 
         # But total should NOT include this when disabled
         # Verify by checking total equals sum of other components
-        expected_total = result["rna_recon"] + result["atac_recon"] + result["kl_div"] + result["e2_l1"]
+        expected_total = result["rna_recon"] + result["atac_recon"] + result["kl_div"] + result["r2g_l1"]
         assert torch.isclose(result["total"], expected_total, rtol=1e-4)

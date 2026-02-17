@@ -4,9 +4,9 @@ from ._grn import (
     build_grn_for_tfs,
     compute_celltype_enhancer_activity,
     compute_tf_activity_scores,
-    extract_e1_matrix,
-    extract_e2_matrix,
     extract_grn,
+    extract_r2g_matrix,
+    extract_tf2r_matrix,
     get_gene_regulators,
     get_tf_targets,
     identify_active_enhancers,
@@ -25,7 +25,7 @@ from ._perturbation import (
     simulate_multi_perturbation,
     simulate_perturbation,
 )
-from ._train import finetune_e2, train
+from ._train import finetune_r2g, train
 from ._training_state import (
     EarlyStopping,
     ModelConfig,
@@ -35,7 +35,7 @@ from ._training_state import (
 __all__ = [
     # Training stages
     "train",  # Phase 1: Full model training
-    "finetune_e2",  # Phases 2-3: E2 finetuning
+    "finetune_r2g",  # Phases 2-3: E2 finetuning
     # Model
     "DeepSCENICModel",
     "TrainingState",
@@ -54,8 +54,8 @@ __all__ = [
     "process_perturbation_results",
     # GRN extraction
     "extract_grn",
-    "extract_e1_matrix",
-    "extract_e2_matrix",
+    "extract_tf2r_matrix",
+    "extract_r2g_matrix",
     "get_tf_targets",
     "get_gene_regulators",
     # Cell-type aware GRN

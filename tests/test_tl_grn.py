@@ -9,9 +9,9 @@ from deepscenic.tl._grn import (
     build_grn_for_tfs,
     compute_celltype_enhancer_activity,
     compute_tf_activity_scores,
-    extract_e1_matrix,
-    extract_e2_matrix,
     extract_grn,
+    extract_r2g_matrix,
+    extract_tf2r_matrix,
     get_gene_regulators,
     get_tf_targets,
     identify_active_enhancers,
@@ -23,32 +23,32 @@ class TestExtractGRN:
     """Tests for extract_grn function."""
 
     def test_e1_index_is_regions(self, mock_deepscenic_model):
-        """E1 index should be region names."""
+        """tf2r index should be region names."""
         result = extract_grn(mock_deepscenic_model)
-        assert list(result["E1"].index) == mock_deepscenic_model.region_names
+        assert list(result["tf2r"].index) == mock_deepscenic_model.region_names
 
     def test_e1_columns_are_tfs(self, mock_deepscenic_model):
-        """E1 columns should be TF names."""
+        """tf2r columns should be TF names."""
         result = extract_grn(mock_deepscenic_model)
-        assert list(result["E1"].columns) == mock_deepscenic_model.tf_names
+        assert list(result["tf2r"].columns) == mock_deepscenic_model.tf_names
 
 
-class TestExtractE1Matrix:
-    """Tests for extract_e1_matrix function."""
+class TestExtractTf2rMatrix:
+    """Tests for extract_tf2r_matrix function."""
 
     def test_shape(self, mock_deepscenic_model, minimal_dims):
         """Should have correct shape."""
-        result = extract_e1_matrix(mock_deepscenic_model)
+        result = extract_tf2r_matrix(mock_deepscenic_model)
         d = minimal_dims
         assert result.shape == (d["n_regions"], d["n_tfs"])
 
 
-class TestExtractE2Matrix:
-    """Tests for extract_e2_matrix function."""
+class TestExtractR2gMatrix:
+    """Tests for extract_r2g_matrix function."""
 
     def test_edgelist_format_default(self, mock_deepscenic_model, minimal_dims):
         """Edge list format (default) should return correct structure."""
-        result = extract_e2_matrix(mock_deepscenic_model)  # as_edgelist=True by default
+        result = extract_r2g_matrix(mock_deepscenic_model)  # as_edgelist=True by default
 
         assert isinstance(result, pd.DataFrame)
         assert list(result.columns) == ["region", "gene", "weight"]
@@ -56,17 +56,17 @@ class TestExtractE2Matrix:
 
     def test_edgelist_region_names_valid(self, mock_deepscenic_model):
         """Edge list regions should be valid region names."""
-        result = extract_e2_matrix(mock_deepscenic_model)
+        result = extract_r2g_matrix(mock_deepscenic_model)
         assert all(r in mock_deepscenic_model.region_names for r in result["region"])
 
     def test_edgelist_gene_names_valid(self, mock_deepscenic_model):
         """Edge list genes should be valid gene names."""
-        result = extract_e2_matrix(mock_deepscenic_model)
+        result = extract_r2g_matrix(mock_deepscenic_model)
         assert all(g in mock_deepscenic_model.gene_names for g in result["gene"])
 
     def test_dense_format(self, mock_deepscenic_model, minimal_dims):
         """Dense format should return (n_regions, n_genes) DataFrame."""
-        result = extract_e2_matrix(mock_deepscenic_model, as_edgelist=False)
+        result = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=False)
         d = minimal_dims
         assert isinstance(result, pd.DataFrame)
         assert result.shape == (d["n_regions"], d["n_genes"])
@@ -81,9 +81,9 @@ class TestGetTFTargets:
             get_tf_targets(mock_deepscenic_model, "INVALID_TF")
 
     def test_threshold_filter(self, mock_deepscenic_model):
-        """Should filter by E1 threshold."""
-        high_thresh = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=1.0)
-        low_thresh = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0)
+        """Should filter by tf2r threshold."""
+        high_thresh = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=1.0)
+        low_thresh = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0)
         assert len(high_thresh) <= len(low_thresh)
 
 
@@ -97,32 +97,32 @@ class TestGetGeneRegulators:
 
     def test_top_k(self, mock_deepscenic_model):
         """Should limit results with top_k."""
-        result = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0, top_k=5)
+        result = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=0.0, top_k=5)
         assert len(result) <= 5
 
     def test_result_columns(self, mock_deepscenic_model):
         """Result should have correct columns."""
-        result = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0)
-        expected_columns = ["gene", "tf", "region", "E1_weight", "E2_weight", "combined_weight"]
+        result = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=0.0)
+        expected_columns = ["gene", "tf", "region", "tf2r_weight", "r2g_weight", "combined_weight"]
         assert list(result.columns) == expected_columns
 
     def test_gene_column_matches_input(self, mock_deepscenic_model):
         """Gene column should match input gene name."""
-        result = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0)
+        result = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=0.0)
         if len(result) > 0:
             assert all(result["gene"] == "GENE0")
 
     def test_sorted_by_absolute_weight(self, mock_deepscenic_model):
         """Results should be sorted by absolute combined_weight descending."""
-        result = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0)
+        result = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=0.0)
         if len(result) > 1:
             abs_weights = np.abs(result["combined_weight"].values)
             assert all(abs_weights[i] >= abs_weights[i + 1] for i in range(len(abs_weights) - 1))
 
-    def test_e2_threshold_filter(self, mock_deepscenic_model):
-        """E2 threshold should filter results."""
-        no_thresh = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0, e2_threshold=0.0)
-        high_thresh = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=0.0, e2_threshold=100.0)
+    def test_r2g_threshold_filter(self, mock_deepscenic_model):
+        """r2g threshold should filter results."""
+        no_thresh = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=0.0, r2g_threshold=0.0)
+        high_thresh = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=0.0, r2g_threshold=100.0)
         assert len(high_thresh) <= len(no_thresh)
 
 
@@ -172,20 +172,20 @@ class TestEmptyResults:
     def test_get_tf_targets_empty_has_columns(self, mock_deepscenic_model):
         """Empty TF targets result should have correct columns."""
         # Use very high threshold to get empty results
-        result = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=1000.0)
+        result = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=1000.0)
 
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 0
-        expected = ["tf", "region", "E1_weight", "gene", "E2_weight", "combined_weight"]
+        expected = ["tf", "region", "tf2r_weight", "gene", "r2g_weight", "combined_weight"]
         assert list(result.columns) == expected
 
     def test_get_gene_regulators_empty_has_columns(self, mock_deepscenic_model):
         """Empty gene regulators result should have correct columns."""
-        result = get_gene_regulators(mock_deepscenic_model, "GENE0", e1_threshold=1000.0)
+        result = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=1000.0)
 
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 0
-        expected = ["gene", "tf", "region", "E1_weight", "E2_weight", "combined_weight"]
+        expected = ["gene", "tf", "region", "tf2r_weight", "r2g_weight", "combined_weight"]
         assert list(result.columns) == expected
 
 
@@ -194,27 +194,27 @@ class TestGetTFTargetsExtended:
 
     def test_result_columns(self, mock_deepscenic_model):
         """Result should have correct columns."""
-        result = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0)
-        expected_columns = ["tf", "region", "E1_weight", "gene", "E2_weight", "combined_weight"]
+        result = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0)
+        expected_columns = ["tf", "region", "tf2r_weight", "gene", "r2g_weight", "combined_weight"]
         assert list(result.columns) == expected_columns
 
     def test_tf_column_matches_input(self, mock_deepscenic_model):
         """TF column should match input TF name."""
-        result = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0)
+        result = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0)
         if len(result) > 0:
             assert all(result["tf"] == "TF0")
 
     def test_sorted_by_absolute_weight(self, mock_deepscenic_model):
         """Results should be sorted by absolute combined_weight descending."""
-        result = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0)
+        result = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0)
         if len(result) > 1:
             abs_weights = np.abs(result["combined_weight"].values)
             assert all(abs_weights[i] >= abs_weights[i + 1] for i in range(len(abs_weights) - 1))
 
-    def test_e2_threshold_filter(self, mock_deepscenic_model):
-        """E2 threshold should filter results."""
-        no_thresh = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0, e2_threshold=0.0)
-        high_thresh = get_tf_targets(mock_deepscenic_model, "TF0", e1_threshold=0.0, e2_threshold=100.0)
+    def test_r2g_threshold_filter(self, mock_deepscenic_model):
+        """r2g threshold should filter results."""
+        no_thresh = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0, r2g_threshold=0.0)
+        high_thresh = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0, r2g_threshold=100.0)
         assert len(high_thresh) <= len(no_thresh)
 
 

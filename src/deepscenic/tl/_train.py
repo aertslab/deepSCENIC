@@ -55,7 +55,7 @@ def _save_checkpoint_data(
     vae_state_dict: dict,
     motifnet_state_dict: dict,
     enformer_state_dict: dict,
-    adj_E1: torch.Tensor,
+    adj_tf2r: torch.Tensor,
     config: ModelConfig,
     tf_names: list[str],
     gene_names: list[str],
@@ -73,7 +73,7 @@ def _save_checkpoint_data(
         "vae_state_dict": vae_state_dict,
         "motifnet_state_dict": motifnet_state_dict,
         "sequence_model_state_dict": enformer_state_dict,
-        "adj_E1": adj_E1,
+        "adj_tf2r": adj_tf2r,
         "config": config.to_dict(),
         "tf_names": tf_names,
         "gene_names": gene_names,
@@ -145,7 +145,7 @@ def _get_sequence_embeddings(
         return model(sequences).float()  # type: ignore[no-any-return]
 
 
-def _init_e1_cache(
+def _init_tf2r_cache(
     sequence_model: torch.nn.Module,
     motifnet: MotifNet,
     train_seq_dataloader: torch.utils.data.DataLoader,
@@ -160,26 +160,26 @@ def _init_e1_cache(
     sequence_model.eval()
     motifnet.eval()
 
-    adj_E1 = torch.zeros(n_total_regions, motifnet.n_tfs, device=device)
+    adj_tf2r = torch.zeros(n_total_regions, motifnet.n_tfs, device=device)
 
     with torch.no_grad():
-        # Compute E1 for train regions
-        for sequences, seq_idx in tqdm(train_seq_dataloader, desc="Init E1 (train)"):
+        # Compute TF->region for train regions
+        for sequences, seq_idx in tqdm(train_seq_dataloader, desc="Init tf2r (train)"):
             sequences = sequences.to(device)
             emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
             tf_pred = motifnet(emb)
             global_idx = train_region_global_indices[seq_idx.numpy()]
-            adj_E1[global_idx] = tf_pred
+            adj_tf2r[global_idx] = tf_pred
 
-        # Compute E1 for test regions
-        for sequences, local_idx in tqdm(test_seq_dataloader, desc="Init E1 (test)"):
+        # Compute TF->region for test regions
+        for sequences, local_idx in tqdm(test_seq_dataloader, desc="Init tf2r (test)"):
             sequences = sequences.to(device)
             emb = _get_sequence_embeddings(sequence_model, sequences, config.bottleneck_size, config.emb_len)
             tf_pred = motifnet(emb)
             global_idx = test_region_indices[local_idx]
-            adj_E1[global_idx] = tf_pred
+            adj_tf2r[global_idx] = tf_pred
 
-    return adj_E1
+    return adj_tf2r
 
 
 class SequenceIterator:
@@ -200,7 +200,7 @@ class SequenceIterator:
 
 def _evaluate_test_chromosomes(
     vae: DeepSCENICVAE,
-    adj_E1: torch.Tensor,
+    adj_tf2r: torch.Tensor,
     test_region_indices: torch.Tensor,
     test_cell_loader: torch.utils.data.DataLoader,
     device: str,
@@ -211,11 +211,11 @@ def _evaluate_test_chromosomes(
 ) -> dict[str, float]:
     """Evaluate ATAC reconstruction on test chromosomes."""
     vae.eval()
-    metrics: dict[str, float] = {"total": 0.0, "atac_recon": 0.0, "e1_l1": 0.0}
+    metrics: dict[str, float] = {"total": 0.0, "atac_recon": 0.0, "tf2r_l1": 0.0}
     n_batches = 0
 
-    # Extract test E1 from global cache
-    adj_E1_test = adj_E1[test_region_indices]
+    # Extract test TF->region from global cache
+    adj_tf2r_test = adj_tf2r[test_region_indices]
 
     with torch.no_grad():
         for batch in test_cell_loader:
@@ -224,13 +224,13 @@ def _evaluate_test_chromosomes(
 
             x_rna_tfs = x_rna[:, vae.tf_indices]
             z_tf, _, _ = vae.encoder(x_rna_tfs, use_mean=True)
-            enh_act_test = z_tf @ adj_E1_test.T
+            enh_act_test = z_tf @ adj_tf2r_test.T
             x_atac_rec_test = vae.decoder_atac(enh_act_test)
 
             losses = compute_test_chromosome_loss(
                 x_atac=x_atac,
                 x_atac_rec_test=x_atac_rec_test,
-                adj_E1_test=adj_E1_test,
+                adj_tf2r_test=adj_tf2r_test,
                 test_region_indices=test_region_indices,
                 loss_atac=loss_atac,
                 alpha=alpha,
@@ -529,7 +529,7 @@ def train(
     # Train sequence dataloader (for sequencenet + motifnet training)
     train_region_mask = mdata.mod["atac"].var["split"] == "train"
     train_region_names = list(mdata.mod["atac"].var_names[train_region_mask])
-    # Map from train-only indices (0..n_train-1) to global indices (into full adj_E1_cache)
+    # Map from train-only indices (0..n_train-1) to global indices (into full adj_tf2r_cache)
     train_region_global_indices = np.where(train_region_mask)[0]
 
     # Get DAR indices if balance_dars is enabled (remap to train-only indexing)
@@ -578,7 +578,7 @@ def train(
 
     # Initialize complete E1 cache (all regions)
     n_all_regions = len(mdata.mod["atac"].var_names)
-    adj_E1_cache = _init_e1_cache(
+    adj_tf2r_cache = _init_tf2r_cache(
         sequence_model=sequence_model,
         motifnet=motifnet,
         train_seq_dataloader=train_seq_loader,
@@ -647,7 +647,7 @@ def train(
         sequence_model.load_state_dict(resumed_model.sequence_model.state_dict())
 
         # Restore E1 cache
-        adj_E1_cache = resumed_model.adj_E1.to(device)
+        adj_tf2r_cache = resumed_model.adj_tf2r.to(device)
 
         # Restore training state if present
         if resumed_model.training_state is not None:
@@ -675,8 +675,8 @@ def train(
             "rna_recon": 0.0,
             "atac_recon": 0.0,
             "kl_div": 0.0,
-            "e1_l1": 0.0,
-            "e2_l1": 0.0,
+            "tf2r_l1": 0.0,
+            "r2g_l1": 0.0,
         }
         if model_config.binary_atac:
             epoch_metrics["f1_atac"] = 0.0
@@ -696,18 +696,18 @@ def train(
             sequences = sequences.to(device)
 
             seq_idx = train_region_global_idx[seq_idx_local]
-            adj_E1_batch = adj_E1_cache.clone()
+            adj_tf2r_batch = adj_tf2r_cache.clone()
             emb = _get_sequence_embeddings(
                 sequence_model, sequences, model_config.bottleneck_size, model_config.emb_len
             )
             tf_pred = motifnet(emb)
-            adj_E1_batch[seq_idx] = tf_pred  # Gradients flow through these predictions
+            adj_tf2r_batch[seq_idx] = tf_pred  # Gradients flow through these predictions
 
             # VAE forward
             optimizer.zero_grad()
             output = vae(
                 x_rna,
-                adj_E1_batch,
+                adj_tf2r_batch,
                 use_mean=False,
                 batch_id=batch_id,
             )
@@ -720,8 +720,8 @@ def train(
                 x_atac_rec=output.x_atac_rec,
                 mu=output.mu,
                 logvar=output.logvar,
-                adj_E1_batch=adj_E1_batch,
-                adj_E2=vae.adj_E2,
+                adj_tf2r_batch=adj_tf2r_batch,
+                adj_r2g=vae.adj_r2g,
                 r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                 gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                 region_indices=vae.region_indices,  # type: ignore[arg-type]
@@ -734,7 +734,7 @@ def train(
                 gamma=gamma,
                 rna_tau=rna_tau,
                 atac_tau=atac_tau,
-                include_e1_sparsity=True,
+                include_tf2r_sparsity=True,
                 seq_idx=seq_idx,  # E1 sparsity only on sampled batch (legacy behavior)
             )
             total_loss = losses["total"]
@@ -745,7 +745,7 @@ def train(
 
             # Update persistent E1 cache with fresh predictions (no_grad for persistence)
             with torch.no_grad():
-                adj_E1_cache[seq_idx] = tf_pred.detach()
+                adj_tf2r_cache[seq_idx] = tf_pred.detach()
 
             # Compute F1 score for binary ATAC predictions
             if model_config.binary_atac:
@@ -787,15 +787,15 @@ def train(
                 )
                 tf_pred = motifnet(emb)
                 global_idx = test_region_indices[local_idx]
-                adj_E1_cache[global_idx] = tf_pred
+                adj_tf2r_cache[global_idx] = tf_pred
 
         val_metrics: dict[str, float] = {
             "total": 0.0,
             "rna_recon": 0.0,
             "atac_recon": 0.0,
             "kl_div": 0.0,
-            "e1_l1": 0.0,
-            "e2_l1": 0.0,
+            "tf2r_l1": 0.0,
+            "r2g_l1": 0.0,
         }
         n_val_batches = 0
 
@@ -810,7 +810,7 @@ def train(
                 # Validation
                 output = vae(
                     x_rna,
-                    adj_E1_cache,
+                    adj_tf2r_cache,
                     use_mean=True,
                     batch_id=batch_id,
                 )
@@ -822,8 +822,8 @@ def train(
                     x_atac_rec=output.x_atac_rec,
                     mu=output.mu,
                     logvar=output.logvar,
-                    adj_E1_batch=adj_E1_cache,
-                    adj_E2=vae.adj_E2,
+                    adj_tf2r_batch=adj_tf2r_cache,
+                    adj_r2g=vae.adj_r2g,
                     r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
                     gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                     region_indices=vae.region_indices,  # type: ignore[arg-type]
@@ -847,7 +847,7 @@ def train(
         # Validation on test chromosomes (generalization metric)
         test_chrom_metrics = _evaluate_test_chromosomes(
             vae=vae,
-            adj_E1=adj_E1_cache,
+            adj_tf2r=adj_tf2r_cache,
             test_region_indices=test_region_indices,
             test_cell_loader=test_cell_loader,
             device=device,
@@ -896,7 +896,7 @@ def train(
                 copy.deepcopy(vae.state_dict()),
                 copy.deepcopy(motifnet.state_dict()),
                 copy.deepcopy(sequence_model.state_dict()),
-                adj_E1_cache.clone().cpu(),
+                adj_tf2r_cache.clone().cpu(),
                 model_config,
                 tf_names,
                 gene_names,
@@ -937,7 +937,7 @@ def train(
                 copy.deepcopy(vae.state_dict()),
                 copy.deepcopy(motifnet.state_dict()),
                 copy.deepcopy(sequence_model.state_dict()),
-                adj_E1_cache.clone().cpu(),
+                adj_tf2r_cache.clone().cpu(),
                 model_config,
                 tf_names,
                 gene_names,
@@ -973,7 +973,7 @@ def train(
         vae=vae,
         motifnet=motifnet,
         sequence_model=sequence_model,
-        adj_E1=adj_E1_cache,
+        adj_tf2r=adj_tf2r_cache,
         config=model_config,
         tf_names=tf_names,
         gene_names=gene_names,
@@ -982,7 +982,7 @@ def train(
     )
 
 
-def finetune_e2(
+def finetune_r2g(
     model: DeepSCENICModel,
     mdata: md.MuData,
     *,
@@ -992,7 +992,7 @@ def finetune_e2(
     batch_size: int = 64,
     lr: float = 1e-3,
     lr_patience: int = 50,
-    reinit_e2: bool = True,
+    reinit_r2g: bool = True,
     gamma: float = 1.0,
     loss_rna: str = "mae",
     dropout_mask_rna: bool = False,
@@ -1005,10 +1005,10 @@ def finetune_e2(
     log_dir: str = "./runs",
     logger_kwargs: dict | None = None,
 ) -> DeepSCENICModel:
-    """Finetune the E2 (region->gene) matrix.
+    """Finetune the region->gene matrix.
 
     Phases 2 and 3 of the training workflow. Freezes all model parameters
-    except E2 and trains with ReduceLROnPlateau scheduler.
+    except the region->gene weights and trains with ReduceLROnPlateau scheduler.
 
     Parameters
     ----------
@@ -1032,8 +1032,8 @@ def finetune_e2(
         Learning rate.
     lr_patience
         Epochs before reducing LR if no improvement.
-    reinit_e2
-        If True, reinitialize E2 to near-zero before finetuning.
+    reinit_r2g
+        If True, reinitialize region->gene weights to near-zero before finetuning.
     gamma
         E2 sparsity weight.
     loss_rna
@@ -1065,14 +1065,14 @@ def finetune_e2(
 
     Examples
     --------
-    Phase 2: E2 finetuning on cross-cell-type validation:
+    Phase 2: R2G finetuning on cross-cell-type validation:
 
     >>> model = ds.tl.train(mdata, epochs=100)
-    >>> model = ds.tl.finetune_e2(model, mdata, cell_split="test", epochs=500)
+    >>> model = ds.tl.finetune_r2g(model, mdata, cell_split="test", epochs=500)
 
-    Phase 3: E2 finetuning on test chromosome:
+    Phase 3: region->gene finetuning on test chromosome:
 
-    >>> model = ds.tl.finetune_e2(
+    >>> model = ds.tl.finetune_r2g(
     ...     model, mdata,
     ...     cell_split="train",
     ...     feature_split="test",
@@ -1097,7 +1097,7 @@ def finetune_e2(
 
     # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run
-    _phase_name = f"finetune_e2_cell-{cell_split}_feat-{feature_split}"
+    _phase_name = f"finetune_r2g_cell-{cell_split}_feat-{feature_split}"
     _phase_log_dir = str(Path(log_dir) / _phase_name)
     _logger_kwargs = {"log_dir": _phase_log_dir}
     if logger_kwargs:
@@ -1111,17 +1111,17 @@ def finetune_e2(
         "lr": lr,
         "gamma": gamma,
         "loss_rna": loss_rna,
-        "reinit_e2": reinit_e2,
+        "reinit_r2g": reinit_r2g,
     }
     training_logger.log_hyperparams(hyperparams)
 
     # Move model to device
     vae = model.vae.to(device)
-    adj_E1 = model.adj_E1.to(device)
+    adj_tf2r = model.adj_tf2r.to(device)
 
-    # Freeze all parameters except adj_E2
+    # Freeze all parameters except adj_r2g
     for name, param in vae.named_parameters():
-        if name == "adj_E2":
+        if name == "adj_r2g":
             param.requires_grad = True
         else:
             param.requires_grad = False
@@ -1166,16 +1166,16 @@ def finetune_e2(
     log.info(f"Using {n_active_links}/{len(e2_link_mask)} E2 links for training (feature_split='{feature_split}')")
 
     # Optionally reinitialize ONLY the active E2 links (matching legacy behavior)
-    if reinit_e2:
+    if reinit_r2g:
         with torch.no_grad():
-            vae.adj_E2[e2_link_mask] = 1e-8
+            vae.adj_r2g[e2_link_mask] = 1e-8
 
     # Register gradient mask hook to only update matching E2 links
     # This prevents data leakage by not training E2 on cross-split links
-    def e2_grad_hook(grad: torch.Tensor) -> torch.Tensor:
+    def r2g_grad_hook(grad: torch.Tensor) -> torch.Tensor:
         return grad * e2_link_mask.float()
 
-    e2_hook_handle = vae.adj_E2.register_hook(e2_grad_hook)
+    r2g_hook_handle = vae.adj_r2g.register_hook(r2g_grad_hook)
 
     # Build dataloaders WITHOUT feature filtering
     # The VAE needs all genes for TF indexing and E2 computation.
@@ -1200,16 +1200,16 @@ def finetune_e2(
         feature_split=None,  # Don't filter - VAE needs all genes
     )
 
-    log.info(f"E2 finetuning: cells={cell_split}, features={feature_split}")
+    log.info(f"R2G finetuning: cells={cell_split}, features={feature_split}")
 
     # Single optimizer for E2 only
-    optimizer = Adam([vae.adj_E2], lr=lr)
+    optimizer = Adam([vae.adj_r2g], lr=lr)
     scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=lr_patience, factor=0.5)
 
     # History tracking
     history = TrainingHistory()
     best_loss = float("inf")
-    best_e2 = vae.adj_E2.data.clone()
+    best_r2g = vae.adj_r2g.data.clone()
 
     # Resolve save_best_checkpoints
     if save_best_checkpoints is None:
@@ -1230,19 +1230,19 @@ def finetune_e2(
     else:
         log.info("Checkpointing disabled (checkpoint_dir=None)")
 
-    log.info(f"Starting E2 finetuning: {epochs} epochs")
+    log.info(f"Starting R2G finetuning: {epochs} epochs")
 
     # Import loss functions
-    from ._loss import e2_sparsity_loss, reconstruction_loss
+    from ._loss import r2g_sparsity_loss, reconstruction_loss
 
     # Training loop
     for epoch in range(epochs):
         vae.train()
 
-        epoch_metrics = {"total": 0.0, "rna_recon": 0.0, "e2_l1": 0.0}
+        epoch_metrics = {"total": 0.0, "rna_recon": 0.0, "r2g_l1": 0.0}
         n_batches_seen = 0
 
-        pbar = tqdm(train_cell_loader, desc=f"Finetune E2 {epoch + 1}/{epochs}")
+        pbar = tqdm(train_cell_loader, desc=f"Finetune R2G {epoch + 1}/{epochs}")
         for batch in pbar:
             x_rna = batch["rna"].to(device)
 
@@ -1251,7 +1251,7 @@ def finetune_e2(
             # VAE forward
             output = vae(
                 x_rna,
-                adj_E1,
+                adj_tf2r,
                 use_mean=False,
             )
 
@@ -1265,11 +1265,11 @@ def finetune_e2(
             )
 
             # E2 sparsity only on active links (matching feature_split)
-            loss_e2_sparse = e2_sparsity_loss(
-                vae.adj_E2[e2_link_mask],
+            loss_r2g_sparse = r2g_sparsity_loss(
+                vae.adj_r2g[e2_link_mask],
                 vae.r2g_distances[e2_link_mask],  # type: ignore[arg-type]
             )
-            total_loss = loss_rec_rna + loss_e2_sparse * gamma
+            total_loss = loss_rec_rna + loss_r2g_sparse * gamma
 
             total_loss.backward()
             optimizer.step()
@@ -1277,7 +1277,7 @@ def finetune_e2(
             # Accumulate metrics
             epoch_metrics["total"] += total_loss.item()
             epoch_metrics["rna_recon"] += loss_rec_rna.item()
-            epoch_metrics["e2_l1"] += loss_e2_sparse.item()
+            epoch_metrics["r2g_l1"] += loss_r2g_sparse.item()
             n_batches_seen += 1
 
             pbar.set_postfix(loss=total_loss.item())
@@ -1301,7 +1301,7 @@ def finetune_e2(
 
                 output = vae(
                     x_rna,
-                    adj_E1,
+                    adj_tf2r,
                     use_mean=True,
                 )
 
@@ -1311,12 +1311,12 @@ def finetune_e2(
                     loss_type=loss_rna,
                     dropout_mask=dropout_mask_rna,
                 )
-                loss_e2_sparse = e2_sparsity_loss(
-                    vae.adj_E2[e2_link_mask],
+                loss_r2g_sparse = r2g_sparsity_loss(
+                    vae.adj_r2g[e2_link_mask],
                     vae.r2g_distances[e2_link_mask],  # type: ignore[arg-type]
                 )
 
-                val_loss += (loss_rec_rna + loss_e2_sparse * gamma).item()
+                val_loss += (loss_rec_rna + loss_r2g_sparse * gamma).item()
                 n_val_batches += 1
 
         val_loss /= n_val_batches
@@ -1329,7 +1329,7 @@ def finetune_e2(
         # Track best model
         if val_loss < best_loss:
             best_loss = val_loss
-            best_e2 = vae.adj_E2.data.clone()
+            best_r2g = vae.adj_r2g.data.clone()
             # Save best checkpoint
             if save_best_checkpoints and (checkpoint_dir is not None):
                 best_path = Path(checkpoint_dir) / "finetune_best.pt"
@@ -1337,7 +1337,7 @@ def finetune_e2(
                 torch.save(
                     {
                         "epoch": epoch,
-                        "adj_E2": vae.adj_E2.data,
+                        "adj_r2g": vae.adj_r2g.data,
                         "optimizer_state_dict": optimizer.state_dict(),
                         "scheduler_state_dict": scheduler.state_dict(),
                         "history": history.to_dict(),
@@ -1354,7 +1354,7 @@ def finetune_e2(
             torch.save(
                 {
                     "epoch": epoch,
-                    "adj_E2": vae.adj_E2.data,
+                    "adj_r2g": vae.adj_r2g.data,
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict(),
                     "history": history.to_dict(),
@@ -1364,23 +1364,23 @@ def finetune_e2(
             )
 
     # Remove gradient hook
-    e2_hook_handle.remove()
+    r2g_hook_handle.remove()
 
     # Close logger
     training_logger.close()
 
     # Restore best E2
-    vae.adj_E2.data = best_e2
+    vae.adj_r2g.data = best_r2g
     vae.eval()
 
-    log.info("E2 finetuning completed")
+    log.info("R2G finetuning completed")
 
     # Return updated model with new history
     return DeepSCENICModel(
         vae=vae,
         motifnet=model.motifnet,
         sequence_model=model.sequence_model,
-        adj_E1=adj_E1,
+        adj_tf2r=adj_tf2r,
         config=model.config,
         tf_names=model.tf_names,
         gene_names=model.gene_names,
