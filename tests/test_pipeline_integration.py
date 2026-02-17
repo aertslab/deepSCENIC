@@ -444,8 +444,8 @@ class TestFullPipeline:
 
         # Create raw ATAC data
         n_regions = 20
-        region_names = [f"chr1:{i*1000}-{i*1000+640}" for i in range(15)] + [
-            f"chr7:{i*1000}-{i*1000+640}" for i in range(5)
+        region_names = [f"chr1:{i * 1000}-{i * 1000 + 640}" for i in range(15)] + [
+            f"chr7:{i * 1000}-{i * 1000 + 640}" for i in range(5)
         ]
         atac = ad.AnnData(
             X=np.random.rand(n_cells, n_regions).astype(np.float32),

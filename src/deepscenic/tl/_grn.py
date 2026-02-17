@@ -53,7 +53,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pandas as pd
 import torch
-from skimage.filters import threshold_otsu
 
 if TYPE_CHECKING:
     import mudata as md
@@ -67,9 +66,51 @@ _TF_TARGETS_COLUMNS = ["tf", "region", "tf2r_weight", "gene", "r2g_weight", "com
 _GENE_REGULATORS_COLUMNS = ["gene", "tf", "region", "tf2r_weight", "r2g_weight", "combined_weight"]
 
 
-def _get_otsu_threshold(values: np.ndarray, fallback: float) -> tuple[float, bool]:
+def _otsu_threshold(values: np.ndarray, nbins: int = 256) -> float:
+    """Compute Otsu's threshold for a 1D array.
+
+    Finds the threshold that minimizes intra-class variance.
+
+    Parameters
+    ----------
+    values
+        1D array of values to threshold.
+    nbins
+        Number of histogram bins.
+
+    Returns
+    -------
+    float
+        Optimal threshold value.
     """
-    Compute Otsu threshold on positive values, with fallback on failure.
+    counts, bin_edges = np.histogram(values, bins=nbins)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+    # Cumulative sums for background (class 0) and foreground (class 1)
+    weight_bg = np.cumsum(counts).astype(np.float64)
+    weight_fg = weight_bg[-1] - weight_bg
+
+    # Cumulative means (suppress divide-by-zero; np.where guards the zeros)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mean_bg = np.cumsum(counts * bin_centers)
+        mean_bg = np.where(weight_bg > 0, mean_bg / weight_bg, 0)
+
+        mean_fg_cumsum = np.cumsum((counts * bin_centers)[::-1])[::-1]
+        mean_fg = np.where(weight_fg > 0, mean_fg_cumsum / weight_fg, 0)
+
+    # Between-class variance
+    variance_between = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
+
+    # Degenerate case: all values identical → variance is zero everywhere
+    if variance_between.max() == 0:
+        return float(np.mean(values))
+
+    idx = np.argmax(variance_between)
+    return float(bin_centers[idx])
+
+
+def _get_otsu_threshold(values: np.ndarray, fallback: float) -> tuple[float, bool]:
+    """Compute Otsu threshold on positive values, with fallback on failure.
 
     Returns
     -------
@@ -79,9 +120,8 @@ def _get_otsu_threshold(values: np.ndarray, fallback: float) -> tuple[float, boo
     positive_values = values[values > 0]
     if len(positive_values) > 1:
         try:
-            return float(threshold_otsu(positive_values)), True
+            return float(_otsu_threshold(positive_values)), True
         except ValueError:
-            # Otsu fails if all values are the same
             return fallback, False
     return fallback, False
 

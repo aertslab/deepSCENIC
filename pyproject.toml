@@ -24,28 +24,25 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
 dependencies = [
     # Core scientific
-    "numba >=0.61.2",
-    "numpy>=1.23",
+    "numpy>=2.1",
     "pandas>=2.0,<3.0",  # Pin to 2.x until anndata fully supports pandas 3.0
-    "scipy>=1.10",
-    "scikit-image>=0.20",
+    "scipy>=1.14",
     "scikit-learn>=1.2",
 
     # scverse ecosystem
-    "anndata>=0.12.7",
+    "anndata>=0.12",
     "mudata>=0.2.3",
-    "scanpy>=1.9",
+    "scanpy>=1.11",
 
     # PyTorch ecosystem
-    "torch>=2.0",
-    "torch-geometric>=2.3",
+    "torch>=2.6",
+    "torch-geometric>=2.7",
 
     # Data fetching
     "pooch>=1.6",
@@ -56,28 +53,19 @@ dependencies = [
     # Visualization
     "matplotlib>=3.7",
     "seaborn>=0.12",
-    "upsetplot>=0.8",
 
     # Utilities
     "tqdm>=4.65",
-    "h5py>=3.8",
     "networkx>=3.0",
-
-    # Metrics
-    "torchmetrics>=1.0",
 
     # Genome sequence handling
     "pyfaidx>=0.9",
-    "tangermeme>=1.0.0",
 ]
 
 [project.optional-dependencies]
 enformer = [
     "enformer-pytorch>=0.8",
     "transformers>=4.30,<4.38",  # Pin for all_tied_weights_keys compatibility
-]
-sequence = [
-    "logomaker>=0.8",
 ]
 dev = [
     "pre-commit>=3.0",
@@ -134,7 +122,14 @@ run = "pytest {args:tests}"
 cov = "pytest --cov=src/deepscenic --cov-report=term-missing {args:tests}"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.12"]
+python = ["3.11", "3.12", "3.13"]
+
+# hatch test --all uses this environment (not the custom 'test' env above)
+[tool.hatch.envs.hatch-test]
+features = ["test"]
+
+[[tool.hatch.envs.hatch-test.matrix]]
+python = ["3.11", "3.12", "3.13"]
 
 [tool.hatch.envs.docs]
 features = ["doc"]
@@ -149,7 +144,7 @@ linkcheck = "sphinx-build -b linkcheck docs docs/_build/linkcheck {args}"
 # Ruff configuration
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py311"
 src = ["src"]
 exclude = ["src/legacy", "main.py"]
 

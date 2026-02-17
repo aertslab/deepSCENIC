@@ -63,14 +63,12 @@ def upset_active_enhancers(
     Notes
     -----
     Requires the upsetplot package. Install with: pip install upsetplot
-    or pip install deepscenic[celltype]
     """
     try:
         from upsetplot import UpSet, from_memberships
     except ImportError as e:
         raise ImportError(
-            "upsetplot is required for upset_active_enhancers. "
-            "Install with: pip install upsetplot or pip install deepscenic[celltype]"
+            "upsetplot is required for upset_active_enhancers. Install with: pip install upsetplot"
         ) from e
 
     import matplotlib.pyplot as plt

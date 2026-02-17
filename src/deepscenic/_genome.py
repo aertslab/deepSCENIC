@@ -33,6 +33,7 @@ import random
 from functools import cached_property
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch.utils.data import Dataset
 
@@ -45,6 +46,16 @@ __all__ = [
 ]
 
 log = logging.getLogger("deepscenic.genome")
+
+# Pre-computed one-hot encoding table: maps ASCII byte values to 4-channel one-hot vectors.
+# Approach from CREsted (https://github.com/aertslab/CREsted).
+_HOT_ENCODING_TABLE = np.zeros((256, 4), dtype=np.float32)
+for _i, _base in enumerate("ACGT"):
+    _HOT_ENCODING_TABLE[ord(_base)] = np.eye(4, dtype=np.float32)[_i]
+    _HOT_ENCODING_TABLE[ord(_base.lower())] = np.eye(4, dtype=np.float32)[_i]
+
+# Complement mapping for reverse complement (handles upper and lowercase + N)
+_COMPLEMENT = str.maketrans("ACGTNacgtn", "TGCANtgcan")
 
 # Module-level global genome
 _genome: Genome | None = None
@@ -262,7 +273,7 @@ class Genome:
         Parameters
         ----------
         seq
-            DNA sequence string (uppercase).
+            DNA sequence string (uppercase or lowercase, handles N).
 
         Returns
         -------
@@ -276,27 +287,25 @@ class Genome:
         >>> Genome._reverse_complement("AAAA")
         'TTTT'
         """
-        from tangermeme.utils import reverse_complement
-
-        return reverse_complement(seq)
+        return seq.translate(_COMPLEMENT)[::-1]
 
     @staticmethod
     def _seq_to_onehot(seq: str) -> torch.Tensor:
         """Convert DNA sequence to one-hot encoding.
 
-        Uses tangermeme's encoding with numba-compiled backend.
+        Uses a pre-computed lookup table for vectorized encoding.
+        N bases are encoded as all zeros.
 
         Parameters
         ----------
         seq
-            DNA sequence string (uppercase).
+            DNA sequence string (uppercase or lowercase).
 
         Returns
         -------
         torch.Tensor
             One-hot encoded tensor with shape (4, length).
             Channels are ordered A, C, G, T.
-            N bases are encoded as all zeros.
 
         Examples
         --------
@@ -304,9 +313,9 @@ class Genome:
         >>> onehot.shape
         torch.Size([4, 4])
         """
-        from tangermeme.utils import one_hot_encode
-
-        return one_hot_encode(seq, dtype=torch.float32)
+        seq_bytes = np.frombuffer(seq.encode("ascii"), dtype=np.uint8)
+        onehot = _HOT_ENCODING_TABLE[seq_bytes]  # (seq_len, 4)
+        return torch.from_numpy(onehot).T  # (4, seq_len)
 
 
 class GenomeIntervalDataset(Dataset):
