@@ -1,0 +1,48 @@
+name: Bug report
+description: Report something that is broken or incorrect
+labels: bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Note**: Please read [this guide](https://matthewrocklin.com/blog/work/2018/02/28/minimal-bug-reports)
+        detailing how to provide the necessary information for us to reproduce your bug. In brief:
+          * Please provide exact steps how to reproduce the bug in a clean Python environment.
+          * In case it's not clear what's causing this bug, please provide the data or the data generation procedure.
+          * Sometimes it is not possible to share the data, but usually it is possible to replicate problems on publicly
+            available datasets or to share a subset of your data.
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Report
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: |
+        Which version of packages are you using?
+        Please install `session-info2` and run the following command in a notebook:
+        ```python
+        import session_info2
+        session_info2.session_info(
+            "deepscenic", "anndata", "mudata",
+            "torch", "enformer_pytorch",
+            "scanpy", "numpy", "scipy", "pandas",
+        )
+        ```
+      render: python
+      placeholder: |
+        deepscenic    0.1.0
+        anndata       0.11.3
+        mudata        0.3.1
+        torch         2.6.0
+        enformer_pytorch 0.8.12
+        scanpy        1.10.4
+        numpy         2.2.2
+        scipy         1.15.0
+        pandas        2.2.3
