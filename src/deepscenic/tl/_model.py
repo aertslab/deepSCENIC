@@ -827,7 +827,7 @@ def load_legacy_model(
         seq_loader = build_sequence_dataloader(
             regions=region_names,
             genome=genome,
-            batch_size=1000,
+            batch_size=200,
             shuffle=False,
             shift_augs=(0, 0),  # No augmentation
             rc_aug=False,

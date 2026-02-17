@@ -81,7 +81,7 @@ class SequenceDatasetWithIndex(Dataset):
 def build_cell_dataloader(
     mdata: md.MuData,
     split: str = "train",
-    batch_size: int = 64,
+    batch_size: int = 16,
     shuffle: bool = True,
     balance_class: bool = False,
     class_key: str | None = None,
@@ -196,7 +196,7 @@ def build_cell_dataloader(
 def build_sequence_dataloader(
     regions: list[str],
     genome: Genome | None = None,
-    batch_size: int = 1000,
+    batch_size: int = 200,
     shuffle: bool = True,
     shift_augs: tuple[int, int] = (-3, 3),
     rc_aug: bool = True,
@@ -243,7 +243,7 @@ def build_sequence_dataloader(
     >>> regions = mdata.mod["atac"].var_names.tolist()
     >>> loader = ds.tl._dataloaders.build_sequence_dataloader(
     ...     regions=regions,
-    ...     batch_size=1000,
+    ...     batch_size=200,
     ... )
     """
     from .._genome import GenomeIntervalDataset, get_genome
@@ -284,7 +284,7 @@ def build_sequence_dataloader(
 def build_test_sequence_dataloader(
     mdata: md.MuData,
     genome: Genome | None = None,
-    batch_size: int = 1000,
+    batch_size: int = 200,
     *,
     context_length: int,
     num_workers: int = 0,
