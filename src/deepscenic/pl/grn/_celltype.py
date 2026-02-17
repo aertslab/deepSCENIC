@@ -68,7 +68,7 @@ def upset_active_enhancers(
         from upsetplot import UpSet, from_memberships
     except ImportError as e:
         raise ImportError(
-            "upsetplot is required for upset_active_enhancers. " "Install with: pip install upsetplot"
+            "upsetplot is required for upset_active_enhancers. Install with: pip install upsetplot"
         ) from e
 
     import matplotlib.pyplot as plt

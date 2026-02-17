@@ -402,9 +402,9 @@ def train(
 
     # Validate MuData structure
     if "rna" not in mdata.mod:
-        raise ValueError("MuData missing 'rna' modality. " "Ensure your data has both 'rna' and 'atac' modalities.")
+        raise ValueError("MuData missing 'rna' modality. Ensure your data has both 'rna' and 'atac' modalities.")
     if "atac" not in mdata.mod:
-        raise ValueError("MuData missing 'atac' modality. " "Ensure your data has both 'rna' and 'atac' modalities.")
+        raise ValueError("MuData missing 'atac' modality. Ensure your data has both 'rna' and 'atac' modalities.")
 
     # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run instead of merging them into "."
@@ -1085,9 +1085,9 @@ def finetune_r2g(
 
     # Validate MuData structure
     if "rna" not in mdata.mod:
-        raise ValueError("MuData missing 'rna' modality. " "Ensure your data has both 'rna' and 'atac' modalities.")
+        raise ValueError("MuData missing 'rna' modality. Ensure your data has both 'rna' and 'atac' modalities.")
     if "atac" not in mdata.mod:
-        raise ValueError("MuData missing 'atac' modality. " "Ensure your data has both 'rna' and 'atac' modalities.")
+        raise ValueError("MuData missing 'atac' modality. Ensure your data has both 'rna' and 'atac' modalities.")
 
     # Validate split parameters
     if cell_split not in ("train", "test"):

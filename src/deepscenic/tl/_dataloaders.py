@@ -171,8 +171,7 @@ def build_cell_dataloader(
     if balance_class:
         if class_key is None:
             raise ValueError(
-                "balance_class=True requires class_key to be set. "
-                "Provide the obs column name containing class labels."
+                "balance_class=True requires class_key to be set. Provide the obs column name containing class labels."
             )
         from sklearn.utils.class_weight import compute_class_weight
 
