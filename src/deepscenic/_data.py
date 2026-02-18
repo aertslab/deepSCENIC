@@ -86,6 +86,9 @@ def validate_schema(
         elif rna.var["is_tf"].dtype != bool:
             issues.append("rna.var['is_tf'] should be bool")
 
+        if mode == "training" and "split" not in rna.var.columns:
+            issues.append("rna.var missing 'split' column")
+
     # Check ATAC modality
     if "atac" in mdata.mod:
         atac = mdata.mod["atac"]

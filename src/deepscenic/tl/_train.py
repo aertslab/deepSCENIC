@@ -448,13 +448,12 @@ def train(
     if "split" not in atac.var.columns:
         raise ValueError("ATAC modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
 
-    # Compute gene_indices for reconstruction loss: only TRAIN genes (split='train' or 'both')
-    # while E2 matrix can span ALL genes (E2 sparsity loss applies to all links).
+    # Compute gene_indices for reconstruction loss: only TRAIN genes
+    # (r2g sparsity loss is applied to ALL region-gene links including test genes)
     gene_split = rna.var["split"]
-    # Include genes with split='train' or 'both' (TFs get 'both' by default)
-    train_gene_mask = gene_split.isin(["train", "both"])
+    train_gene_mask = gene_split == "train"
     gene_indices = torch.tensor(np.where(train_gene_mask)[0], dtype=torch.long)
-    log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train + 'both (TFs)' splits)")
+    log.info(f"Using {len(gene_indices)}/{n_genes} genes for reconstruction (train split)")
 
     # Compute region_indices for ATAC reconstruction loss: only TRAIN regions
     region_split = atac.var["split"]
@@ -1139,8 +1138,7 @@ def finetune_r2g(
 
     # Determine which genes and regions match the feature_split
     if feature_split == "train":
-        # Include 'train' and 'both' (TFs get 'both' by default)
-        gene_mask = rna_var["split"].isin(["train", "both"]).values
+        gene_mask = (rna_var["split"] == "train").values
         region_mask = (atac_var["split"] == "train").values
     elif feature_split == "test":
         gene_mask = (rna_var["split"] == "test").values

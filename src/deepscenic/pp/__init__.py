@@ -152,41 +152,38 @@ def split_cells(
 def split_features_by_chromosome(
     mdata: md.MuData,
     test_chromosomes: list[str] | None = None,
-    keep_tfs_in_both: bool = True,
     inplace: bool = True,
 ) -> md.MuData | None:
     """
     Split features (genes/regions) by chromosome for training and evaluation.
 
-    Adds a 'split' column to both `atac.var` and `rna.var` inside `mdata` object.
-    When ``keep_tfs_in_both=True`` (default), TFs get ``split='both'`` to indicate
-    they should be included in both train and test views.
+    Adds a 'split' column to both ``atac.var`` and ``rna.var`` inside ``mdata``.
+    All genes (including TFs) are assigned to ``'train'`` or ``'test'`` based on
+    their chromosome. TFs are always available as encoder input regardless of split
+    (determined by ``is_tf``), but only genes in the current split contribute to
+    reconstruction loss.
 
-    Note: The feature split affects both training and evaluation:
-    - **Reconstruction loss** is computed only on TRAIN genes and TRAIN regions
-    - **E2 sparsity loss** is applied to ALL region→gene links (including test genes)
-    - The split enables evaluation on held-out chromosomes to assess generalization
+    Note: The feature split affects training and evaluation:
 
-    Expects `mdata["rna"].var` to contain "chromosome" column.
-    Run `ds.pp.add_gene_annotation` first to assign gene positions based on TSS.
+    - **Phase 1**: Reconstruction loss on train-chromosome genes/regions only
+    - **Phase 3 (r2g finetuning)**: Reconstruction loss on test-chromosome genes/regions
+    - **r2g sparsity loss** is applied to ALL region→gene links (including test genes)
+
+    Expects ``mdata["rna"].var`` to contain a ``"chromosome"`` column.
+    Run :func:`~deepscenic.pp.add_gene_annotation` first to assign gene positions based on TSS.
 
     Parameters
     ----------
     mdata
         Input multimodal data
     test_chromosomes
-        Chromosomes for test set. Defaults to ["chr7", "chr11", "chr18", "chr19"].
-    keep_tfs_in_both
-        If True (default), transcription factors get ``split='both'`` regardless
-        of their chromosome location. This ensures all TFs are available as
-        encoder input in both train and test views.
-        Set to False for strict chromosome-only splitting.
+        Chromosomes for test set. Defaults to ``["chr7", "chr11", "chr18", "chr19"]``.
     inplace
         Whether to modify in-place
 
     Returns
     -------
-    If inplace=False, returns modified MuData
+    If ``inplace=False``, returns modified MuData.
     """
     if test_chromosomes is None:
         test_chromosomes = ["chr7", "chr11", "chr18", "chr19"]
@@ -207,31 +204,16 @@ def split_features_by_chromosome(
         categories=["train", "test"],
     )
 
-    # RNA: chromosome-based split with optional TF handling
+    # RNA: chromosome-based split (TFs follow chromosome split like all other genes)
     rna = mdata.mod["rna"]
     if "chromosome" not in rna.var.columns:
         raise ValueError(
             "Expects 'chromosome' column in rna.var. Run `ds.pp.add_gene_annotation` first to annotate gene positions based on TSS."
         )
 
-    # Initial chromosome-based assignment
+    # Assign splits based on chromosome
     splits = [_assign_split(c) for c in rna.var["chromosome"]]
-
-    # Override TFs to "both" if requested
-    if keep_tfs_in_both and "is_tf" in rna.var.columns:
-        tf_mask = rna.var["is_tf"].fillna(False)
-        splits = ["both" if tf_mask.iloc[i] else splits[i] for i in range(len(splits))]
-        n_tfs = tf_mask.sum()
-        log.info(f"{n_tfs} TFs assigned to 'both' splits")
-
-        rna.var["split"] = pd.Categorical(splits, categories=["train", "test", "both"])
-    else:
-        rna.var["split"] = pd.Categorical(splits, categories=["train", "test"])
-        if keep_tfs_in_both and "is_tf" not in rna.var.columns:
-            log.warning(
-                "keep_tfs_in_both=True but 'is_tf' column not found in rna.var. "
-                "Run `ds.pp.mark_tfs` first to mark transcription factors."
-            )
+    rna.var["split"] = pd.Categorical(splits, categories=["train", "test"])
 
     # Remove legacy in_both_splits column if it exists
     if "in_both_splits" in rna.var.columns:
@@ -245,10 +227,15 @@ def split_features_by_chromosome(
     # Log summary
     n_atac_test = (atac.var["split"] == "test").sum()
     n_rna_test = (rna.var["split"] == "test").sum()
-    n_rna_both = (rna.var["split"] == "both").sum() if "both" in rna.var["split"].cat.categories else 0
-    log.info(f"Split features by chromosome: {n_atac_test} ATAC regions, {n_rna_test} genes in test set")
-    if n_rna_both > 0:
-        log.info(f"  ({n_rna_both} TFs assigned to 'both' splits)")
+    if "is_tf" in rna.var.columns:
+        tf_mask = rna.var["is_tf"].fillna(False)
+        n_tf_test = (rna.var.loc[tf_mask, "split"] == "test").sum()
+        log.info(
+            f"Split features by chromosome: {n_atac_test} ATAC regions, "
+            f"{n_rna_test} genes ({n_tf_test} TFs) in test set"
+        )
+    else:
+        log.info(f"Split features by chromosome: {n_atac_test} ATAC regions, {n_rna_test} genes in test set")
 
     if not inplace:
         return mdata

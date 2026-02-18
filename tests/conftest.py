@@ -82,19 +82,17 @@ def sample_rna():
     tss_values = [i * 10000 for i in range(25)] + [pd.NA] * 5 + [i * 10000 for i in range(25, 45)]
     adata.var["tss"] = pd.array(tss_values, dtype="Int64")
 
-    # Split column: TFs (genes 0-9) get "both", non-TFs get "train" or "test"
+    # Split column: all genes split by chromosome (TFs included, no special handling)
     # Gene layout: chr1 (0-24), NA (25-29), chr7 (30-39), chr11 (40-49)
-    # TFs: genes 0-9 (all on chr1)
-    # Using chr7 as test chromosome: genes 30-39 should be "test" (non-TFs)
+    # TFs: genes 0-9 (all on chr1) -> "train" (chr1 is train chromosome)
+    # Using chr7 as test chromosome: genes 30-39 should be "test"
     splits = []
     for i in range(n_genes):
-        if i < 10:  # TFs
-            splits.append("both")
-        elif i >= 30 and i < 40:  # chr7 (test chromosome)
+        if i >= 30 and i < 40:  # chr7 (test chromosome)
             splits.append("test")
-        else:  # chr1, NA, chr11 (train chromosomes)
+        else:  # chr1 (incl. TFs), NA, chr11 (train chromosomes)
             splits.append("train")
-    adata.var["split"] = pd.Categorical(splits, categories=["train", "test", "both"])
+    adata.var["split"] = pd.Categorical(splits, categories=["train", "test"])
 
     return adata
 
