@@ -146,7 +146,7 @@ def build_cell_dataloader(
                 "Run ds.pp.split_features_by_chromosome() first."
             )
 
-        rna_var_mask = rna_adata.var["split"].isin([feature_split, "both"])
+        rna_var_mask = rna_adata.var["split"] == feature_split
         atac_var_mask = atac_adata.var["split"] == feature_split
 
         rna = rna_adata[:, rna_var_mask].X

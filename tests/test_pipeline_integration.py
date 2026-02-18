@@ -74,10 +74,12 @@ class TestPreprocessingPipeline:
         chr7_mask = preprocessed_mdata["atac"].var["chromosome"] == "chr7"
         assert all(preprocessed_mdata["atac"].var.loc[chr7_mask, "split"] == "test")
 
-        # RNA: TFs should be "both"
+        # RNA: TFs follow chromosome split like all genes (no "both" category)
         assert "split" in preprocessed_mdata["rna"].var.columns
+        rna_splits = preprocessed_mdata["rna"].var["split"]
+        assert set(rna_splits.cat.categories) == {"train", "test"}
         tf_mask = preprocessed_mdata["rna"].var["is_tf"]
-        assert all(preprocessed_mdata["rna"].var.loc[tf_mask, "split"] == "both")
+        assert rna_splits.loc[tf_mask].isin(["train", "test"]).all()
 
     def test_compute_r2g_creates_penalty_matrix(self, preprocessed_mdata):
         """Verify R2G computation creates valid penalty matrix."""

@@ -94,3 +94,10 @@ def test_validate_complete_schema(sample_mdata):
     """Test that a complete schema passes validation."""
     issues = validate_schema(sample_mdata, mode="training", strict=False)
     assert len(issues) == 0
+
+
+def test_validate_missing_rna_split(sample_mdata):
+    """Test error when rna.var split column is missing."""
+    del sample_mdata.mod["rna"].var["split"]
+    issues = validate_schema(sample_mdata, mode="training", strict=False)
+    assert "rna.var missing 'split' column" in issues

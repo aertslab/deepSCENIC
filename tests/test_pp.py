@@ -548,8 +548,8 @@ class TestSplitFeaturesByChromosome:
         assert atac_train == 20
         assert atac_test == 10
 
-        # Check RNA splits with TFs getting "both":
-        # - Genes 0-9 (10): TFs get "both"
+        # Check RNA splits — all genes (including TFs) split by chromosome:
+        # - Genes 0-9 (10): TFs on chr1 -> train
         # - Genes 10-24 (15) chr1: train
         # - Genes 25-29 (5) NA: train (unannotated default)
         # - Genes 30-39 (10) chr7: test
@@ -557,11 +557,10 @@ class TestSplitFeaturesByChromosome:
         rna_var = mdata.mod["rna"].var
         rna_train = (rna_var["split"] == "train").sum()
         rna_test = (rna_var["split"] == "test").sum()
-        rna_both = (rna_var["split"] == "both").sum()
 
-        assert rna_both == 10  # 10 TFs
-        assert rna_train == 30  # 15 (chr1 non-TF) + 5 (NA) + 10 (chr11)
-        assert rna_test == 10  # chr7 only (non-TFs)
+        assert rna_train == 40  # 10 (TFs chr1) + 15 (chr1 non-TF) + 5 (NA) + 10 (chr11)
+        assert rna_test == 10  # chr7 only
+        assert "both" not in rna_var["split"].cat.categories
 
     def test_split_features_multiple_test_chromosomes(self, sample_rna, sample_atac):
         """Test splitting with multiple test chromosomes."""
@@ -572,7 +571,7 @@ class TestSplitFeaturesByChromosome:
 
         ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7", "chr11"])
 
-        # RNA: chr1 (30) train, chr7 (10) + chr11 (10) test
+        # RNA: chr7 (10) + chr11 (10) = 20 test genes (TFs are all on chr1, so train)
         rna_test = (mdata.mod["rna"].var["split"] == "test").sum()
         assert rna_test == 20
 
@@ -610,7 +609,7 @@ class TestSplitFeaturesByChromosome:
         del mdata.mod["rna"].var["split"]
 
         # Set some chromosomes to NA for NON-TF genes (genes 10-14)
-        # Note: genes 0-9 are TFs and would get "both" regardless of chromosome
+        # Note: genes 0-9 are TFs on chr1, they get "train" (chr1 is train chromosome)
         na_genes = mdata.mod["rna"].var_names[10:15]
         mdata.mod["rna"].var.loc[na_genes, "chromosome"] = pd.NA
 
@@ -624,72 +623,32 @@ class TestSplitFeaturesByChromosome:
         chr7_genes = mdata.mod["rna"].var[mdata.mod["rna"].var["chromosome"] == "chr7"].index
         assert (mdata.mod["rna"].var.loc[chr7_genes, "split"] == "test").all()
 
-    def test_split_features_keep_tfs_in_both_default(self, sample_rna, sample_atac):
-        """Test that keep_tfs_in_both=True (default) assigns TFs to split='both'."""
+    def test_split_features_tfs_follow_chromosome_split(self, sample_rna, sample_atac):
+        """Test that TFs are split by chromosome like all other genes."""
         mdata = ds.pp.create_mudata(rna=sample_rna, atac=sample_atac)
 
         del mdata.mod["atac"].var["split"]
         del mdata.mod["rna"].var["split"]
 
-        # sample_rna has is_tf column with first 10 genes marked as TFs
-        # and chr7 has 10 genes (indices 30-39), some of which are NOT TFs
-        ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"])
-
-        rna_var = mdata.mod["rna"].var
-
-        # All TFs should have split="both"
-        tf_mask = rna_var["is_tf"]
-        assert (rna_var.loc[tf_mask, "split"] == "both").all()
-
-        # Non-TFs should have "train" or "test" (not "both")
-        non_tf_mask = ~rna_var["is_tf"]
-        assert rna_var.loc[non_tf_mask, "split"].isin(["train", "test"]).all()
-
-        # No in_both_splits column (legacy column removed)
-        assert "in_both_splits" not in rna_var.columns
-
-    def test_split_features_keep_tfs_in_both_false(self, sample_rna, sample_atac):
-        """Test that keep_tfs_in_both=False does strict chromosome splitting."""
-        mdata = ds.pp.create_mudata(rna=sample_rna, atac=sample_atac)
-
-        del mdata.mod["atac"].var["split"]
-        del mdata.mod["rna"].var["split"]
-
-        ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"], keep_tfs_in_both=False)
-
-        # Should only have "train" and "test", no "both"
-        assert set(mdata.mod["rna"].var["split"].cat.categories) == {"train", "test"}
-        assert "both" not in mdata.mod["rna"].var["split"].values
-
-        # No in_both_splits column
-        assert "in_both_splits" not in mdata.mod["rna"].var.columns
-
-    def test_split_features_keep_tfs_counts_correctly(self, sample_rna, sample_atac):
-        """Test that TFs get split='both' regardless of chromosome."""
-        mdata = ds.pp.create_mudata(rna=sample_rna, atac=sample_atac)
-
-        del mdata.mod["atac"].var["split"]
-        del mdata.mod["rna"].var["split"]
-
-        # Manually mark some genes on chr7 as TFs to test the overlap
-        # sample_rna: genes 30-39 are on chr7, genes 40-49 are on chr11
-        # By default, only genes 0-9 are TFs (on chr1)
-        # Let's also mark gene 30 (on chr7) as a TF
+        # Mark gene 30 (on chr7) as a TF to test TF on test chromosome
         mdata.mod["rna"].var.loc["Gene_30", "is_tf"] = True
 
         ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7"])
 
-        # Gene_30 is on chr7 but is a TF, so should have split="both"
-        assert mdata.mod["rna"].var.loc["Gene_30", "split"] == "both"
+        # Gene_30 is on chr7 (test) and IS a TF -> split="test"
+        assert mdata.mod["rna"].var.loc["Gene_30", "split"] == "test"
 
-        # Gene_31 is on chr7 and is NOT a TF, so should have split="test"
+        # Gene_31 is on chr7 (test) and is NOT a TF -> split="test"
         assert mdata.mod["rna"].var.loc["Gene_31", "split"] == "test"
 
-        # Gene_0 is on chr1 and is a TF, so should have split="both"
-        assert mdata.mod["rna"].var.loc["Gene_0", "split"] == "both"
+        # Gene_0 is on chr1 (train) and is a TF -> split="train"
+        assert mdata.mod["rna"].var.loc["Gene_0", "split"] == "train"
 
-        # Gene_40 is on chr11 (train chromosome) and is NOT a TF, so split="train"
+        # Gene_40 is on chr11 (train) and is NOT a TF -> split="train"
         assert mdata.mod["rna"].var.loc["Gene_40", "split"] == "train"
+
+        # No "both" category
+        assert "both" not in mdata.mod["rna"].var["split"].cat.categories
 
 
 class TestFilterRegionsByCelltype:
