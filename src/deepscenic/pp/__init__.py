@@ -167,7 +167,7 @@ def split_features_by_chromosome(
 
     - **Phase 1**: Reconstruction loss on train-chromosome genes/regions only
     - **Phase 3 (r2g finetuning)**: Reconstruction loss on test-chromosome genes/regions
-    - **r2g sparsity loss** is applied to ALL region→gene links (including test genes)
+    - **r2g sparsity loss** is applied to train-chromosome links only (matching reconstruction scope)
 
     Expects ``mdata["rna"].var`` to contain a ``"chromosome"`` column.
     Run :func:`~deepscenic.pp.add_gene_annotation` first to assign gene positions based on TSS.
