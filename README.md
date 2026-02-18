@@ -70,10 +70,9 @@ ds.register_genome(fasta_path="/path/to/hg38.fa")
 # Phase 1: Train full model (VAE + MotifNet + Enformer)
 model = ds.tl.train(mdata, epochs=100, device="cuda")
 
-# Phase 2: Finetune r2g on held-out cells
+# Phase 2: Refit r2g with fresh tf2r on training features
 model = ds.tl.finetune_r2g(
     model, mdata,
-    cell_split="test",      # Use test cells
     feature_split="train",  # Train features (genes/regions)
     epochs=500,
 )
@@ -81,7 +80,6 @@ model = ds.tl.finetune_r2g(
 # Phase 3: Finetune r2g on test chromosomes
 model = ds.tl.finetune_r2g(
     model, mdata,
-    cell_split="train",     # Use train cells
     feature_split="test",   # Test features (held-out chromosomes)
     epochs=500,
 )
