@@ -515,7 +515,7 @@ def train(
         raise ValueError("ATAC modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
 
     # Compute gene_indices for reconstruction loss: only TRAIN genes
-    # (r2g sparsity loss is applied to ALL region-gene links including test genes)
+    # (r2g sparsity loss is also scoped to train-only links below)
     gene_split = rna.var["split"]
     train_gene_mask = gene_split == "train"
     gene_indices = torch.tensor(np.where(train_gene_mask)[0], dtype=torch.long)
@@ -531,6 +531,14 @@ def train(
     r2g_coo = mdata.uns["r2g"]["matrix"].tocoo()
     r2g_indices = torch.tensor(np.array([r2g_coo.row, r2g_coo.col]), dtype=torch.long)
     r2g_distances = torch.tensor(r2g_coo.data).float()
+
+    # Compute train link mask for r2g sparsity loss.
+    # During Phase 1, sparsity only applies to links where BOTH region AND gene
+    # are in the train split (matching legacy behavior where the r2g penalty file
+    # only contained train-region rows on train chromosomes).
+    train_r2g_link_mask = torch.tensor(train_region_mask.values[r2g_coo.row] & train_gene_mask.values[r2g_coo.col])
+    n_train_links = train_r2g_link_mask.sum().item()
+    log.info(f"R2G sparsity on {n_train_links}/{len(r2g_distances)} links (train split)")
 
     # Batch correction
     n_batches = 0
@@ -551,6 +559,7 @@ def train(
         binary_atac=model_config.binary_atac,
         n_batches=n_batches,
     ).to(device)
+    train_r2g_link_mask = train_r2g_link_mask.to(device)
 
     # Initialize sequence models (custom or default Enformer)
     if model_config.sequence_model is not None:
@@ -786,8 +795,8 @@ def train(
                 mu=output.mu,
                 logvar=output.logvar,
                 adj_tf2r_batch=adj_tf2r_batch,
-                adj_r2g=vae.adj_r2g,
-                r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
+                adj_r2g=vae.adj_r2g[train_r2g_link_mask],
+                r2g_distances=vae.r2g_distances[train_r2g_link_mask],  # type: ignore[arg-type]
                 gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                 region_indices=vae.region_indices,  # type: ignore[arg-type]
                 loss_rna=loss_rna,
@@ -888,8 +897,8 @@ def train(
                     mu=output.mu,
                     logvar=output.logvar,
                     adj_tf2r_batch=adj_tf2r_cache,
-                    adj_r2g=vae.adj_r2g,
-                    r2g_distances=vae.r2g_distances,  # type: ignore[arg-type]
+                    adj_r2g=vae.adj_r2g[train_r2g_link_mask],
+                    r2g_distances=vae.r2g_distances[train_r2g_link_mask],  # type: ignore[arg-type]
                     gene_indices=vae.gene_indices,  # type: ignore[arg-type]
                     region_indices=vae.region_indices,  # type: ignore[arg-type]
                     loss_rna=loss_rna,

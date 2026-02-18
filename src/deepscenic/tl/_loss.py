@@ -214,8 +214,7 @@ def compute_total_loss(
         Distance penalties for region->gene links
     gene_indices
         Indices of TRAIN genes to compute RNA reconstruction loss on.
-        Only these genes contribute to the reconstruction loss, while E2 links
-        to all genes still receive sparsity regularization.
+        Only these genes contribute to the reconstruction loss.
     region_indices
         Indices of TRAIN regions to compute ATAC reconstruction loss on.
         Only these regions contribute to the reconstruction loss.
@@ -249,8 +248,8 @@ def compute_total_loss(
         Dictionary with all loss components and total
     """
     # Reconstruction losses - filter both prediction and target to train features
-    # This ensures reconstruction loss only evaluates on held-in features,
-    # while E2 sparsity loss still applies to ALL links (including to test genes).
+    # This ensures reconstruction loss only evaluates on held-in features.
+    # E2 sparsity loss scope depends on what adj_r2g/r2g_distances are passed in.
     loss_rec_rna = (
         reconstruction_loss(x_rna_rec[:, gene_indices], x_rna[:, gene_indices], loss_rna, dropout_mask_rna) * rna_tau
     )
