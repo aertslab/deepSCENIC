@@ -207,11 +207,10 @@ class TestTrainingPipeline:
         """Verify r2g finetuning works with trained model."""
         model = pipeline_trained_model
 
-        # Finetune on test cells
+        # Phase 2: finetune on train features (with tf2r recomputation)
         model = ds.tl.finetune_r2g(
             model,
             preprocessed_mdata,
-            cell_split="test",
             feature_split="train",
             epochs=1,
         )

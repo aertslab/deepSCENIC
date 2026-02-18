@@ -182,6 +182,72 @@ def _init_tf2r_cache(
     return adj_tf2r
 
 
+def _recompute_tf2r(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    device: str,
+    batch_size: int = 200,
+) -> torch.Tensor:
+    """Recompute tf2r matrix from scratch using the model's sequence model and MotifNet.
+
+    After Phase 1 training, the cached tf2r matrix may be partially stale for
+    train regions (each region was last updated at different points during the
+    final epoch). This function runs ALL regions through the sequence model and
+    MotifNet with the final trained weights to produce a fully up-to-date tf2r.
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel with sequence_model and motifnet.
+    mdata
+        MuData with ATAC modality containing region coordinates.
+    device
+        Device to use for computation.
+    batch_size
+        Number of sequences per batch for inference.
+
+    Returns
+    -------
+    torch.Tensor
+        Fresh tf2r matrix of shape (n_regions, n_tfs).
+    """
+    sequence_model = model.sequence_model.to(device)
+    motifnet = model.motifnet.to(device)
+    sequence_model.eval()
+    motifnet.eval()
+
+    all_region_names = list(mdata.mod["atac"].var_names)
+    n_regions = len(all_region_names)
+
+    seq_loader = build_sequence_dataloader(
+        regions=all_region_names,
+        batch_size=batch_size,
+        shuffle=False,
+        shift_augs=(0, 0),
+        rc_aug=False,
+        context_length=model.config.seq_len,
+    )
+
+    adj_tf2r = torch.zeros(n_regions, motifnet.n_tfs, device=device)
+
+    with torch.no_grad():
+        for sequences, seq_idx in tqdm(seq_loader, desc="Recomputing tf2r"):
+            sequences = sequences.to(device)
+            emb = _get_sequence_embeddings(
+                sequence_model, sequences, model.config.bottleneck_size, model.config.emb_len
+            )
+            tf_pred = motifnet(emb)
+            adj_tf2r[seq_idx] = tf_pred
+
+    # Free GPU memory — sequence model and motifnet not needed during finetuning
+    sequence_model.cpu()
+    motifnet.cpu()
+    if device != "cpu":
+        torch.cuda.empty_cache()
+
+    return adj_tf2r
+
+
 class SequenceIterator:
     """Iterator over sequence dataloader that auto-resets when exhausted."""
 
@@ -985,7 +1051,6 @@ def finetune_r2g(
     model: DeepSCENICModel,
     mdata: md.MuData,
     *,
-    cell_split: str = "test",
     feature_split: str = "train",
     epochs: int = 500,
     batch_size: int = 16,
@@ -1006,8 +1071,20 @@ def finetune_r2g(
 ) -> DeepSCENICModel:
     """Finetune the region->gene matrix.
 
-    Phases 2 and 3 of the training workflow. Freezes all model parameters
-    except the region->gene weights and trains with ReduceLROnPlateau scheduler.
+    Phases 2 and 3 of the training workflow. Recomputes tf2r from scratch
+    using the trained sequence model and MotifNet, then freezes all model
+    parameters except the region->gene weights and optimizes with
+    ReduceLROnPlateau scheduler.
+
+    Phase 2 (``feature_split="train"``): Refit r2g on training features
+    with a fully updated tf2r matrix. This compensates for partial tf2r
+    cache staleness from Phase 1 training, where train-region tf2r values
+    are updated incrementally in batches rather than all at once.
+
+    Phase 3 (``feature_split="test"``): Fit r2g on held-out chromosome
+    features to evaluate cross-chromosome generalization.
+
+    Both phases train on train cells and validate on test cells.
 
     Parameters
     ----------
@@ -1015,10 +1092,6 @@ def finetune_r2g(
         Trained DeepSCENICModel from ds.tl.train().
     mdata
         MuData with preprocessed RNA + ATAC data.
-    cell_split
-        Which cells to use: "train" or "test".
-        - Phase 2: cell_split="test" (cross-cell-type generalization)
-        - Phase 3: cell_split="train" (test chromosome)
     feature_split
         Which features to use: "train" or "test".
         - Phase 2: feature_split="train" (train regions/genes)
@@ -1034,7 +1107,7 @@ def finetune_r2g(
     reinit_r2g
         If True, reinitialize region->gene weights to near-zero before finetuning.
     gamma
-        E2 sparsity weight.
+        R2G sparsity weight.
     loss_rna
         RNA loss type: 'mse', 'mae', 'cosine'.
     dropout_mask_rna
@@ -1060,20 +1133,19 @@ def finetune_r2g(
     Returns
     -------
     DeepSCENICModel
-        Model with finetuned E2 matrix.
+        Model with finetuned r2g matrix and recomputed tf2r.
 
     Examples
     --------
-    Phase 2: R2G finetuning on cross-cell-type validation:
+    Phase 2: Refit r2g with fresh tf2r on training features:
 
     >>> model = ds.tl.train(mdata, epochs=100)
-    >>> model = ds.tl.finetune_r2g(model, mdata, cell_split="test", epochs=500)
+    >>> model = ds.tl.finetune_r2g(model, mdata, feature_split="train", epochs=500)
 
-    Phase 3: region->gene finetuning on test chromosome:
+    Phase 3: Fit r2g on held-out chromosomes:
 
     >>> model = ds.tl.finetune_r2g(
     ...     model, mdata,
-    ...     cell_split="train",
     ...     feature_split="test",
     ...     epochs=500,
     ... )
@@ -1089,21 +1161,18 @@ def finetune_r2g(
         raise ValueError("MuData missing 'atac' modality. Ensure your data has both 'rna' and 'atac' modalities.")
 
     # Validate split parameters
-    if cell_split not in ("train", "test"):
-        raise ValueError(f"cell_split must be 'train' or 'test', got '{cell_split}'")
     if feature_split not in ("train", "test"):
         raise ValueError(f"feature_split must be 'train' or 'test', got '{feature_split}'")
 
     # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run
-    _phase_name = f"finetune_r2g_cell-{cell_split}_feat-{feature_split}"
+    _phase_name = f"finetune_r2g_feat-{feature_split}"
     _phase_log_dir = str(Path(log_dir) / _phase_name)
     _logger_kwargs = {"log_dir": _phase_log_dir}
     if logger_kwargs:
         _logger_kwargs.update(logger_kwargs)
     training_logger = get_logger(logger, **_logger_kwargs)
     hyperparams = {
-        "cell_split": cell_split,
         "feature_split": feature_split,
         "epochs": epochs,
         "batch_size": batch_size,
@@ -1114,9 +1183,12 @@ def finetune_r2g(
     }
     training_logger.log_hyperparams(hyperparams)
 
-    # Move model to device
+    # Recompute tf2r from scratch using final model weights
+    log.info("Recomputing tf2r matrix from sequence model...")
+    adj_tf2r = _recompute_tf2r(model, mdata, device)
+
+    # Move VAE to device
     vae = model.vae.to(device)
-    adj_tf2r = model.adj_tf2r.to(device)
 
     # Freeze all parameters except adj_r2g
     for name, param in vae.named_parameters():
@@ -1178,27 +1250,26 @@ def finetune_r2g(
     # Build dataloaders WITHOUT feature filtering
     # The VAE needs all genes for TF indexing and E2 computation.
     # The feature_split is applied via gene_indices (loss) and e2_link_mask (gradients).
+    # Always train on train cells, validate on test cells (matching legacy behavior).
     train_cell_loader = build_cell_dataloader(
         mdata,
-        split=cell_split,
+        split="train",
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         feature_split=None,  # Don't filter - VAE needs all genes
     )
 
-    # For validation, use the opposite cell split
-    val_cell_split = "train" if cell_split == "test" else "test"
     val_cell_loader = build_cell_dataloader(
         mdata,
-        split=val_cell_split,
+        split="test",
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
         feature_split=None,  # Don't filter - VAE needs all genes
     )
 
-    log.info(f"R2G finetuning: cells={cell_split}, features={feature_split}")
+    log.info(f"R2G finetuning: features={feature_split}")
 
     # Single optimizer for E2 only
     optimizer = Adam([vae.adj_r2g], lr=lr)
