@@ -19,11 +19,10 @@ Cell-Type Aware Extraction
 --------------------------
 For cell-type specific GRN analysis, use these functions in order:
 
-1. compute_celltype_enhancer_activity: Mean enhancer activity per cell type
-2. identify_active_enhancers: Otsu threshold to find active enhancers
-3. compute_tf_activity_scores: TF activity weighted by E1 to active enhancers
-4. identify_key_tfs: Otsu threshold to identify key TFs
-5. build_grn_for_tfs: Build GRN for selected TFs
+1. identify_active_enhancers: Wilcoxon differential analysis to find active enhancers
+2. compute_tf_activity_scores: TF activity weighted by tf2r to active enhancers
+3. identify_key_tfs: Otsu threshold to identify key TFs
+4. build_grn_for_tfs: Build GRN for selected TFs
 
 Example
 -------
@@ -38,8 +37,7 @@ Example
 >>> sox10_targets = ds.tl.get_tf_targets(model, "SOX10")
 >>>
 >>> # Cell-type aware workflow
->>> enh_activity = ds.tl.compute_celltype_enhancer_activity(model, mdata, "celltype")
->>> active_enh = ds.tl.identify_active_enhancers(enh_activity)
+>>> active_enh = ds.tl.identify_active_enhancers(model, mdata, "celltype")
 >>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enh)
 >>> key_tfs = ds.tl.identify_key_tfs(tf_scores)
 >>> grn_df = ds.tl.build_grn_for_tfs(model, key_tfs)
@@ -443,14 +441,21 @@ def get_gene_regulators(
 # =============================================================================
 
 
-def compute_celltype_enhancer_activity(
+def identify_active_enhancers(
     model: DeepSCENICModel,
     mdata: md.MuData,
     celltype_key: str,
+    top_n: int | None = 3000,
+    logfc_threshold: float | None = None,
+    pval_threshold: float = 0.05,
     key_prefix: str = "X_deepscenic_",
-) -> pd.DataFrame:
+) -> dict[str, list[str]]:
     """
-    Compute mean enhancer activity per cell type.
+    Identify active enhancers per cell type using differential analysis.
+
+    Uses the Wilcoxon rank-sum test (via scanpy's rank_genes_groups) to find
+    enhancers that are differentially active in each cell type compared to
+    all others.
 
     Parameters
     ----------
@@ -460,74 +465,56 @@ def compute_celltype_enhancer_activity(
         MuData with RNA modality
     celltype_key
         Column in mdata.obs containing cell type labels
+    top_n
+        Maximum number of active enhancers per cell type.
+        Applied after logfc/pval filtering. If None, no limit. Default 3000.
+    logfc_threshold
+        Minimum log fold change threshold. If None, no logFC filter.
+    pval_threshold
+        Maximum adjusted p-value threshold. Default 0.05.
     key_prefix
         Prefix for obsm keys. Default: "X_deepscenic_"
-
-    Returns
-    -------
-    pd.DataFrame
-        Mean enhancer activity (n_regions, n_celltypes)
-        Index: region names, Columns: cell type names
-    """
-    from ._inference import to_latent
-
-    # Get enhancer activity from mdata.obsm, computing if needed
-    enh_act_key = f"{key_prefix}enh_act"
-    if enh_act_key not in mdata.obsm:
-        to_latent(model, mdata, key_prefix=key_prefix)
-    enh_act = mdata.obsm[enh_act_key]  # (n_cells, n_regions)
-
-    # Get cell type labels
-    celltypes = mdata.obs[celltype_key]
-    unique_celltypes = celltypes.unique()
-
-    # Compute mean activity per cell type
-    results = {}
-    for ct in unique_celltypes:
-        mask = celltypes == ct
-        results[ct] = enh_act[mask.values].mean(axis=0)
-
-    return pd.DataFrame(
-        results,
-        index=model.region_names,  # type: ignore[arg-type]
-    )
-
-
-def identify_active_enhancers(
-    enhancer_activity: pd.DataFrame,
-    method: str = "otsu",
-) -> dict[str, list[str]]:
-    """
-    Identify active enhancers per cell type using Otsu thresholding.
-
-    Parameters
-    ----------
-    enhancer_activity
-        Mean enhancer activity from compute_celltype_enhancer_activity()
-    method
-        Thresholding method, currently only "otsu" supported
 
     Returns
     -------
     dict[str, list[str]]
         Dictionary mapping cell type → list of active region names
     """
-    if method != "otsu":
-        raise ValueError(f"Unknown method: {method}. Only 'otsu' is supported.")
+    import scanpy as sc
 
+    from ._inference import to_latent
+
+    # Get enhancer activity, computing if needed
+    enh_act_key = f"{key_prefix}enh_act"
+    if enh_act_key not in mdata.obsm:
+        to_latent(model, mdata, key_prefix=key_prefix)
+    enh_act = mdata.obsm[enh_act_key]
+
+    # Build AnnData of per-cell enhancer activity
+    ad_enh = sc.AnnData(
+        X=enh_act,
+        obs=mdata.obs[[celltype_key]].copy(),
+    )
+    ad_enh.var_names = list(model.region_names)
+
+    # Run Wilcoxon rank-sum test
+    sc.tl.rank_genes_groups(ad_enh, celltype_key, method="wilcoxon")
+
+    # Extract active enhancers per cell type
     active_enhancers = {}
+    for ct in ad_enh.obs[celltype_key].unique():
+        df = sc.get.rank_genes_groups_df(ad_enh, group=ct)
 
-    for celltype in enhancer_activity.columns:
-        activity = enhancer_activity[celltype].abs()
-        thresh, used_otsu = _get_otsu_threshold(activity.values, fallback=0.0)
+        # Apply filters
+        if pval_threshold is not None:
+            df = df[df["pvals_adj"] < pval_threshold]
+        if logfc_threshold is not None:
+            df = df[df["logfoldchanges"] > logfc_threshold]
+        if top_n is not None:
+            df = df.head(top_n)
 
-        if used_otsu:
-            logger.info(f"Cell type '{celltype}': Otsu enhancer threshold = {thresh:.4f}")
-        else:
-            logger.info(f"Cell type '{celltype}': Otsu failed, using threshold = {thresh:.4f}")
-
-        active = activity[activity > thresh].index.tolist()
-        active_enhancers[celltype] = active
+        active_enhancers[ct] = df["names"].tolist()
+        logger.info(f"Cell type '{ct}': {len(active_enhancers[ct])} active enhancers")
 
     return active_enhancers
 

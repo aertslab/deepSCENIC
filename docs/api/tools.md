@@ -82,7 +82,6 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 For cell-type specific GRN analysis, use these functions in order:
 
 ```{eval-rst}
-.. autofunction:: deepscenic.tl.compute_celltype_enhancer_activity
 .. autofunction:: deepscenic.tl.identify_active_enhancers
 .. autofunction:: deepscenic.tl.compute_tf_activity_scores
 .. autofunction:: deepscenic.tl.identify_key_tfs

@@ -7,7 +7,6 @@ import pytest
 from deepscenic.tl._grn import (
     _get_otsu_threshold,
     build_grn_for_tfs,
-    compute_celltype_enhancer_activity,
     compute_tf_activity_scores,
     extract_grn,
     extract_r2g_matrix,
@@ -223,50 +222,33 @@ class TestGetTFTargetsExtended:
 # =============================================================================
 
 
-class TestComputeCelltypeEnhancerActivity:
-    """Tests for compute_celltype_enhancer_activity."""
-
-    def test_output_shape(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Output should have regions as index, celltypes as columns."""
-        mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
-        result = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
-
-        assert list(result.index) == mock_deepscenic_model.region_names
-        assert set(result.columns) == {"A", "B"}
-
-    def test_output_is_dataframe(self, mock_deepscenic_model, mock_mdata_for_model):
-        """Output should be a DataFrame."""
-        mock_mdata_for_model.obs["celltype"] = ["TypeA"] * len(mock_mdata_for_model.obs)
-        result = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
-
-        assert isinstance(result, pd.DataFrame)
-
-
 class TestIdentifyActiveEnhancers:
     """Tests for identify_active_enhancers."""
 
-    def test_returns_dict(self):
+    def test_returns_dict(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should return dict mapping celltype to region list."""
-        activity = pd.DataFrame(
-            {
-                "A": [0.1, 0.2, 0.8, 0.9],
-                "B": [0.5, 0.6, 0.1, 0.2],
-            },
-            index=["r1", "r2", "r3", "r4"],
-        )
-
-        result = identify_active_enhancers(activity)
-
+        mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
+        result = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         assert isinstance(result, dict)
         assert "A" in result and "B" in result
         assert all(isinstance(v, list) for v in result.values())
 
-    def test_invalid_method_raises(self):
-        """Should raise error for invalid method."""
-        activity = pd.DataFrame({"A": [0.1, 0.2]}, index=["r1", "r2"])
+    def test_top_n_limits_results(self, mock_deepscenic_model, mock_mdata_for_model):
+        """top_n should cap the number of active enhancers returned per cell type."""
+        mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
+        result = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype", top_n=2)
+        for regions in result.values():
+            assert len(regions) <= 2
 
-        with pytest.raises(ValueError, match="Unknown method"):
-            identify_active_enhancers(activity, method="invalid")
+    def test_pval_filtering(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Stricter pval threshold should return fewer or equal enhancers."""
+        mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
+        strict = identify_active_enhancers(
+            mock_deepscenic_model, mock_mdata_for_model, "celltype", pval_threshold=1e-10
+        )
+        loose = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype", pval_threshold=1.0)
+        for ct in strict:
+            assert len(strict[ct]) <= len(loose[ct])
 
 
 class TestComputeTFActivityScores:
@@ -276,10 +258,7 @@ class TestComputeTFActivityScores:
         """Output should have TFs as index, celltypes as columns."""
         mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
 
-        # First compute enhancer activity and identify active enhancers
-        enh_activity = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
-        active_enh = identify_active_enhancers(enh_activity)
-
+        active_enh = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         result = compute_tf_activity_scores(mock_deepscenic_model, mock_mdata_for_model, "celltype", active_enh)
 
         assert list(result.index) == mock_deepscenic_model.tf_names
@@ -356,26 +335,21 @@ class TestCelltypeWorkflowIntegration:
         n_cells = len(mock_mdata_for_model.obs)
         mock_mdata_for_model.obs["celltype"] = ["TypeA", "TypeB"] * (n_cells // 2)
 
-        # Step 1: Compute enhancer activity
-        enh_activity = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
-        assert enh_activity.shape[0] > 0
-        assert set(enh_activity.columns) == {"TypeA", "TypeB"}
-
-        # Step 2: Identify active enhancers
-        active_enh = identify_active_enhancers(enh_activity)
+        # Step 1: Identify active enhancers
+        active_enh = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         assert isinstance(active_enh, dict)
         assert "TypeA" in active_enh and "TypeB" in active_enh
 
-        # Step 3: Compute TF scores
+        # Step 2: Compute TF scores
         tf_scores = compute_tf_activity_scores(mock_deepscenic_model, mock_mdata_for_model, "celltype", active_enh)
         assert tf_scores.shape[0] > 0
         assert set(tf_scores.columns) == {"TypeA", "TypeB"}
 
-        # Step 4: Identify key TFs
+        # Step 3: Identify key TFs
         key_tfs = identify_key_tfs(tf_scores)
         assert isinstance(key_tfs, list)
 
-        # Step 5: Build GRN (only if we have key TFs)
+        # Step 4: Build GRN (only if we have key TFs)
         if key_tfs:
             grn = build_grn_for_tfs(mock_deepscenic_model, key_tfs)
             expected_cols = ["TF", "region", "gene", "tf2r_score", "r2g_score", "tf2g_score"]
@@ -385,8 +359,5 @@ class TestCelltypeWorkflowIntegration:
         """Workflow should work with single cell type."""
         mock_mdata_for_model.obs["celltype"] = ["SingleType"] * len(mock_mdata_for_model.obs)
 
-        enh_activity = compute_celltype_enhancer_activity(mock_deepscenic_model, mock_mdata_for_model, "celltype")
-        assert "SingleType" in enh_activity.columns
-
-        active_enh = identify_active_enhancers(enh_activity)
+        active_enh = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         assert "SingleType" in active_enh
