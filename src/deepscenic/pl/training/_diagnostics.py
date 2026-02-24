@@ -432,8 +432,7 @@ def tf_activity_clustermap(
     >>> model = ds.tl.load_model("model.pt")
     >>>
     >>> # Compute TF activity scores
-    >>> enh_activity = ds.tl.compute_celltype_enhancer_activity(model, mdata, "celltype")
-    >>> active_enh = ds.tl.identify_active_enhancers(enh_activity)
+    >>> active_enh = ds.tl.identify_active_enhancers(model, mdata, "celltype")
     >>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enh)
     >>>
     >>> # Plot clustermap

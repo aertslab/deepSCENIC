@@ -2,7 +2,6 @@
 
 from ._grn import (
     build_grn_for_tfs,
-    compute_celltype_enhancer_activity,
     compute_tf_activity_scores,
     extract_grn,
     extract_r2g_matrix,
@@ -59,7 +58,6 @@ __all__ = [
     "get_tf_targets",
     "get_gene_regulators",
     # Cell-type aware GRN
-    "compute_celltype_enhancer_activity",
     "identify_active_enhancers",
     "compute_tf_activity_scores",
     "identify_key_tfs",

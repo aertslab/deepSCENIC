@@ -56,8 +56,7 @@ def upset_active_enhancers(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> enhancer_activity = ds.tl.compute_celltype_enhancer_activity(model, mdata, "celltype")
-    >>> active_enhancers = ds.tl.identify_active_enhancers(enhancer_activity)
+    >>> active_enhancers = ds.tl.identify_active_enhancers(model, mdata, "celltype")
     >>> ds.pl.upset_active_enhancers(active_enhancers)
 
     Notes
@@ -141,7 +140,7 @@ def heatmap_celltype_activity(
     ----------
     activity
         DataFrame with features (TFs/regions) as index and cell types as columns.
-        Typically from compute_tf_activity_scores() or compute_celltype_enhancer_activity().
+        Typically from compute_tf_activity_scores().
     top_k
         Number of top features to show (by variance across cell types).
         If None, show all features.
