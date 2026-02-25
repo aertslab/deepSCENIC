@@ -157,9 +157,12 @@ def perturbation_coembedding(
     fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False)
     axes = axes.flatten()
 
+    # Always suppress scanpy's show — we handle display via savefig_or_show below
+    kwargs["show"] = False
+
     # Plot each color
     for i, c in enumerate(color_list):
-        sc.pl.umap(adata, color=c, ax=axes[i], show=False, **kwargs)
+        sc.pl.umap(adata, color=c, ax=axes[i], **kwargs)
 
     # Hide unused axes
     for i in range(n_plots, len(axes)):
