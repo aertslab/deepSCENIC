@@ -149,6 +149,99 @@ def split_cells(
     return None
 
 
+def filter_by_genome(
+    mdata: md.MuData,
+    genome=None,
+    inplace: bool = True,
+) -> md.MuData | None:
+    """
+    Filter ATAC regions to chromosomes present in the genome FASTA.
+
+    Removes regions on chromosomes not found in the registered/provided genome.
+    This commonly happens with unplaced scaffolds, alternate sequences, or patches
+    that are present in ATAC data but absent from your FASTA file.
+
+    Must be called after :func:`create_mudata` (which parses region coordinates).
+    Can be called before or after :func:`compute_r2g_penalty` — if r2g has already
+    been computed, it is subsetted in-place to stay consistent with the filtered
+    ATAC regions.
+
+    Parameters
+    ----------
+    mdata
+        Input multimodal data. ATAC regions must have a ``'chromosome'`` column
+        (added automatically by :func:`create_mudata`).
+    genome
+        :class:`~deepscenic.Genome` instance to filter against. If ``None``, uses
+        the globally registered genome (see :func:`~deepscenic.register_genome`).
+    inplace
+        Whether to modify in-place.
+
+    Returns
+    -------
+    If ``inplace=False``, returns filtered MuData.
+
+    Raises
+    ------
+    RuntimeError
+        If no genome is registered and ``genome`` is ``None``.
+
+    Examples
+    --------
+    >>> ds.register_genome("/path/to/hg38.fa")
+    >>> ds.pp.filter_by_genome(mdata)
+    """
+    from deepscenic._genome import get_genome
+
+    if genome is None:
+        genome = get_genome()
+        if genome is None:
+            raise RuntimeError("No genome registered. Either pass `genome=` or call `ds.register_genome()` first.")
+
+    if not inplace:
+        mdata = mdata.copy()
+
+    atac = mdata.mod["atac"]
+
+    # _chrom_map covers both "chr1" and "1" variants, so we can check either convention
+    valid_chroms = set(genome._chrom_map.keys())
+
+    atac_chroms = atac.var["chromosome"]
+    keep = atac_chroms.isin(valid_chroms)
+    n_removed = (~keep).sum()
+
+    if n_removed > 0:
+        removed_chroms = sorted(atac_chroms[~keep].unique())
+        log.info(
+            f"Removed {n_removed} ATAC regions on chromosomes not found in genome "
+            f"({len(removed_chroms)} chromosomes): {removed_chroms}"
+        )
+        atac._inplace_subset_var(keep.values)
+
+        # Keep r2g consistent: its rows align positionally with atac.var_names
+        if "r2g" in mdata.uns:
+            r2g = mdata.uns["r2g"]
+            region_names = r2g.get("region_names", [])
+            if len(region_names) > 0:
+                keep_set = set(atac.var_names)  # already filtered by _inplace_subset_var
+                keep_idx = np.array([i for i, name in enumerate(region_names) if name in keep_set])
+                new_matrix = r2g["matrix"][keep_idx, :]
+                mdata.uns["r2g"]["matrix"] = new_matrix
+                mdata.uns["r2g"]["region_names"] = [region_names[i] for i in keep_idx]
+                if "config" in r2g:
+                    n_r, n_g = new_matrix.shape
+                    n_links = new_matrix.nnz
+                    mdata.uns["r2g"]["config"]["n_links"] = n_links
+                    mdata.uns["r2g"]["config"]["density"] = n_links / (n_r * n_g) if (n_r * n_g) > 0 else 0
+                log.info(f"Updated r2g matrix: {new_matrix.shape[0]} regions, {new_matrix.nnz} links remaining")
+    else:
+        log.info("All ATAC regions are on chromosomes present in the genome.")
+
+    if not inplace:
+        return mdata
+    return None
+
+
 def split_features_by_chromosome(
     mdata: md.MuData,
     test_chromosomes: list[str] | None = None,
@@ -257,6 +350,7 @@ __all__ = [
     # Splits
     "split_cells",
     "split_features_by_chromosome",
+    "filter_by_genome",
     # High-level
     "create_mudata",
 ]
