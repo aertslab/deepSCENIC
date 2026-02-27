@@ -56,6 +56,7 @@ def savefig_or_show(
     save: str | bool | None = None,
     ext: str = "pdf",
     dpi: int = 150,
+    close: bool = True,
 ) -> None:
     """
     Scanpy-compatible save/show handler.
@@ -72,6 +73,9 @@ def savefig_or_show(
         File extension.
     dpi
         Resolution for saved figure.
+    close
+        Whether to call plt.close() when not showing. Set to False when the
+        caller is plotting into a user-provided axes so the figure stays alive.
     """
     if save:
         suffix = save if isinstance(save, str) else ""
@@ -85,7 +89,7 @@ def savefig_or_show(
 
     if show or (show is None and not save):
         plt.show()
-    elif not show:
+    elif not show and close:
         plt.close()
 
 

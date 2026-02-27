@@ -17,7 +17,7 @@ api/data
 
 | Module | Purpose | Key Functions |
 |--------|---------|---------------|
-| `ds.pp` | Preprocessing | `create_mudata`, `mark_tfs`, `compute_r2g_penalty`, `split_cells` |
+| `ds.pp` | Preprocessing | `create_mudata`, `filter_by_genome`, `mark_tfs`, `compute_r2g_penalty`, `split_cells` |
 | `ds.tl` | Training & Analysis | `train`, `finetune_r2g`, `extract_grn`, `simulate_perturbation` |
 | `ds.pl` | Plotting | `loss_curves`, `heatmap_grn`, `waterfall_perturbation`, `genome_browser` |
 

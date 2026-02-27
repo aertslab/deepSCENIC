@@ -490,9 +490,14 @@ def identify_active_enhancers(
         to_latent(model, mdata, key_prefix=key_prefix)
     enh_act = mdata.obsm[enh_act_key]
 
+    # Shift per-region to non-negative. The Wilcoxon test is rank-based and invariant
+    # to monotonic shifts, so p-values are identical. This prevents scanpy from emitting
+    # log2 warnings when computing logFC on signed neural network activations.
+    enh_act_shifted = enh_act - enh_act.min(axis=0, keepdims=True)
+
     # Build AnnData of per-cell enhancer activity
     ad_enh = sc.AnnData(
-        X=enh_act,
+        X=enh_act_shifted,
         obs=mdata.obs[[celltype_key]].copy(),
     )
     ad_enh.var_names = list(model.region_names)

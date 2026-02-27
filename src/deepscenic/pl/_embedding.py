@@ -115,26 +115,36 @@ def embedding_umap(
             umap_key = f"{key}_umap"
         mdata.obsm[umap_key] = adata.obsm["X_umap"]
 
+    # Always suppress scanpy's show — we handle display via savefig_or_show below
+    kwargs["show"] = False
+
+    # Track whether the caller supplied their own axes (before setup_axes may reassign ax)
+    user_provided_ax = ax is not None
+
     # Set up axes if provided, otherwise let scanpy create them
     fig = None
     if ax is not None:
         fig, ax = setup_axes(ax, figsize=figsize)
         kwargs["ax"] = ax
-        kwargs["show"] = False
     elif figsize is not None:
         # Create figure with specified size
         import matplotlib.pyplot as plt
 
         fig, ax = plt.subplots(figsize=figsize)
         kwargs["ax"] = ax
-        kwargs["show"] = False
 
     # Plot
-    sc.pl.umap(adata, color=color, title=title, show=False, **kwargs)
+    sc.pl.umap(adata, color=color, title=title, **kwargs)
 
     # Handle save/show
     writekey = key.replace("X_deepscenic_", "embedding_")
-    savefig_or_show(writekey, show=show, save=save)
+    if user_provided_ax:
+        # User owns the figure lifecycle — don't auto-show or close between calls.
+        # Treat show=None as False; respect an explicit show=True.
+        effective_show = show if show is not None else False
+        savefig_or_show(writekey, show=effective_show, save=save, close=False)
+    else:
+        savefig_or_show(writekey, show=show, save=save)
 
     if return_fig:
         if fig is None:
