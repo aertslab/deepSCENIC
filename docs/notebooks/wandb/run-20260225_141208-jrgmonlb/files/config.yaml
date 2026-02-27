@@ -1,0 +1,125 @@
+_wandb:
+    value:
+        cli_version: 0.25.0
+        e:
+            0fpc6ofpqsos2zej8x7qzc3jx11mdrot:
+                codePath: /data/groups/vib.ai/stein.aerts/lmahieu/projects/deepSCENIC-dev/docs/notebooks/02_training.ipynb
+                codePathLocal: 02_training.ipynb
+                cpu_count: 48
+                cpu_count_logical: 96
+                cudaVersion: "12.6"
+                disk:
+                    /:
+                        total: "233950937088"
+                        used: "78074400768"
+                email: lukas.mahieu@kuleuven.be
+                executable: /data/groups/vib.ai/stein.aerts/lmahieu/software/miniconda3/envs/deepscenic-dev/bin/python
+                git:
+                    commit: 8d22169fc4a4d8b703cb31fed5b1ee611b2f848d
+                    remote: https://github.com/aertslab/deepSCENIC-dev.git
+                gpu: NVIDIA A100 80GB PCIe
+                gpu_count: 1
+                gpu_nvidia:
+                    - architecture: Ampere
+                      cudaCores: 6912
+                      memoryTotal: "85899345920"
+                      name: NVIDIA A100 80GB PCIe
+                      uuid: GPU-d463ee15-e4e2-68c1-8ab8-d882d91dbd1f
+                host: p-vibcomputegpu-1.vib.local
+                memory:
+                    total: "539914559488"
+                os: Linux-5.14.0-503.19.1.el9_5.x86_64-x86_64-with-glibc2.34
+                program: /data/groups/vib.ai/stein.aerts/lmahieu/projects/deepSCENIC-dev/docs/notebooks/02_training.ipynb
+                python: CPython 3.13.12
+                root: /data/groups/vib.ai/stein.aerts/lmahieu/projects/deepSCENIC-dev/docs/notebooks
+                slurm:
+                    cluster_name: vibcompute
+                    conf: /etc/slurm/slurm.conf
+                    cpus_on_node: "12"
+                    cpus_per_task: "12"
+                    export_env: NONE
+                    get_user_env: "1"
+                    gpus_on_node: "1"
+                    gtids: "0"
+                    job_account: c20_pi_stein_aerts
+                    job_cpus_per_node: "12"
+                    job_end_time: "1772037942"
+                    job_gid: "513"
+                    job_gpus: "0"
+                    job_id: "638139"
+                    job_name: OnDemand/VS Code
+                    job_nodelist: p-vibcomputegpu-1
+                    job_num_nodes: "1"
+                    job_partition: gpu_a100_48C_96T_512GB
+                    job_qos: normal
+                    job_start_time: "1772009142"
+                    job_uid: "8155"
+                    job_user: lukas.mahieu
+                    jobid: "638139"
+                    localid: "0"
+                    mem_per_node: "153600"
+                    nnodes: "1"
+                    nodeid: "0"
+                    nodelist: p-vibcomputegpu-1
+                    oom_kill_step: "0"
+                    prio_process: "0"
+                    procid: "0"
+                    script_context: prolog_task
+                    submit_dir: /var/www/ood/apps/sys/dashboard
+                    submit_host: vm-vibcomputeweb.vib.local
+                    task_pid: "3410480"
+                    tasks_per_node: "1"
+                    topology_addr: p-vibcomputegpu-1
+                    topology_addr_pattern: node
+                    tres_per_task: cpu=12
+                startedAt: "2026-02-25T13:12:08.078076Z"
+                writerId: 0fpc6ofpqsos2zej8x7qzc3jx11mdrot
+        m: []
+        python_version: 3.13.12
+        t:
+            "1":
+                - 1
+                - 5
+                - 53
+            "2":
+                - 1
+                - 5
+                - 11
+                - 49
+                - 53
+                - 71
+            "3":
+                - 2
+                - 61
+            "4": 3.13.12
+            "5": 0.25.0
+            "8":
+                - 1
+            "12": 0.25.0
+            "13": linux-x86_64
+alpha:
+    value: 0.01
+batch_size:
+    value: 16
+beta:
+    value: 0.01
+binary_atac:
+    value: false
+bottleneck_size:
+    value: 3072
+emb_len:
+    value: 5
+epochs:
+    value: 100
+gamma:
+    value: 1
+loss_atac:
+    value: cosine
+loss_rna:
+    value: mae
+lr:
+    value: 0.0001
+n_hidden:
+    value: 128
+seq_len:
+    value: 640

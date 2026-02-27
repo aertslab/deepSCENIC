@@ -1,0 +1,7 @@
+deepscenic.tl - INFO - Using 11630/12158 genes for reconstruction (train split)
+deepscenic.tl - INFO - Using 280035/288643 regions for ATAC reconstruction (train split)
+deepscenic.tl - INFO - R2G sparsity on 3089422/3253274 links (train split)
+/data/groups/vib.ai/stein.aerts/lmahieu/software/miniconda3/envs/deepscenic-dev/lib/python3.13/site-packages/huggingface_hub/file_download.py:949: FutureWarning: `resume_download` is deprecated and will be removed in version 1.0.0. Downloads always resume when possible. If you want to force a new download, use `force_download=True`.
+  warnings.warn(
+deepscenic.tl - INFO - Test chromosome evaluation: 8608 test regions
+Init tf2r (train):   0%|          | 0/1401 [00:03<?, ?it/s]

@@ -11,6 +11,7 @@ Functions for preparing multimodal data for GRN learning.
 ## Basic Preprocessing
 
 ```{eval-rst}
+.. autofunction:: deepscenic.pp.filter_by_genome
 .. autofunction:: deepscenic.pp.filter_regions_by_celltype
 .. autofunction:: deepscenic.pp.remove_zero_variance_genes
 ```
