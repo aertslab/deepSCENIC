@@ -6,12 +6,14 @@ import pytest
 
 from deepscenic.tl._grn import (
     _get_otsu_threshold,
+    _normalize_r2g_per_gene,
     build_grn_for_tfs,
     compute_tf_activity_scores,
     extract_grn,
     extract_r2g_matrix,
     extract_tf2r_matrix,
     get_gene_regulators,
+    get_region_info,
     get_tf_targets,
     identify_active_enhancers,
     identify_key_tfs,
@@ -361,3 +363,180 @@ class TestCelltypeWorkflowIntegration:
 
         active_enh = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype")
         assert "SingleType" in active_enh
+
+
+# =============================================================================
+# Normalization Tests
+# =============================================================================
+
+
+class TestNormalizeR2gPerGene:
+    """Tests for _normalize_r2g_per_gene helper."""
+
+    def test_weights_sum_to_one_per_gene(self):
+        """Normalized weights for each gene should sum to 1."""
+        # Two genes: gene 0 has 3 links, gene 1 has 2 links
+        r2g_vals = np.array([0.5, 0.3, 0.2, 0.8, 0.2], dtype=np.float32)
+        r2g_indices = np.array(
+            [
+                [0, 1, 2, 3, 4],  # region indices
+                [0, 0, 0, 1, 1],  # gene indices
+            ]
+        )
+        result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+
+        # Gene 0: sum = 0.5 + 0.3 + 0.2 = 1.0
+        assert abs(result[0] + result[1] + result[2] - 1.0) < 1e-5
+        # Gene 1: sum = 0.8 + 0.2 = 1.0
+        assert abs(result[3] + result[4] - 1.0) < 1e-5
+
+    def test_proportions_correct(self):
+        """Relative proportions should be preserved."""
+        r2g_vals = np.array([0.4, 0.6], dtype=np.float32)
+        r2g_indices = np.array([[0, 1], [0, 0]])
+        result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+
+        assert abs(result[0] - 0.4) < 1e-5
+        assert abs(result[1] - 0.6) < 1e-5
+
+    def test_zero_total_gene_unchanged(self):
+        """Gene with all-zero weights should not produce NaN."""
+        r2g_vals = np.array([0.0, 0.0], dtype=np.float32)
+        r2g_indices = np.array([[0, 1], [0, 0]])
+        result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+
+        assert np.all(np.isfinite(result))
+        assert np.all(result == 0.0)
+
+    def test_single_gene_single_link(self):
+        """Single link for a gene should normalize to 1."""
+        r2g_vals = np.array([0.7], dtype=np.float32)
+        r2g_indices = np.array([[0], [0]])
+        result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+        assert abs(result[0] - 1.0) < 1e-5
+
+
+class TestExtractR2gMatrixNormalization:
+    """Tests for normalization in extract_r2g_matrix."""
+
+    def test_default_is_normalized(self, mock_deepscenic_model):
+        """Default should return normalized weights (per gene sum to 1)."""
+        result = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True)
+        # Each gene's weights should sum to ~1
+        gene_sums = result.groupby("gene")["weight"].sum()
+        for gene, s in gene_sums.items():
+            assert abs(s - 1.0) < 1e-4, f"Gene '{gene}' weights sum to {s}, expected ~1.0"
+
+    def test_normalize_false_returns_raw(self, mock_deepscenic_model):
+        """normalize=False should return raw (unnormalized) weights."""
+        normalized = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True, normalize=True)
+        raw = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True, normalize=False)
+        # Raw weights should differ from normalized (unless there's only one link per gene)
+        # At minimum, they should be the same non-negative values, just possibly different scale
+        assert all(raw["weight"] >= 0)
+        assert len(raw) == len(normalized)
+
+    def test_normalized_weights_in_unit_interval(self, mock_deepscenic_model):
+        """Normalized weights should be in [0, 1]."""
+        result = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True, normalize=True)
+        assert all(result["weight"] >= 0)
+        assert all(result["weight"] <= 1.0 + 1e-6)
+
+
+class TestGetTFTargetsNormalization:
+    """Tests for normalization in get_tf_targets."""
+
+    def test_default_r2g_normalized(self, mock_deepscenic_model):
+        """By default, r2g_weight values should be in [0, 1]."""
+        result = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0)
+        if len(result) > 0:
+            assert all(result["r2g_weight"] >= 0)
+            assert all(result["r2g_weight"] <= 1.0 + 1e-6)
+
+    def test_normalize_false_returns_raw(self, mock_deepscenic_model):
+        """normalize_r2g=False should return raw weights."""
+        normed = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0, normalize_r2g=True)
+        raw = get_tf_targets(mock_deepscenic_model, "TF0", tf2r_threshold=0.0, normalize_r2g=False)
+        if len(raw) > 0:
+            assert all(raw["r2g_weight"] >= 0)
+        # Both should have same rows (same regions/genes selected), just different r2g_weight scale
+        assert len(normed) == len(raw)
+
+
+class TestGetGeneRegulatorsNormalization:
+    """Tests for normalization in get_gene_regulators."""
+
+    def test_default_r2g_normalized(self, mock_deepscenic_model):
+        """By default, r2g_weight values should be in [0, 1]."""
+        result = get_gene_regulators(mock_deepscenic_model, "GENE0", tf2r_threshold=0.0)
+        if len(result) > 0:
+            assert all(result["r2g_weight"] >= 0)
+            assert all(result["r2g_weight"] <= 1.0 + 1e-6)
+
+
+class TestGetRegionInfo:
+    """Tests for get_region_info function."""
+
+    def test_invalid_region_raises(self, mock_deepscenic_model):
+        """Should raise for unknown region names."""
+        with pytest.raises(ValueError, match="not found"):
+            get_region_info(mock_deepscenic_model, "INVALID_REGION")
+
+    def test_string_input_accepted(self, mock_deepscenic_model):
+        """Single string region name should work."""
+        region = mock_deepscenic_model.region_names[0]
+        result = get_region_info(mock_deepscenic_model, region, top_k_tfs=3, top_k_genes=3)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_list_input_accepted(self, mock_deepscenic_model):
+        """List of region names should work."""
+        regions = mock_deepscenic_model.region_names[:2]
+        result = get_region_info(mock_deepscenic_model, list(regions), top_k_tfs=3, top_k_genes=3)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_result_columns(self, mock_deepscenic_model):
+        """Result should have the expected columns."""
+        region = mock_deepscenic_model.region_names[0]
+        result = get_region_info(mock_deepscenic_model, region)
+        expected = ["region", "tf", "tf2r_weight", "gene", "r2g_weight"]
+        assert list(result.columns) == expected
+
+    def test_top_k_tfs_limits(self, mock_deepscenic_model):
+        """top_k_tfs should cap number of TFs per region."""
+        region = mock_deepscenic_model.region_names[0]
+        result = get_region_info(mock_deepscenic_model, region, tf2r_threshold=0.0, top_k_tfs=2, top_k_genes=None)
+        if len(result) > 0:
+            n_tfs = result["tf"].nunique()
+            assert n_tfs <= 2
+
+    def test_top_k_genes_limits(self, mock_deepscenic_model):
+        """top_k_genes should cap number of genes per region."""
+        region = mock_deepscenic_model.region_names[0]
+        result = get_region_info(mock_deepscenic_model, region, tf2r_threshold=0.0, top_k_tfs=None, top_k_genes=2)
+        if len(result) > 0:
+            n_genes = result["gene"].nunique()
+            assert n_genes <= 3  # +1 for possible None gene
+
+    def test_region_column_matches_input(self, mock_deepscenic_model):
+        """Region column should match queried region."""
+        region = mock_deepscenic_model.region_names[0]
+        result = get_region_info(mock_deepscenic_model, region, tf2r_threshold=0.0)
+        if len(result) > 0:
+            assert all(result["region"] == region)
+
+    def test_empty_result_has_columns(self, mock_deepscenic_model):
+        """Very high threshold should return empty DataFrame with correct columns."""
+        region = mock_deepscenic_model.region_names[0]
+        result = get_region_info(mock_deepscenic_model, region, tf2r_threshold=1e9)
+        assert isinstance(result, pd.DataFrame)
+        expected = ["region", "tf", "tf2r_weight", "gene", "r2g_weight"]
+        assert list(result.columns) == expected
+
+    def test_normalize_r2g_default(self, mock_deepscenic_model):
+        """r2g_weight should be in [0, 1] when normalized."""
+        region = mock_deepscenic_model.region_names[0]
+        result = get_region_info(mock_deepscenic_model, region, tf2r_threshold=0.0, normalize_r2g=True)
+        valid = result[result["r2g_weight"].notna()]
+        if len(valid) > 0:
+            assert all(valid["r2g_weight"] >= 0)
+            assert all(valid["r2g_weight"] <= 1.0 + 1e-6)

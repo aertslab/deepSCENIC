@@ -20,6 +20,7 @@ def heatmap_r2g(
     *,
     genes: list[str] | None = None,
     top_k: int | None = 50,
+    normalize: bool = True,
     ax: Axes | None = None,
     cmap: str = "viridis",
     show: bool | None = None,
@@ -29,7 +30,7 @@ def heatmap_r2g(
     **kwargs,
 ) -> Axes | Figure | None:
     """
-    Plot E2 (region->gene) heatmap.
+    Plot r2g (region→gene) heatmap.
 
     Parameters
     ----------
@@ -39,6 +40,10 @@ def heatmap_r2g(
         Genes to include.
     top_k
         Number of top genes/regions to show.
+    normalize
+        If True (default), normalize r2g weights per gene so they sum to 1.
+        This makes the color scale represent fractional contributions in [0, 1],
+        enabling cross-gene comparison.
     ax
         Pre-existing axes.
     cmap
@@ -65,8 +70,8 @@ def heatmap_r2g(
     """
     from deepscenic.tl import extract_r2g_matrix
 
-    # Get E2 as edge list, pivot to dense for selected genes
-    E2_sparse = extract_r2g_matrix(model, as_edgelist=True)
+    # Get r2g as edge list, pivot to dense for selected genes
+    E2_sparse = extract_r2g_matrix(model, as_edgelist=True, normalize=normalize)
 
     # Filter genes
     if genes is not None:
@@ -90,7 +95,10 @@ def heatmap_r2g(
     sns.heatmap(E2_pivot, ax=ax, cmap=cmap, **kwargs)
     ax.set_xlabel("Genes")
     ax.set_ylabel("Regions")
-    ax.set_title("Region -> Gene Links (r2g)")
+    title = "Region → Gene Links (r2g)"
+    if normalize:
+        title += " [normalized per gene]"
+    ax.set_title(title)
 
     savefig_or_show("heatmap_r2g", show=show, save=save)
 

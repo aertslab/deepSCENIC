@@ -14,6 +14,7 @@ Query Functions
 ---------------
 - get_tf_targets: Get target genes for a specific TF
 - get_gene_regulators: Get TFs that regulate a specific gene
+- get_region_info: Get top active TFs and target genes for a set of regions
 
 Cell-Type Aware Extraction
 --------------------------
@@ -41,6 +42,9 @@ Example
 >>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enh)
 >>> key_tfs = ds.tl.identify_key_tfs(tf_scores)
 >>> grn_df = ds.tl.build_grn_for_tfs(model, key_tfs)
+>>>
+>>> # Region-centric query
+>>> region_info = ds.tl.get_region_info(model, "chr3:69926370-69926870")
 """
 
 from __future__ import annotations
@@ -62,6 +66,7 @@ logger = logging.getLogger(__name__)
 # Column definitions for typed DataFrames
 _TF_TARGETS_COLUMNS = ["tf", "region", "tf2r_weight", "gene", "r2g_weight", "combined_weight"]
 _GENE_REGULATORS_COLUMNS = ["gene", "tf", "region", "tf2r_weight", "r2g_weight", "combined_weight"]
+_REGION_INFO_COLUMNS = ["region", "tf", "tf2r_weight", "gene", "r2g_weight"]
 
 
 def _otsu_threshold(values: np.ndarray, nbins: int = 256) -> float:
@@ -124,7 +129,38 @@ def _get_otsu_threshold(values: np.ndarray, fallback: float) -> tuple[float, boo
     return fallback, False
 
 
-def extract_grn(model: DeepSCENICModel) -> dict[str, pd.DataFrame]:
+def _normalize_r2g_per_gene(
+    r2g_vals: np.ndarray,
+    r2g_indices: np.ndarray,
+) -> np.ndarray:
+    """Normalize r2g weights per gene so each gene's weights sum to 1.
+
+    Parameters
+    ----------
+    r2g_vals
+        Absolute r2g weights, shape (n_links,)
+    r2g_indices
+        Sparse indices, shape (2, n_links). Row 0 = region indices, row 1 = gene indices.
+
+    Returns
+    -------
+    np.ndarray
+        Normalized weights, shape (n_links,). Each gene's weights sum to 1,
+        making them interpretable as fractional contributions of each region
+        to that gene's regulatory signal.
+    """
+    normalized = r2g_vals.copy()
+    gene_indices = r2g_indices[1]
+    unique_genes = np.unique(gene_indices)
+    for gene_idx in unique_genes:
+        mask = gene_indices == gene_idx
+        total = r2g_vals[mask].sum()
+        if total > 0:
+            normalized[mask] = r2g_vals[mask] / total
+    return normalized
+
+
+def extract_grn(model: DeepSCENICModel, normalize_r2g: bool = True) -> dict[str, pd.DataFrame]:
     """
     Extract GRN matrices (tf2r and r2g) as DataFrames with names.
 
@@ -132,6 +168,9 @@ def extract_grn(model: DeepSCENICModel) -> dict[str, pd.DataFrame]:
     ----------
     model
         Trained DeepSCENICModel
+    normalize_r2g
+        If True (default), normalize r2g weights per gene so they sum to 1.
+        This makes weights comparable across genes (fractional contributions).
 
     Returns
     -------
@@ -145,11 +184,11 @@ def extract_grn(model: DeepSCENICModel) -> dict[str, pd.DataFrame]:
     >>> model = ds.tl.load_model("model.pt")
     >>> grn = ds.tl.extract_grn(model)
     >>> tf2r = grn['tf2r']  # TF → region weights
-    >>> r2g = grn['r2g']  # region → gene weights
+    >>> r2g = grn['r2g']  # region → gene weights (normalized per gene)
     """
     return {
         "tf2r": extract_tf2r_matrix(model),
-        "r2g": extract_r2g_matrix(model, as_edgelist=True),
+        "r2g": extract_r2g_matrix(model, as_edgelist=True, normalize=normalize_r2g),
     }
 
 
@@ -180,6 +219,7 @@ def extract_tf2r_matrix(model: DeepSCENICModel) -> pd.DataFrame:
 def extract_r2g_matrix(
     model: DeepSCENICModel,
     as_edgelist: bool = True,
+    normalize: bool = True,
 ) -> pd.DataFrame:
     """
     Extract region→gene (r2g) matrix.
@@ -191,6 +231,11 @@ def extract_r2g_matrix(
     as_edgelist
         If True (default), return edge list format with columns (region, gene, weight).
         If False, return dense DataFrame (n_regions × n_genes). Warning: may be very large.
+    normalize
+        If True (default), normalize r2g weights per gene so they sum to 1.
+        This makes weights comparable across genes — each weight represents the
+        fractional contribution of that region to the gene's regulatory signal,
+        in [0, 1] range.
 
     Returns
     -------
@@ -200,6 +245,9 @@ def extract_r2g_matrix(
     with torch.no_grad():
         r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
         r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
+
+    if normalize:
+        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
 
     if as_edgelist:
         # Edge list format: (region, gene, weight) rows
@@ -233,6 +281,7 @@ def get_tf_targets(
     tf2r_threshold: float | None = None,
     r2g_threshold: float = 0.0,
     top_k: int | None = None,
+    normalize_r2g: bool = True,
 ) -> pd.DataFrame:
     """
     Get target regions and genes for a specific TF.
@@ -247,9 +296,14 @@ def get_tf_targets(
         Threshold for tf2r (TF→region) weights. If None (default), uses Otsu's
         method to automatically determine threshold.
     r2g_threshold
-        Threshold for r2g (region→gene) weights. Default 0.0.
+        Threshold for r2g (region→gene) weights. Default 0.0. When
+        ``normalize_r2g=True``, this is in [0, 1] (fractional contribution).
     top_k
         If specified, return only top K targets
+    normalize_r2g
+        If True (default), normalize r2g weights per gene so they sum to 1.
+        This makes weights comparable across genes and ``r2g_threshold``
+        interpretable as a minimum fractional contribution.
 
     Returns
     -------
@@ -275,6 +329,9 @@ def get_tf_targets(
         # Get r2g sparse info
         r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
         r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
+
+    if normalize_r2g:
+        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
 
     # Determine tf2r threshold (Otsu by default, computed on absolute values)
     tf2r_tf_abs = np.abs(tf2r_tf)
@@ -334,6 +391,7 @@ def get_gene_regulators(
     tf2r_threshold: float | None = None,
     r2g_threshold: float = 0.0,
     top_k: int | None = None,
+    normalize_r2g: bool = True,
 ) -> pd.DataFrame:
     """
     Get TFs and regions that regulate a specific gene.
@@ -348,9 +406,14 @@ def get_gene_regulators(
         Threshold for tf2r (TF→region) weights. If None (default), uses Otsu's
         method to automatically determine threshold from linked regions.
     r2g_threshold
-        Threshold for r2g (region→gene) weights. Default 0.0.
+        Threshold for r2g (region→gene) weights. Default 0.0. When
+        ``normalize_r2g=True``, this is in [0, 1] (fractional contribution).
     top_k
         If specified, return only top K regulators
+    normalize_r2g
+        If True (default), normalize r2g weights per gene so they sum to 1.
+        This makes weights comparable across genes and ``r2g_threshold``
+        interpretable as a minimum fractional contribution.
 
     Returns
     -------
@@ -373,6 +436,9 @@ def get_gene_regulators(
         tf2r_matrix = model.adj_tf2r.cpu().numpy()
         r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
         r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
+
+    if normalize_r2g:
+        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
 
     # Find regions linked to this gene
     link_mask = r2g_indices[1] == gene_idx
@@ -434,6 +500,149 @@ def get_gene_regulators(
             df = df.head(top_k)
 
     return df
+
+
+def get_region_info(
+    model: DeepSCENICModel,
+    regions: str | list[str],
+    tf2r_threshold: float | None = None,
+    r2g_threshold: float = 0.0,
+    top_k_tfs: int | None = 10,
+    top_k_genes: int | None = 10,
+    normalize_r2g: bool = True,
+) -> pd.DataFrame:
+    """
+    Get top active TFs and target genes for a set of regions.
+
+    For each queried region, returns the TFs with the highest binding potential
+    (from tf2r) and the target genes linked via r2g. Each row represents one
+    TF→region→gene path.
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel
+    regions
+        Region name(s) to query (e.g., ``"chr1:1000-2000"`` or a list of names)
+    tf2r_threshold
+        Threshold for tf2r (TF→region) weights (absolute value). If None
+        (default), uses Otsu's method per region to automatically determine
+        the threshold.
+    r2g_threshold
+        Threshold for r2g (region→gene) weights. Default 0.0. When
+        ``normalize_r2g=True``, this is in [0, 1] (fractional contribution).
+    top_k_tfs
+        Maximum number of TFs to return per region, ranked by absolute
+        tf2r weight. Default 10. Set to None for no limit.
+    top_k_genes
+        Maximum number of target genes to return per region, ranked by r2g
+        weight. Default 10. Set to None for no limit.
+    normalize_r2g
+        If True (default), normalize r2g weights per gene so they sum to 1.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns: region, tf, tf2r_weight, gene, r2g_weight.
+        Each row is one TF→region→gene path.
+
+    Examples
+    --------
+    >>> model = ds.tl.load_model("model.pt")
+    >>> region_info = ds.tl.get_region_info(model, "chr3:69926370-69926870")
+    >>> # Query multiple regions
+    >>> region_info = ds.tl.get_region_info(model, ["chr3:69926370-69926870", "chr9:6781416-6781916"])
+    """
+    if isinstance(regions, str):
+        regions = [regions]
+
+    unknown = [r for r in regions if r not in model.region_names]
+    if unknown:
+        raise ValueError(f"Regions not found in model: {unknown}")
+
+    with torch.no_grad():
+        tf2r_matrix = model.adj_tf2r.cpu().numpy()  # (n_regions, n_tfs)
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
+        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
+
+    if normalize_r2g:
+        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+
+    region_to_idx = {name: idx for idx, name in enumerate(model.region_names)}
+
+    results = []
+    for region_name in regions:
+        region_idx = region_to_idx[region_name]
+
+        # --- Top TFs for this region ---
+        tf2r_region = tf2r_matrix[region_idx, :]  # (n_tfs,)
+        tf2r_region_abs = np.abs(tf2r_region)
+
+        # Determine tf2r threshold
+        if tf2r_threshold is None:
+            thresh, used_otsu = _get_otsu_threshold(tf2r_region_abs, fallback=0.0)
+            if used_otsu:
+                logger.debug(f"Region '{region_name}': Otsu tf2r threshold = {thresh:.4f}")
+        else:
+            thresh = tf2r_threshold
+
+        # Select TFs above threshold
+        tf_mask = tf2r_region_abs > thresh
+        tf_idxs = np.where(tf_mask)[0]
+
+        # Sort by descending absolute weight and apply top_k
+        tf_order = tf_idxs[np.argsort(tf2r_region_abs[tf_idxs])[::-1]]
+        if top_k_tfs is not None:
+            tf_order = tf_order[:top_k_tfs]
+
+        # --- Target genes for this region ---
+        link_mask = r2g_indices[0] == region_idx
+        if not link_mask.any():
+            # No r2g links: emit TF rows with no gene
+            for tf_idx in tf_order:
+                results.append(
+                    {
+                        "region": region_name,
+                        "tf": model.tf_names[tf_idx],
+                        "tf2r_weight": float(tf2r_region[tf_idx]),
+                        "gene": None,
+                        "r2g_weight": None,
+                    }
+                )
+            continue
+
+        gene_idxs = r2g_indices[1, link_mask]
+        gene_r2g = r2g_vals[link_mask]
+
+        # Filter by r2g threshold
+        gene_mask = gene_r2g > r2g_threshold
+        gene_idxs = gene_idxs[gene_mask]
+        gene_r2g = gene_r2g[gene_mask]
+
+        # Sort by descending r2g weight and apply top_k
+        gene_order = np.argsort(gene_r2g)[::-1]
+        if top_k_genes is not None:
+            gene_order = gene_order[:top_k_genes]
+        gene_idxs = gene_idxs[gene_order]
+        gene_r2g = gene_r2g[gene_order]
+
+        # Cross-product: each TF × each gene
+        for tf_idx in tf_order:
+            for g_idx, g_r2g in zip(gene_idxs, gene_r2g, strict=False):
+                results.append(
+                    {
+                        "region": region_name,
+                        "tf": model.tf_names[tf_idx],
+                        "tf2r_weight": float(tf2r_region[tf_idx]),
+                        "gene": model.gene_names[g_idx],
+                        "r2g_weight": float(g_r2g),
+                    }
+                )
+
+    if not results:
+        return pd.DataFrame(columns=_REGION_INFO_COLUMNS)
+
+    return pd.DataFrame(results)
 
 
 # =============================================================================
@@ -651,6 +860,7 @@ def build_grn_for_tfs(
     model: DeepSCENICModel,
     tf_names: list[str],
     r2g_threshold: float = 0.0,
+    normalize_r2g: bool = True,
 ) -> pd.DataFrame:
     """
     Build GRN DataFrame for a specific set of TFs.
@@ -662,7 +872,10 @@ def build_grn_for_tfs(
     tf_names
         List of TF names to include
     r2g_threshold
-        Minimum r2g weight to include links. Default 0.0.
+        Minimum r2g weight to include links. Default 0.0. When
+        ``normalize_r2g=True``, this is in [0, 1] (fractional contribution).
+    normalize_r2g
+        If True (default), normalize r2g weights per gene so they sum to 1.
 
     Returns
     -------
@@ -678,7 +891,9 @@ def build_grn_for_tfs(
             continue
 
         # Get targets with per-TF Otsu threshold
-        targets = get_tf_targets(model, tf_name, tf2r_threshold=None, r2g_threshold=r2g_threshold)
+        targets = get_tf_targets(
+            model, tf_name, tf2r_threshold=None, r2g_threshold=r2g_threshold, normalize_r2g=normalize_r2g
+        )
 
         if len(targets) > 0:
             # Rename columns to match legacy format

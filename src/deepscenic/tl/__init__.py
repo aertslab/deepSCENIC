@@ -7,6 +7,7 @@ from ._grn import (
     extract_r2g_matrix,
     extract_tf2r_matrix,
     get_gene_regulators,
+    get_region_info,
     get_tf_targets,
     identify_active_enhancers,
     identify_key_tfs,
@@ -57,6 +58,7 @@ __all__ = [
     "extract_r2g_matrix",
     "get_tf_targets",
     "get_gene_regulators",
+    "get_region_info",
     # Cell-type aware GRN
     "identify_active_enhancers",
     "compute_tf_activity_scores",
