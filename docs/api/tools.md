@@ -75,6 +75,7 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 ```{eval-rst}
 .. autofunction:: deepscenic.tl.get_tf_targets
 .. autofunction:: deepscenic.tl.get_gene_regulators
+.. autofunction:: deepscenic.tl.get_region_info
 ```
 
 ### Cell-Type Aware Extraction
