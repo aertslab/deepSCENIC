@@ -8,16 +8,18 @@ import pandas as pd
 from anndata import AnnData
 from sklearn.model_selection import train_test_split
 
+from .._types import LazyImputeAnndata
 from .basic import add_gene_annotation, filter_regions_by_celltype, mark_dars, mark_tfs, remove_zero_variance_genes
 from .search_space import compute_r2g_penalty
 
 log = logging.getLogger("deepscenic.pp")
 
-
 def create_mudata(
     *,
     rna: AnnData,
-    atac: AnnData,
+    atac: AnnData | None = None,
+    cell_topic: AnnData | None = None,
+    region_topic: AnnData | None = None,
     copy: bool = True,
 ) -> md.MuData:
     """
@@ -31,7 +33,8 @@ def create_mudata(
     rna
         RNA expression data (log-normalized recommended).
     atac
-        ATAC accessibility data.
+        Pre-computed ATAC accessibility matrix. Mutually exclusive with
+        ``cell_topic`` and ``region_topic``.
 
         **IMPORTANT**: It is strongly advised that ATAC data should be imputed accessibility from pyCisTopic, NOT raw fragment counts. pyCisTopic performs:
 
@@ -41,9 +44,17 @@ def create_mudata(
 
         The imputed matrix provides continuous accessibility values
         that are better suited for the VAE architecture than sparse
-        binary fragment counts.
+        binary fragment counts. Alternatively, provide ``cell_topic`` and
+        ``region_topic`` directly to compute imputed accessibility on the fly.
 
         See: https://pycistopic.readthedocs.io/
+    cell_topic
+        Cell-topic score matrix from pyCisTopic, shape ``(n_cells, n_topics)``.
+        Must be provided together with ``region_topic``. When given, accessibility
+        is imputed on the fly as ``cell_topic @ region_topic.T``.
+    region_topic
+        Region-topic score matrix from pyCisTopic, shape ``(n_regions, n_topics)``.
+        Must be provided together with ``cell_topic``.
     copy
         Whether to copy the input data.
 
@@ -54,8 +65,30 @@ def create_mudata(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> mdata = ds.pp.create_mudata(adata_rna, adata_atac)
+    >>> mdata = ds.pp.create_mudata(rna=adata_rna, atac=adata_atac)
     """
+    invalid_input_error = True
+    if atac is not None and cell_topic is None and region_topic is None:
+        invalid_input_error = False
+    if atac is None and cell_topic is not None and region_topic is not None:
+        invalid_input_error = False
+
+    if invalid_input_error:
+        raise ValueError(
+            "Either atac or cell_topic and region_topic should be provided"
+        )
+
+    if atac is None:
+        # in this case cell_topic and region_topic should be provided
+        # otherwise ValueError was raised above
+        # assertion below to make type checker happy
+        assert cell_topic is not None
+        assert region_topic is not None
+        atac = LazyImputeAnndata.from_topic(
+            cell_topic=cell_topic,
+            region_topic=region_topic
+        )
+
     if copy:
         rna = rna.copy()
         atac = atac.copy()

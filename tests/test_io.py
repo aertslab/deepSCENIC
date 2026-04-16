@@ -242,6 +242,68 @@ def test_write_read_object_dtype_with_na():
         assert loaded.mod["rna"].var["tss"].iloc[0] == 1000
 
 
+def test_read_detects_lazy_impute_anndata(tmp_path):
+    """read() wraps the atac slot in LazyImputeAnndata when topic matrices are present."""
+    import mudata as md
+    import scanpy as sc
+
+    from deepscenic._types import LazyImputeAnndata
+
+    n_cells, n_regions, n_topics = 10, 15, 5
+
+    rna = sc.AnnData(np.random.rand(n_cells, 3).astype(np.float32))
+    rna.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+    rna.var_names = [f"Gene_{i}" for i in range(3)]
+
+    cell_topic = sc.AnnData(np.random.rand(n_cells, n_topics).astype(np.float32))
+    cell_topic.obs_names = rna.obs_names
+    cell_topic.var_names = [f"Topic_{i}" for i in range(n_topics)]
+
+    region_topic = sc.AnnData(np.random.rand(n_regions, n_topics).astype(np.float32))
+    region_topic.obs_names = [f"chr1:{i * 1000}-{i * 1000 + 640}" for i in range(n_regions)]
+    region_topic.var_names = cell_topic.var_names
+
+    mdata = ds.pp.create_mudata(rna=rna, cell_topic=cell_topic, region_topic=region_topic)
+
+    path = tmp_path / "lazy.h5mu"
+    ds.write(mdata, path, validate=False)
+
+    loaded = ds.read(path, validate=False)
+
+    assert isinstance(loaded.mod["atac"], LazyImputeAnndata)
+
+    # Imputed values should match the original factor matrices
+    expected = cell_topic.X @ region_topic.X.T
+    np.testing.assert_allclose(loaded.mod["atac"].X[:], expected, rtol=1e-5)
+
+
+def test_read_no_topics_plain_anndata(tmp_path):
+    """read() leaves the atac slot as a plain AnnData when no topic matrices are present."""
+    import mudata as md
+    import scanpy as sc
+
+    from deepscenic._types import LazyImputeAnndata
+
+    n_cells = 10
+
+    rna = sc.AnnData(np.random.rand(n_cells, 3).astype(np.float32))
+    rna.obs_names = [f"Cell_{i}" for i in range(n_cells)]
+    rna.var_names = [f"Gene_{i}" for i in range(3)]
+
+    atac = sc.AnnData(np.random.rand(n_cells, 5).astype(np.float32))
+    atac.obs_names = rna.obs_names
+    atac.var_names = [f"chr1:{i * 1000}-{i * 1000 + 640}" for i in range(5)]
+
+    mdata = ds.pp.create_mudata(rna=rna, atac=atac)
+
+    path = tmp_path / "plain.h5mu"
+    ds.write(mdata, path, validate=False)
+
+    loaded = ds.read(path, validate=False)
+
+    assert not isinstance(loaded.mod["atac"], LazyImputeAnndata)
+
+
 def test_read_nonexistent_file():
     """Test error on nonexistent file."""
     with pytest.raises(FileNotFoundError):
