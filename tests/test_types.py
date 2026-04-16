@@ -7,7 +7,6 @@ from anndata import AnnData
 
 from deepscenic._types import LazyImpute, LazyImputeAnndata
 
-
 N_CELLS = 10
 N_REGIONS = 15
 N_TOPICS = 5
@@ -24,6 +23,7 @@ def matrices():
 
 @pytest.fixture
 def cell_topic_adata(matrices):
+    """Random cell topic matrix."""
     cell_topic, _ = matrices
     adata = sc.AnnData(cell_topic)
     adata.obs_names = [f"Cell_{i}" for i in range(N_CELLS)]
@@ -33,6 +33,7 @@ def cell_topic_adata(matrices):
 
 @pytest.fixture
 def region_topic_adata(matrices):
+    """Random region topic matrix."""
     _, region_topic = matrices
     adata = sc.AnnData(region_topic)
     adata.obs_names = [f"chr1:{i * 1000}-{i * 1000 + 640}" for i in range(N_REGIONS)]
@@ -42,6 +43,7 @@ def region_topic_adata(matrices):
 
 @pytest.fixture
 def lazy_impute_anndata(cell_topic_adata, region_topic_adata):
+    """Random LazyImputeAnndata object."""
     return LazyImputeAnndata.from_topic(
         cell_topic=cell_topic_adata,
         region_topic=region_topic_adata,
@@ -54,42 +56,42 @@ class TestLazyImpute:
     def test_getitem_1d_all_regions(self, matrices):
         """1D index selects cells, returns all regions."""
         cell_topic, region_topic = matrices
-        li = LazyImpute(cell_topic, region_topic.T)
+        li = LazyImpute(cell_topic, region_topic.T, 10**6)
 
         result = li[0]
-        expected = cell_topic[0, :] @ region_topic.T
+        expected = (cell_topic[0, :] @ region_topic.T) * 10**6
         np.testing.assert_allclose(result, expected)
 
     def test_getitem_1d_slice(self, matrices):
         """1D slice selects a batch of cells."""
         cell_topic, region_topic = matrices
-        li = LazyImpute(cell_topic, region_topic.T)
+        li = LazyImpute(cell_topic, region_topic.T, 10**6)
 
         result = li[2:5]
-        expected = cell_topic[2:5, :] @ region_topic.T
+        expected = (cell_topic[2:5, :] @ region_topic.T)*10**6
         np.testing.assert_allclose(result, expected)
 
     def test_getitem_2d(self, matrices):
         """2D index selects cells and regions."""
         cell_topic, region_topic = matrices
-        li = LazyImpute(cell_topic, region_topic.T)
+        li = LazyImpute(cell_topic, region_topic.T, 10**6)
 
         result = li[1:4, 3:8]
-        expected = cell_topic[1:4, :] @ region_topic.T[:, 3:8]
+        expected = (cell_topic[1:4, :] @ region_topic.T[:, 3:8]) * 10**6
         np.testing.assert_allclose(result, expected)
 
     def test_getitem_invalid_dim(self, matrices):
         """3D index raises ValueError."""
         cell_topic, region_topic = matrices
-        li = LazyImpute(cell_topic, region_topic.T)
+        li = LazyImpute(cell_topic, region_topic.T, 10**6)
 
         with pytest.raises(ValueError, match="3-d"):
-            li[0, 1, 2]
+            li[0, 1, 2] # type: ignore
 
     def test_no_copy_of_arrays(self, matrices):
         """LazyImpute holds references, not copies."""
         cell_topic, region_topic = matrices
-        li = LazyImpute(cell_topic, region_topic.T)
+        li = LazyImpute(cell_topic, region_topic.T, 10**6)
 
         assert li.cell_topic is cell_topic
         # .T returns a new view object each call, so use shares_memory instead of `is`
@@ -104,7 +106,7 @@ class TestLazyImputeAnndata:
         assert lazy_impute_anndata.shape == (N_CELLS, N_REGIONS)
 
     def test_from_topic_obs_var(self, lazy_impute_anndata, cell_topic_adata, region_topic_adata):
-        """obs and var names come from the input AnnData objects."""
+        """Do obs and var names come from the input AnnData objects."""
         assert list(lazy_impute_anndata.obs_names) == list(cell_topic_adata.obs_names)
         assert list(lazy_impute_anndata.var_names) == list(region_topic_adata.obs_names)
 
@@ -130,7 +132,7 @@ class TestLazyImputeAnndata:
     def test_X_computes_correctly(self, lazy_impute_anndata, matrices):
         """Imputed values match cell_topic @ region_topic.T."""
         cell_topic, region_topic = matrices
-        expected = cell_topic @ region_topic.T
+        expected = (cell_topic @ region_topic.T) * 10**6
 
         result = lazy_impute_anndata.X[:]
         np.testing.assert_allclose(result, expected)
@@ -148,7 +150,7 @@ class TestLazyImputeAnndata:
     def test_copy_data_correct(self, lazy_impute_anndata, matrices):
         """Copied object produces the same imputed values."""
         cell_topic, region_topic = matrices
-        expected = cell_topic @ region_topic.T
+        expected = (cell_topic @ region_topic.T) * 10**6
 
         copied = lazy_impute_anndata.copy()
         np.testing.assert_allclose(copied.X[:], expected)
@@ -167,7 +169,7 @@ class TestLazyImputeAnndata:
     def test_slice_cells_correct(self, lazy_impute_anndata, matrices):
         """Cell slice produces correct imputed values."""
         cell_topic, region_topic = matrices
-        expected = cell_topic[2:5, :] @ region_topic.T
+        expected = (cell_topic[2:5, :] @ region_topic.T) * 10**6
 
         sliced = lazy_impute_anndata[2:5]
         np.testing.assert_allclose(sliced.X[:], expected)
@@ -176,7 +178,7 @@ class TestLazyImputeAnndata:
         """Region slice produces correct imputed values."""
         cell_topic, region_topic = matrices
         region_names = lazy_impute_anndata.var_names[:5]
-        expected = cell_topic @ region_topic[:5, :].T
+        expected = (cell_topic @ region_topic[:5, :].T) * 10**6
 
         sliced = lazy_impute_anndata[:, region_names]
         np.testing.assert_allclose(sliced.X[:], expected)
@@ -196,7 +198,7 @@ class TestLazyImputeAnndata:
     def test_from_anndata_computes_correctly(self, lazy_impute_anndata, matrices):
         """from_anndata produces correct imputed values."""
         cell_topic, region_topic = matrices
-        expected = cell_topic @ region_topic.T
+        expected = (cell_topic @ region_topic.T) * 10**6
 
         plain = AnnData(lazy_impute_anndata)
         result = LazyImputeAnndata.from_anndata(plain)

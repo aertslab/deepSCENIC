@@ -244,7 +244,6 @@ def test_write_read_object_dtype_with_na():
 
 def test_read_detects_lazy_impute_anndata(tmp_path):
     """read() wraps the atac slot in LazyImputeAnndata when topic matrices are present."""
-    import mudata as md
     import scanpy as sc
 
     from deepscenic._types import LazyImputeAnndata
@@ -273,13 +272,12 @@ def test_read_detects_lazy_impute_anndata(tmp_path):
     assert isinstance(loaded.mod["atac"], LazyImputeAnndata)
 
     # Imputed values should match the original factor matrices
-    expected = cell_topic.X @ region_topic.X.T
+    expected = (cell_topic.X @ region_topic.X.T) * 10**6
     np.testing.assert_allclose(loaded.mod["atac"].X[:], expected, rtol=1e-5)
 
 
 def test_read_no_topics_plain_anndata(tmp_path):
     """read() leaves the atac slot as a plain AnnData when no topic matrices are present."""
-    import mudata as md
     import scanpy as sc
 
     from deepscenic._types import LazyImputeAnndata
