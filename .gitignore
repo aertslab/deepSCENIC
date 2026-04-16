@@ -36,3 +36,4 @@ htmlcov/
 .env
 .venv/
 venv/
+uv.lock
