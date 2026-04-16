@@ -20,6 +20,7 @@ def create_mudata(
     atac: AnnData | None = None,
     cell_topic: AnnData | None = None,
     region_topic: AnnData | None = None,
+    imputation_scaling_factor: float = 10**6,
     copy: bool = True,
 ) -> md.MuData:
     """
@@ -55,6 +56,9 @@ def create_mudata(
     region_topic
         Region-topic score matrix from pyCisTopic, shape ``(n_regions, n_topics)``.
         Must be provided together with ``cell_topic``.
+    imputation_scaling_factor
+        Scalar applied to the imputed accessibility values (``cell_topic @ region_topic.T``).
+        Defaults to 10^6, giving CPM-like units.
     copy
         Whether to copy the input data.
 
@@ -86,7 +90,8 @@ def create_mudata(
         assert region_topic is not None
         atac = LazyImputeAnndata.from_topic(
             cell_topic=cell_topic,
-            region_topic=region_topic
+            region_topic=region_topic,
+            scaling_factor=imputation_scaling_factor
         )
 
     if copy:

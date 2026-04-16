@@ -17,6 +17,7 @@ object can be saved and reloaded with ``anndata`` I/O unchanged:
 - ``adata.varm["region_topic"]``: ``(n_regions, n_topics)``
 """
 
+import logging
 from typing import cast
 
 import numpy as np
@@ -24,6 +25,9 @@ import pandas as pd
 import scipy.sparse
 from anndata import AnnData
 
+log = logging.getLogger("deepscenic.types")
+
+DEFAULT_SCALING_FACTOR=10**6
 
 class LazyImpute:
     """Proxy for the imputed accessibility matrix ``cell_topic @ region_topic.T``.
@@ -37,11 +41,20 @@ class LazyImpute:
         Array of shape ``(n_cells, n_topics)``.
     topic_region:
         Array of shape ``(n_topics, n_regions)`` — i.e. ``region_topic.T``.
+    scaling_factor:
+        Scalar multiplied into the imputed values. Defaults to
+        ``DEFAULT_SCALING_FACTOR`` (10^6), giving CPM-like units.
     """
 
-    def __init__(self, cell_topic: np.ndarray, topic_region: np.ndarray):
+    def __init__(
+            self,
+            cell_topic: np.ndarray,
+            topic_region: np.ndarray,
+            scaling_factor: float
+        ):
         self.cell_topic = cell_topic
         self.topic_region = topic_region
+        self.scaling_factor = scaling_factor
 
     def __getitem__(
             self,
@@ -66,7 +79,8 @@ class LazyImpute:
 
         return cast(
             np.ndarray,
-            self.cell_topic[cell_idx, :] @ self.topic_region[:, region_idx]
+            (self.cell_topic[cell_idx, :] @ self.topic_region[:, region_idx]) \
+                * self.scaling_factor
         )
 
 
@@ -94,6 +108,7 @@ class LazyImputeAnndata(AnnData):
             cls,
             cell_topic: AnnData,
             region_topic: AnnData,
+            scaling_factor: float = DEFAULT_SCALING_FACTOR,
     ) -> "LazyImputeAnndata":
         """Construct from separate cell-topic and region-topic AnnData objects.
 
@@ -105,6 +120,9 @@ class LazyImputeAnndata(AnnData):
         region_topic:
             AnnData of shape ``(n_regions, n_topics)`` where ``X`` holds
             per-region topic scores.
+        scaling_factor:
+            Scalar multiplied into the imputed values. Defaults to
+            ``DEFAULT_SCALING_FACTOR`` (10^6), giving CPM-like units.
         """
         if cell_topic.shape[1] != region_topic.shape[1]:
             raise ValueError(
@@ -142,6 +160,7 @@ class LazyImputeAnndata(AnnData):
 
         instance.obsm["cell_topic"] = X_cell_topic
         instance.varm["region_topic"] = X_region_topic
+        instance.uns["scaling_factor"] = scaling_factor
 
         return instance
 
@@ -178,9 +197,19 @@ class LazyImputeAnndata(AnnData):
                 "\tadata.obsm['cell_topic']\n" +
                 "\tadata.varm['region_topic']"
             )
+        if "scaling_factor" not in self.uns:
+            log.warning(
+                f"Scaling factor not found in uns field setting to {DEFAULT_SCALING_FACTOR}"
+            )
+            self.uns["scaling_factor"] = DEFAULT_SCALING_FACTOR
+
+        scaling_factor = self.uns["scaling_factor"]
+        assert isinstance(scaling_factor, float) or isinstance(scaling_factor, int)
+
         return LazyImpute(
             cell_topic=self.obsm["cell_topic"], # type: ignore
-            topic_region=self.varm["region_topic"].T # type: ignore
+            topic_region=self.varm["region_topic"].T, # type: ignore
+            scaling_factor=scaling_factor
         )
 
     @X.setter
