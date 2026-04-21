@@ -155,7 +155,11 @@ def test_write_read_nested_dict_in_uns():
     import scanpy as sc
 
     rna = sc.AnnData(np.random.rand(10, 5).astype(np.float32))
+    rna.obs_names = [f"Cell_{i}" for i in range(10)]
+    rna.var_names = [f"Gene_{i}" for i in range(5)]
     atac = sc.AnnData(np.random.rand(10, 3).astype(np.float32))
+    atac.obs_names = [f"Cell_{i}" for i in range(10)]
+    atac.var_names = [f"chr1:{i * 1000}-{i * 1000 + 500}" for i in range(3)]
 
     import mudata as md
 
@@ -184,9 +188,13 @@ def test_write_read_none_in_uns():
     import scanpy as sc
 
     rna = sc.AnnData(np.random.rand(10, 5).astype(np.float32))
+    rna.obs_names = [f"Cell_{i}" for i in range(10)]
+    rna.var_names = [f"Gene_{i}" for i in range(5)]
     rna.uns["log1p"] = {"base": None}
 
     atac = sc.AnnData(np.random.rand(10, 3).astype(np.float32))
+    atac.obs_names = [f"Cell_{i}" for i in range(10)]
+    atac.var_names = [f"chr1:{i * 1000}-{i * 1000 + 500}" for i in range(3)]
 
     import mudata as md
 
