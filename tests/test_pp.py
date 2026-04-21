@@ -470,6 +470,44 @@ class TestCreateMuData:
         with pytest.raises(ValueError, match="Observation names must match"):
             ds.pp.create_mudata(rna=rna, atac=atac)
 
+    def test_create_mudata_with_topics_returns_lazy(self, sample_rna):
+        """create_mudata with cell_topic + region_topic produces LazyImputeAnndata."""
+        from deepscenic._types import LazyImputeAnndata
+
+        n_cells, n_regions, n_topics = sample_rna.n_obs, 30, 8
+
+        cell_topic = sc.AnnData(np.random.rand(n_cells, n_topics).astype(np.float32))
+        cell_topic.obs_names = sample_rna.obs_names
+        cell_topic.var_names = [f"Topic_{i}" for i in range(n_topics)]
+
+        region_topic = sc.AnnData(np.random.rand(n_regions, n_topics).astype(np.float32))
+        region_topic.obs_names = [f"chr1:{i * 1000}-{i * 1000 + 640}" for i in range(n_regions)]
+        region_topic.var_names = cell_topic.var_names
+
+        mdata = ds.pp.create_mudata(rna=sample_rna, cell_topic=cell_topic, region_topic=region_topic)
+
+        assert isinstance(mdata.mod["atac"], LazyImputeAnndata)
+        assert mdata.mod["atac"].shape == (n_cells, n_regions)
+
+    def test_create_mudata_invalid_input_combinations(self, sample_rna, sample_atac):
+        """create_mudata raises when neither or both input types are provided."""
+        cell_topic = sc.AnnData(np.random.rand(sample_rna.n_obs, 5))
+        cell_topic.obs_names = sample_rna.obs_names
+
+        region_topic = sc.AnnData(np.random.rand(sample_atac.n_vars, 5))
+
+        # None of the inputs
+        with pytest.raises(ValueError, match="Either atac"):
+            ds.pp.create_mudata(rna=sample_rna)
+
+        # cell_topic only (no region_topic)
+        with pytest.raises(ValueError, match="Either atac"):
+            ds.pp.create_mudata(rna=sample_rna, cell_topic=cell_topic)
+
+        # region_topic only (no cell_topic)
+        with pytest.raises(ValueError, match="Either atac"):
+            ds.pp.create_mudata(rna=sample_rna, region_topic=region_topic)
+
 
 class TestMarkTFs:
     """Tests for mark_tfs function."""

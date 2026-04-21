@@ -8,6 +8,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
+from .._types import LazyImpute
 from ..pp.basic import _to_dense
 
 if TYPE_CHECKING:
@@ -33,14 +34,24 @@ class CellDataset(Dataset):
     def __init__(
         self,
         rna: NDArray,
-        atac: NDArray,
+        atac: NDArray | LazyImpute,
         batch_id: NDArray | None = None,
     ) -> None:
         rna = _to_dense(rna)
-        atac = _to_dense(atac)
+
+        if not isinstance(atac, LazyImpute):
+            atac = _to_dense(atac)
 
         self.rna = torch.Tensor(rna)
-        self.atac = torch.Tensor(atac)
+
+        self.atac: torch.Tensor | LazyImpute
+        if not isinstance(atac, LazyImpute):
+            self.atac = torch.Tensor(atac)
+        else:
+            # pass atac as lazy compute and create Tensor with calling
+            # __getitem__
+            self.atac = atac
+
         self.batch_id = torch.Tensor(batch_id) if batch_id is not None else None
         self.n_cells: int = rna.shape[0]
 
@@ -50,7 +61,7 @@ class CellDataset(Dataset):
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         item = {
             "rna": self.rna[idx],
-            "atac": self.atac[idx],
+            "atac": self.atac[idx] if not isinstance(self.atac, LazyImpute) else torch.Tensor(self.atac[idx]),
             "idx": torch.tensor(idx),
         }
         if self.batch_id is not None:

@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from ._data import validate_schema
+from ._types import LazyImputeAnndata
 
 __all__ = ["read", "read_bed", "write"]
 
@@ -68,6 +69,11 @@ def read(
     mdata = md.read(path, backed=backed)
     if isinstance(mdata, ad.AnnData):
         raise ValueError("Expected MuData format, got Anndata")
+
+    atac = mdata.mod["atac"]
+    if "cell_topic" in atac.obsm and "region_topic" in atac.varm:
+        mdata.mod["atac"] = LazyImputeAnndata.from_anndata(atac)
+        log.info("Detected topic matrices in atac slot" + ", initializing object for lazy imputation.")
 
     if validate:
         validate_schema(mdata, strict=strict)
@@ -157,6 +163,10 @@ def write(
 
     # Create a copy to avoid modifying the original
     mdata = mdata.copy()
+
+    # Downcast LazyImputeAnndata before serialization — see LazyImputeAnndata.to_anndata()
+    if isinstance(mdata.mod.get("atac"), LazyImputeAnndata):
+        mdata.mod["atac"] = mdata.mod["atac"].to_anndata()
 
     # Convert object-dtype columns with pd.NA to proper nullable dtypes
     mdata.obs = _convert_nullable_columns(mdata.obs)
