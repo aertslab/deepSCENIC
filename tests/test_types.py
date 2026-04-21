@@ -68,7 +68,7 @@ class TestLazyImpute:
         li = LazyImpute(cell_topic, region_topic.T, 10**6)
 
         result = li[2:5]
-        expected = (cell_topic[2:5, :] @ region_topic.T)*10**6
+        expected = (cell_topic[2:5, :] @ region_topic.T) * 10**6
         np.testing.assert_allclose(result, expected)
 
     def test_getitem_2d(self, matrices):
@@ -86,7 +86,7 @@ class TestLazyImpute:
         li = LazyImpute(cell_topic, region_topic.T, 10**6)
 
         with pytest.raises(ValueError, match="3-d"):
-            li[0, 1, 2] # type: ignore
+            li[0, 1, 2]  # type: ignore
 
     def test_no_copy_of_arrays(self, matrices):
         """LazyImpute holds references, not copies."""

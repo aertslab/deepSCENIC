@@ -1,6 +1,3 @@
-
-
-
 """
 Custom AnnData types for on-the-fly ATAC accessibility imputation.
 
@@ -27,7 +24,8 @@ from anndata import AnnData
 
 log = logging.getLogger("deepscenic.types")
 
-DEFAULT_SCALING_FACTOR=10**6
+DEFAULT_SCALING_FACTOR = 10**6
+
 
 class LazyImpute:
     """Proxy for the imputed accessibility matrix ``cell_topic @ region_topic.T``.
@@ -46,42 +44,27 @@ class LazyImpute:
         ``DEFAULT_SCALING_FACTOR`` (10^6), giving CPM-like units.
     """
 
-    def __init__(
-            self,
-            cell_topic: np.ndarray,
-            topic_region: np.ndarray,
-            scaling_factor: float
-        ):
+    def __init__(self, cell_topic: np.ndarray, topic_region: np.ndarray, scaling_factor: float):
         self.cell_topic = cell_topic
         self.topic_region = topic_region
         self.scaling_factor = scaling_factor
 
-    def __getitem__(
-            self,
-            index: int | slice | tuple[int | slice] | tuple[int | slice, int | slice]
-    ) -> np.ndarray:
+    def __getitem__(self, index: int | slice | tuple[int | slice] | tuple[int | slice, int | slice]) -> np.ndarray:
         """Return the imputed submatrix for the given cell/region indices."""
         if not isinstance(index, tuple):
-            index = (index, )
+            index = (index,)
 
         region_idx: int | slice
         if len(index) == 1:
             cell_idx = index[0]
-            region_idx = slice(None) # slice across all regions
+            region_idx = slice(None)  # slice across all regions
         elif len(index) == 2:
             cell_idx = index[0]
             region_idx = index[1]
         else:
-            raise ValueError(
-                "Only 1-d or 2-d slicing is supported " +
-                f"(not {len(index)}-d)."
-            )
+            raise ValueError("Only 1-d or 2-d slicing is supported " + f"(not {len(index)}-d).")
 
-        return cast(
-            np.ndarray,
-            (self.cell_topic[cell_idx, :] @ self.topic_region[:, region_idx]) \
-                * self.scaling_factor
-        )
+        return cast(np.ndarray, (self.cell_topic[cell_idx, :] @ self.topic_region[:, region_idx]) * self.scaling_factor)
 
 
 class LazyImputeAnndata(AnnData):
@@ -105,10 +88,10 @@ class LazyImputeAnndata(AnnData):
 
     @classmethod
     def from_topic(
-            cls,
-            cell_topic: AnnData,
-            region_topic: AnnData,
-            scaling_factor: float = DEFAULT_SCALING_FACTOR,
+        cls,
+        cell_topic: AnnData,
+        region_topic: AnnData,
+        scaling_factor: float = DEFAULT_SCALING_FACTOR,
     ) -> "LazyImputeAnndata":
         """Construct from separate cell-topic and region-topic AnnData objects.
 
@@ -126,9 +109,9 @@ class LazyImputeAnndata(AnnData):
         """
         if cell_topic.shape[1] != region_topic.shape[1]:
             raise ValueError(
-                f"cell_topic ({cell_topic.shape[1]} topics) and " +
-                f"region_topic ({region_topic.shape[1]} topics) " +
-                "have inconsistent number of topics!"
+                f"cell_topic ({cell_topic.shape[1]} topics) and "
+                + f"region_topic ({region_topic.shape[1]} topics) "
+                + "have inconsistent number of topics!"
             )
 
         cell_obs = cell_topic.obs
@@ -151,12 +134,7 @@ class LazyImputeAnndata(AnnData):
 
         instance = cls.__new__(cls)
 
-        AnnData.__init__(
-            instance,
-            X=X_fake,
-            obs=cell_obs,
-            var=region_obs
-        )
+        AnnData.__init__(instance, X=X_fake, obs=cell_obs, var=region_obs)
 
         instance.obsm["cell_topic"] = X_cell_topic
         instance.varm["region_topic"] = X_region_topic
@@ -179,9 +157,9 @@ class LazyImputeAnndata(AnnData):
         """
         if "cell_topic" not in adata.obsm or "region_topic" not in adata.varm:
             raise ValueError(
-                "adata should contain following fields:\n" +
-                "\tadata.obsm['cell_topic']\n" +
-                "\tadata.varm['region_topic']"
+                "adata should contain following fields:\n"
+                + "\tadata.obsm['cell_topic']\n"
+                + "\tadata.varm['region_topic']"
             )
 
         instance = cls.__new__(cls)
@@ -189,37 +167,35 @@ class LazyImputeAnndata(AnnData):
         return instance
 
     @property
-    def X(self) -> LazyImpute: # type: ignore
+    def X(self) -> LazyImpute:  # type: ignore
         """Imputed accessibility matrix, computed on demand as ``cell_topic @ region_topic.T``."""
         if "cell_topic" not in self.obsm or "region_topic" not in self.varm:
             raise ValueError(
-                "adata should contain following fields:\n" +
-                "\tadata.obsm['cell_topic']\n" +
-                "\tadata.varm['region_topic']"
+                "adata should contain following fields:\n"
+                + "\tadata.obsm['cell_topic']\n"
+                + "\tadata.varm['region_topic']"
             )
         if "scaling_factor" not in self.uns:
-            log.warning(
-                f"Scaling factor not found in uns field setting to {DEFAULT_SCALING_FACTOR}"
-            )
+            log.warning(f"Scaling factor not found in uns field setting to {DEFAULT_SCALING_FACTOR}")
             self.uns["scaling_factor"] = DEFAULT_SCALING_FACTOR
 
         scaling_factor = self.uns["scaling_factor"]
         assert isinstance(scaling_factor, float) or isinstance(scaling_factor, int)
 
         return LazyImpute(
-            cell_topic=self.obsm["cell_topic"], # type: ignore
-            topic_region=self.varm["region_topic"].T, # type: ignore
-            scaling_factor=scaling_factor
+            cell_topic=self.obsm["cell_topic"],  # type: ignore
+            topic_region=self.varm["region_topic"].T,  # type: ignore
+            scaling_factor=scaling_factor,
         )
 
     @X.setter
-    def X(self, value) -> None: # type: ignore
+    def X(self, value) -> None:  # type: ignore
         raise AttributeError(
             "Cannot set X on LazyImputeAnndata. "
             "Accessibility is imputed on the fly from obsm['cell_topic'] and varm['region_topic']."
         )
 
-    def copy(self) -> "LazyImputeAnndata": # type: ignore
+    def copy(self) -> "LazyImputeAnndata":  # type: ignore
         """Return an in-memory copy as a :class:`LazyImputeAnndata`.
 
         Cannot delegate to ``super().copy()`` because ``AnnData._mutated_copy``
@@ -248,7 +224,7 @@ class LazyImputeAnndata(AnnData):
         )
         return instance
 
-    def to_memory(self, copy: bool = False) -> "LazyImputeAnndata": # type: ignore
+    def to_memory(self, copy: bool = False) -> "LazyImputeAnndata":  # type: ignore
         """Convert a view to an in-memory :class:`LazyImputeAnndata`.
 
         Same issue as :meth:`copy` — ``super().to_memory()`` internally calls
@@ -276,7 +252,7 @@ class LazyImputeAnndata(AnnData):
         )
         return instance
 
-    def __getitem__(self, index) -> "LazyImputeAnndata": # type: ignore
+    def __getitem__(self, index) -> "LazyImputeAnndata":  # type: ignore
         """Return a sliced view as a :class:`LazyImputeAnndata`.
 
         Without this override, the base ``AnnData.__getitem__`` returns a plain

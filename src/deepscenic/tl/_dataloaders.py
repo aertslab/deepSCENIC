@@ -61,8 +61,7 @@ class CellDataset(Dataset):
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         item = {
             "rna": self.rna[idx],
-            "atac": self.atac[idx] if not isinstance(self.atac, LazyImpute) \
-                else torch.Tensor(self.atac[idx]),
+            "atac": self.atac[idx] if not isinstance(self.atac, LazyImpute) else torch.Tensor(self.atac[idx]),
             "idx": torch.tensor(idx),
         }
         if self.batch_id is not None:

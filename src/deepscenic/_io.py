@@ -73,10 +73,7 @@ def read(
     atac = mdata.mod["atac"]
     if "cell_topic" in atac.obsm and "region_topic" in atac.varm:
         mdata.mod["atac"] = LazyImputeAnndata.from_anndata(atac)
-        log.info(
-            "Detected topic matrices in atac slot" +
-            ", initializing object for lazy imputation."
-        )
+        log.info("Detected topic matrices in atac slot" + ", initializing object for lazy imputation.")
 
     if validate:
         validate_schema(mdata, strict=strict)

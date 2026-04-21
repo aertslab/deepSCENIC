@@ -14,6 +14,7 @@ from .search_space import compute_r2g_penalty
 
 log = logging.getLogger("deepscenic.pp")
 
+
 def create_mudata(
     *,
     rna: AnnData,
@@ -78,9 +79,7 @@ def create_mudata(
         invalid_input_error = False
 
     if invalid_input_error:
-        raise ValueError(
-            "Either atac or cell_topic and region_topic should be provided"
-        )
+        raise ValueError("Either atac or cell_topic and region_topic should be provided")
 
     if atac is None:
         # in this case cell_topic and region_topic should be provided
@@ -89,9 +88,7 @@ def create_mudata(
         assert cell_topic is not None
         assert region_topic is not None
         atac = LazyImputeAnndata.from_topic(
-            cell_topic=cell_topic,
-            region_topic=region_topic,
-            scaling_factor=imputation_scaling_factor
+            cell_topic=cell_topic, region_topic=region_topic, scaling_factor=imputation_scaling_factor
         )
 
     if copy:
