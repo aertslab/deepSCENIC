@@ -15,6 +15,7 @@ from deepscenic.pl import perturbation_pca
 
 @pytest.fixture
 def paired_matrices():
+    """Create paired original and perturbed data matrices for testing."""
     rng = np.random.default_rng(42)
     original = rng.normal(size=(20, 6))
     perturbed = original.copy()
@@ -23,6 +24,7 @@ def paired_matrices():
 
 
 def test_returns_axes_and_draws_paired_data(paired_matrices):
+    """Test that function returns Axes object with correct plot elements."""
     original, perturbed = paired_matrices
 
     ax = perturbation_pca(original, perturbed, show=False)
@@ -36,6 +38,7 @@ def test_returns_axes_and_draws_paired_data(paired_matrices):
 
 
 def test_accepts_separate_point_opacities(paired_matrices):
+    """Test that function accepts and applies separate opacity values."""
     original, perturbed = paired_matrices
 
     ax = perturbation_pca(
@@ -51,6 +54,7 @@ def test_accepts_separate_point_opacities(paired_matrices):
 
 
 def test_returns_figure(paired_matrices):
+    """Test that function can return Figure object when requested."""
     original, perturbed = paired_matrices
 
     fig = perturbation_pca(original, perturbed, show=False, return_fig=True)
@@ -59,6 +63,7 @@ def test_returns_figure(paired_matrices):
 
 
 def test_accepts_sparse_matrices(paired_matrices):
+    """Test that function handles sparse matrix inputs."""
     original, perturbed = paired_matrices
 
     ax = perturbation_pca(csr_matrix(original), csr_matrix(perturbed), show=False)
@@ -67,6 +72,7 @@ def test_accepts_sparse_matrices(paired_matrices):
 
 
 def test_can_disable_arrows(paired_matrices):
+    """Test that function can disable arrow rendering."""
     original, perturbed = paired_matrices
 
     ax = perturbation_pca(original, perturbed, max_arrows=0, show=False)
@@ -75,6 +81,7 @@ def test_can_disable_arrows(paired_matrices):
 
 
 def test_colors_by_categorical_annotation(paired_matrices):
+    """Test that function correctly colors points by categorical annotation."""
     original, perturbed = paired_matrices
     obs = pd.DataFrame({"cell_state": pd.Categorical(["A"] * 10 + ["B"] * 10)})
 
@@ -92,6 +99,7 @@ def test_colors_by_categorical_annotation(paired_matrices):
 
 
 def test_colors_by_numeric_annotation(paired_matrices):
+    """Test that function correctly colors points by numeric annotation."""
     original, perturbed = paired_matrices
     obs = pd.DataFrame({"score": np.linspace(0, 1, len(original))})
 
@@ -108,6 +116,7 @@ def test_colors_by_numeric_annotation(paired_matrices):
 
 
 def test_annotation_length_must_match(paired_matrices):
+    """Test that function raises error when annotation length doesn't match data."""
     original, perturbed = paired_matrices
     obs = pd.DataFrame({"cell_state": ["A"] * (len(original) - 1)})
 
@@ -116,6 +125,7 @@ def test_annotation_length_must_match(paired_matrices):
 
 
 def test_rejects_shape_mismatch(paired_matrices):
+    """Test that function rejects matrices with mismatched shapes."""
     original, perturbed = paired_matrices
 
     with pytest.raises(ValueError, match="Shape mismatch"):
@@ -124,6 +134,7 @@ def test_rejects_shape_mismatch(paired_matrices):
 
 @pytest.mark.parametrize("n_components", [0, 1, 7])
 def test_rejects_invalid_component_count(paired_matrices, n_components):
+    """Test that function rejects invalid n_components values."""
     original, perturbed = paired_matrices
 
     with pytest.raises(ValueError, match="n_components"):

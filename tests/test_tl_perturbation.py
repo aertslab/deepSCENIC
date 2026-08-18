@@ -87,6 +87,7 @@ class TestSimulatePerturbation:
         assert perturbed.shape == logFC.shape
 
     def test_mismatched_levels_raises(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Test that function raises error when levels and TF names have different lengths."""
         with pytest.raises(ValueError, match="same length"):
             simulate_perturbation(
                 mock_deepscenic_model,

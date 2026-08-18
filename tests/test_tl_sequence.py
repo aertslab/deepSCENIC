@@ -43,6 +43,7 @@ class _MotifNet(torch.nn.Module):
 
 @pytest.fixture
 def ism_inputs():
+    """Create test inputs for in silico mutagenesis testing."""
     obs = pd.DataFrame({"lineState": ["MEL", "MEL", "OTHER"]}, index=["a", "b", "c"])
     mdata = md.MuData({"rna": ad.AnnData(np.zeros((3, 2)), obs=obs.copy())})
     mdata.obs["lineState"] = obs["lineState"]
@@ -58,6 +59,7 @@ def ism_inputs():
 
 
 def test_in_silico_mutagenesis_scores_and_metadata(ism_inputs):
+    """Test that function returns correct scores and metadata."""
     model, mdata = ism_inputs
     result = in_silico_mutagenesis(
         model,
@@ -78,6 +80,7 @@ def test_in_silico_mutagenesis_scores_and_metadata(ism_inputs):
 
 
 def test_in_silico_mutagenesis_rejects_empty_class(ism_inputs):
+    """Test that function raises error for empty cell classes."""
     model, mdata = ism_inputs
     with pytest.raises(ValueError, match="No cells"):
         in_silico_mutagenesis(
