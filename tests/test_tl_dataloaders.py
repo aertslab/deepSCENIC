@@ -98,6 +98,29 @@ class TestBuildCellDataloader:
         assert train_batch["rna"].shape[0] == 80
         assert test_batch["rna"].shape[0] == 20
 
+    def test_balances_training_classes(self, mock_mdata):
+        """Class balancing should use a weighted sampler over training cells."""
+        from torch.utils.data import WeightedRandomSampler
+
+        from deepscenic.tl._dataloaders import build_cell_dataloader
+
+        mock_mdata.obs["class"] = ["major"] * 75 + ["minor"] * 5 + ["test"] * 20
+        loader = build_cell_dataloader(
+            mock_mdata,
+            split="train",
+            balance_class=True,
+            class_key="class",
+        )
+
+        assert isinstance(loader.sampler, WeightedRandomSampler)
+
+    def test_class_balancing_requires_class_key(self, mock_mdata):
+        """A class column must be specified when balancing is enabled."""
+        from deepscenic.tl._dataloaders import build_cell_dataloader
+
+        with pytest.raises(ValueError, match="requires class_key"):
+            build_cell_dataloader(mock_mdata, split="train", balance_class=True)
+
 
 class TestBuildSequenceDataloader:
     """Tests for build_sequence_dataloader function."""

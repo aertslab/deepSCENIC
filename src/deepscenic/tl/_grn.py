@@ -9,6 +9,9 @@ Basic Extraction
 - extract_grn: Extract tf2r and r2g matrices as DataFrames
 - extract_tf2r_matrix: Extract TF→region binding matrix
 - extract_r2g_matrix: Extract region→gene regulatory matrix
+- compute_celltype_tf2r: Weight tf2r links by mean TF activity in a cell class
+- compute_celltype_r2g: Weight r2g links by mean enhancer activity in a cell class
+- compute_celltype_tf2g: Weight combined tf2g links by mean TF activity in a cell class
 
 Query Functions
 ---------------
@@ -22,8 +25,7 @@ For cell-type specific GRN analysis, use these functions in order:
 
 1. identify_active_enhancers: Wilcoxon differential analysis to find active enhancers
 2. compute_tf_activity_scores: TF activity weighted by tf2r to active enhancers
-3. identify_key_tfs: Otsu threshold to identify key TFs
-4. build_grn_for_tfs: Build GRN for selected TFs
+3. build_grn_for_tfs: Build GRN for user-selected TFs
 
 Example
 -------
@@ -38,10 +40,12 @@ Example
 >>> sox10_targets = ds.tl.get_tf_targets(model, "SOX10")
 >>>
 >>> # Cell-type aware workflow
->>> active_enh = ds.tl.identify_active_enhancers(model, mdata, "celltype")
->>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enh)
->>> key_tfs = ds.tl.identify_key_tfs(tf_scores)
->>> grn_df = ds.tl.build_grn_for_tfs(model, key_tfs)
+>>> active_enh = ds.tl.identify_active_enhancers(model, mdata, class_key="celltype")
+>>> tf_scores = ds.tl.compute_tf_activity_scores(
+...     model, mdata, class_key="celltype", active_enhancers=active_enh
+... )
+>>> selected_tfs = ["SOX10", "MITF"]
+>>> grn_df = ds.tl.build_grn_for_tfs(model, selected_tfs)
 >>>
 >>> # Region-centric query
 >>> region_info = ds.tl.get_region_info(model, "chr3:69926370-69926870")
@@ -176,7 +180,7 @@ def extract_grn(model: DeepSCENICModel, normalize_r2g: bool = True) -> dict[str,
     -------
     dict[str, pd.DataFrame]
         Dictionary with:
-        - 'tf2r': DataFrame (n_regions, n_tfs) with region/TF names
+        - 'tf2r': DataFrame (n_tfs, n_regions) with TF/region names
         - 'r2g': DataFrame (sparse format) with region/gene links
 
     Examples
@@ -204,15 +208,15 @@ def extract_tf2r_matrix(model: DeepSCENICModel) -> pd.DataFrame:
     Returns
     -------
     pd.DataFrame
-        tf2r matrix (n_regions, n_tfs) with region/TF names
+        tf2r matrix (n_tfs, n_regions) with TF/region names
     """
     with torch.no_grad():
         E1_values = model.adj_tf2r.cpu().numpy()
 
     return pd.DataFrame(
-        E1_values,
-        index=model.region_names,  # type: ignore[arg-type]
-        columns=model.tf_names,  # type: ignore[arg-type]
+        E1_values.T,
+        index=model.tf_names,  # type: ignore[arg-type]
+        columns=model.region_names,  # type: ignore[arg-type]
     )
 
 
@@ -273,6 +277,295 @@ def extract_r2g_matrix(
             index=model.region_names,  # type: ignore[arg-type]
             columns=model.gene_names,  # type: ignore[arg-type]
         )
+
+
+def compute_celltype_tf2r(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    class_key: str,
+    class_label: str,
+    *,
+    as_edgelist: bool = False,
+    key_prefix: str = "X_deepscenic_",
+) -> pd.DataFrame:
+    """
+    Compute TF-activity-weighted tf2r scores for one cell class.
+
+    This reproduces the legacy calculation
+    ``mean_tf_activity[:, None] * E1``. TF activity is averaged over cells in
+    ``class_label`` and multiplied into each corresponding TF→region weight.
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel.
+    mdata
+        MuData containing the cells to aggregate.
+    class_key
+        Column in ``mdata.obs`` containing class labels.
+    class_label
+        Class whose mean TF activity should be used.
+    as_edgelist
+        If False (default), return the legacy-compatible dense TF × region
+        matrix. If True, return a long-form edge list.
+    key_prefix
+        Prefix for model-derived values in ``mdata.obsm``. Default
+        ``"X_deepscenic_"``.
+
+    Returns
+    -------
+    pd.DataFrame
+        If ``as_edgelist=False``, a TF × region matrix of activity-weighted
+        tf2r scores. Otherwise, an edge list with columns ``tf``, ``region``,
+        ``tf2r_weight``, ``tf_activity``, and ``celltype_tf2r_weight``.
+
+    Examples
+    --------
+    >>> oligo_tf2r = ds.tl.compute_celltype_tf2r(
+    ...     model,
+    ...     mdata,
+    ...     class_key="subclass_Bakken_2022",
+    ...     class_label="Oligo",
+    ... )
+    """
+    from ._inference import to_latent
+
+    if class_key not in mdata.obs:
+        raise KeyError(f"Class key {class_key!r} not found in mdata.obs")
+
+    class_mask = mdata.obs[class_key].eq(class_label).to_numpy()
+    if not class_mask.any():
+        raise ValueError(f"No cells found with {class_key}={class_label!r}")
+
+    tf_act_key = f"{key_prefix}z_tf"
+    if tf_act_key not in mdata.obsm:
+        to_latent(model, mdata, key_prefix=key_prefix)
+
+    tf_activity = np.asarray(mdata.obsm[tf_act_key])
+    if tf_activity.shape[1] != len(model.tf_names):
+        raise ValueError(
+            f"{tf_act_key!r} has {tf_activity.shape[1]} TFs, "
+            f"but the model has {len(model.tf_names)}"
+        )
+
+    mean_activity = tf_activity[class_mask].mean(axis=0)
+    tf2r = extract_tf2r_matrix(model)
+    weighted_tf2r = tf2r.mul(mean_activity, axis=0)
+
+    if not as_edgelist:
+        return weighted_tf2r
+
+    result = tf2r.rename_axis("tf").reset_index().melt(
+        id_vars="tf",
+        var_name="region",
+        value_name="tf2r_weight",
+    )
+    tf_to_activity = dict(zip(model.tf_names, mean_activity, strict=True))
+    result["tf_activity"] = result["tf"].map(tf_to_activity)
+    result["celltype_tf2r_weight"] = result["tf_activity"] * result["tf2r_weight"]
+    return result
+
+
+def compute_celltype_r2g(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    class_key: str,
+    class_label: str,
+    *,
+    as_edgelist: bool = False,
+    normalize_r2g: bool = False,
+    key_prefix: str = "X_deepscenic_",
+) -> pd.DataFrame:
+    """
+    Compute enhancer-activity-weighted r2g scores for one cell class.
+
+    This reproduces the legacy calculation
+    ``mean_enhancer_activity[:, None] * E2``. Enhancer activity is averaged
+    over cells in ``class_label`` and multiplied into each corresponding
+    region→gene weight.
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel.
+    mdata
+        MuData containing the cells to aggregate.
+    class_key
+        Column in ``mdata.obs`` containing class labels.
+    class_label
+        Class whose mean enhancer activity should be used.
+    as_edgelist
+        If False (default), return the legacy-compatible dense region × gene
+        matrix. If True, return only modeled r2g links as an edge list, which
+        is more memory efficient for large datasets.
+    normalize_r2g
+        If True, normalize r2g weights per gene before weighting them by
+        enhancer activity. Default False, matching the legacy raw E2 matrix.
+    key_prefix
+        Prefix for model-derived values in ``mdata.obsm``. Default
+        ``"X_deepscenic_"``.
+
+    Returns
+    -------
+    pd.DataFrame
+        If ``as_edgelist=False``, a region × gene matrix of activity-weighted
+        r2g scores. Otherwise, an edge list with columns ``region``, ``gene``,
+        ``r2g_weight``, ``enhancer_activity``, and ``celltype_r2g_weight``.
+
+    Examples
+    --------
+    >>> vip_r2g = ds.tl.compute_celltype_r2g(
+    ...     model,
+    ...     mdata,
+    ...     class_key="subclass_Bakken_2022",
+    ...     class_label="Vip",
+    ... )
+    """
+    from ._inference import to_latent
+
+    if class_key not in mdata.obs:
+        raise KeyError(f"Class key {class_key!r} not found in mdata.obs")
+
+    class_mask = mdata.obs[class_key].eq(class_label).to_numpy()
+    if not class_mask.any():
+        raise ValueError(f"No cells found with {class_key}={class_label!r}")
+
+    enh_act_key = f"{key_prefix}enh_act"
+    if enh_act_key not in mdata.obsm:
+        to_latent(model, mdata, key_prefix=key_prefix)
+
+    enhancer_activity = np.asarray(mdata.obsm[enh_act_key])
+    if enhancer_activity.shape[1] != len(model.region_names):
+        raise ValueError(
+            f"{enh_act_key!r} has {enhancer_activity.shape[1]} regions, "
+            f"but the model has {len(model.region_names)}"
+        )
+
+    mean_activity = enhancer_activity[class_mask].mean(axis=0)
+
+    r2g = extract_r2g_matrix(
+        model,
+        as_edgelist=as_edgelist,
+        normalize=normalize_r2g,
+    )
+
+    if not as_edgelist:
+        return r2g.mul(mean_activity, axis=0)
+
+    region_to_activity = dict(zip(model.region_names, mean_activity, strict=True))
+    r2g = r2g.rename(columns={"weight": "r2g_weight"})
+    r2g["enhancer_activity"] = r2g["region"].map(region_to_activity)
+    r2g["celltype_r2g_weight"] = r2g["enhancer_activity"] * r2g["r2g_weight"]
+    return r2g
+
+
+def compute_celltype_tf2g(
+    model: DeepSCENICModel,
+    mdata: md.MuData,
+    class_key: str,
+    class_label: str,
+    *,
+    as_edgelist: bool = False,
+    normalize_r2g: bool = False,
+    key_prefix: str = "X_deepscenic_",
+) -> pd.DataFrame:
+    """
+    Compute TF-activity-weighted tf2g scores for one cell class.
+
+    This reproduces the legacy calculation
+    ``mean_tf_activity[:, None] * (E1 @ E2)``. The TF→gene matrix is obtained
+    by multiplying the TF × region tf2r matrix by the region × gene r2g
+    matrix, then weighting each TF row by its mean activity in ``class_label``.
+
+    Parameters
+    ----------
+    model
+        Trained DeepSCENICModel.
+    mdata
+        MuData containing the cells to aggregate.
+    class_key
+        Column in ``mdata.obs`` containing class labels.
+    class_label
+        Class whose mean TF activity should be used.
+    as_edgelist
+        If False (default), return the legacy-compatible dense TF × gene
+        matrix. If True, return a long-form edge list.
+    normalize_r2g
+        If True, normalize r2g weights per gene before computing E1 @ E2.
+        Default False, matching the legacy raw E2 matrix.
+    key_prefix
+        Prefix for model-derived values in ``mdata.obsm``. Default
+        ``"X_deepscenic_"``.
+
+    Returns
+    -------
+    pd.DataFrame
+        If ``as_edgelist=False``, a TF × gene matrix of activity-weighted tf2g
+        scores. Otherwise, an edge list with columns ``tf``, ``gene``,
+        ``tf2g_weight``, ``tf_activity``, and ``celltype_tf2g_weight``.
+
+    Examples
+    --------
+    >>> oligo_tf2g = ds.tl.compute_celltype_tf2g(
+    ...     model,
+    ...     mdata,
+    ...     class_key="subclass_Bakken_2022",
+    ...     class_label="Oligo",
+    ... )
+    """
+    from ._inference import to_latent
+
+    if class_key not in mdata.obs:
+        raise KeyError(f"Class key {class_key!r} not found in mdata.obs")
+
+    class_mask = mdata.obs[class_key].eq(class_label).to_numpy()
+    if not class_mask.any():
+        raise ValueError(f"No cells found with {class_key}={class_label!r}")
+
+    tf_act_key = f"{key_prefix}z_tf"
+    if tf_act_key not in mdata.obsm:
+        to_latent(model, mdata, key_prefix=key_prefix)
+
+    tf_activity = np.asarray(mdata.obsm[tf_act_key])
+    if tf_activity.shape[1] != len(model.tf_names):
+        raise ValueError(
+            f"{tf_act_key!r} has {tf_activity.shape[1]} TFs, "
+            f"but the model has {len(model.tf_names)}"
+        )
+
+    mean_activity = tf_activity[class_mask].mean(axis=0)
+    from scipy.sparse import coo_matrix
+
+    tf2r = extract_tf2r_matrix(model)
+    with torch.no_grad():
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[union-attr]
+        r2g_values = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[union-attr]
+    if normalize_r2g:
+        r2g_values = _normalize_r2g_per_gene(r2g_values, r2g_indices)
+    r2g = coo_matrix(
+        (r2g_values, (r2g_indices[0], r2g_indices[1])),
+        shape=(len(model.region_names), len(model.gene_names)),
+    ).tocsr()
+    tf2g_values = tf2r.to_numpy() @ r2g
+    tf2g = pd.DataFrame(
+        tf2g_values.toarray() if hasattr(tf2g_values, "toarray") else np.asarray(tf2g_values),
+        index=model.tf_names,
+        columns=model.gene_names,
+    )
+    weighted_tf2g = tf2g.mul(mean_activity, axis=0)
+
+    if not as_edgelist:
+        return weighted_tf2g
+
+    result = tf2g.rename_axis("tf").reset_index().melt(
+        id_vars="tf",
+        var_name="gene",
+        value_name="tf2g_weight",
+    )
+    tf_to_activity = dict(zip(model.tf_names, mean_activity, strict=True))
+    result["tf_activity"] = result["tf"].map(tf_to_activity)
+    result["celltype_tf2g_weight"] = result["tf_activity"] * result["tf2g_weight"]
+    return result
 
 
 def get_tf_targets(
@@ -653,7 +946,7 @@ def get_region_info(
 def identify_active_enhancers(
     model: DeepSCENICModel,
     mdata: md.MuData,
-    celltype_key: str,
+    class_key: str,
     top_n: int | None = 3000,
     logfc_threshold: float | None = None,
     pval_threshold: float = 0.05,
@@ -672,13 +965,16 @@ def identify_active_enhancers(
         Trained DeepSCENICModel
     mdata
         MuData with RNA modality
-    celltype_key
-        Column in mdata.obs containing cell type labels
+    class_key
+        Column in mdata.obs containing class labels
     top_n
         Maximum number of active enhancers per cell type.
         Applied after logfc/pval filtering. If None, no limit. Default 3000.
     logfc_threshold
-        Minimum log fold change threshold. If None, no logFC filter.
+        Minimum Scanpy log-fold-change threshold. If None, no logFC filter.
+        Model-derived enhancer activities can be negative, so Scanpy may report
+        undefined log-fold changes for some regions. The Wilcoxon scores and
+        p-values remain valid because they are rank-based.
     pval_threshold
         Maximum adjusted p-value threshold. Default 0.05.
     key_prefix
@@ -699,24 +995,19 @@ def identify_active_enhancers(
         to_latent(model, mdata, key_prefix=key_prefix)
     enh_act = mdata.obsm[enh_act_key]
 
-    # Shift per-region to non-negative. The Wilcoxon test is rank-based and invariant
-    # to monotonic shifts, so p-values are identical. This prevents scanpy from emitting
-    # log2 warnings when computing logFC on signed neural network activations.
-    enh_act_shifted = enh_act - enh_act.min(axis=0, keepdims=True)
-
-    # Build AnnData of per-cell enhancer activity
+    # Build AnnData from the original signed, model-derived enhancer activity.
     ad_enh = sc.AnnData(
-        X=enh_act_shifted,
-        obs=mdata.obs[[celltype_key]].copy(),
+        X=enh_act,
+        obs=mdata.obs[[class_key]].copy(),
     )
     ad_enh.var_names = list(model.region_names)
 
     # Run Wilcoxon rank-sum test
-    sc.tl.rank_genes_groups(ad_enh, celltype_key, method="wilcoxon")
+    sc.tl.rank_genes_groups(ad_enh, class_key, method="wilcoxon", use_raw=False)
 
     # Extract active enhancers per cell type
     active_enhancers = {}
-    for ct in ad_enh.obs[celltype_key].unique():
+    for ct in ad_enh.obs[class_key].unique():
         df = sc.get.rank_genes_groups_df(ad_enh, group=ct)
 
         # Apply filters
@@ -736,9 +1027,10 @@ def identify_active_enhancers(
 def compute_tf_activity_scores(
     model: DeepSCENICModel,
     mdata: md.MuData,
-    celltype_key: str,
+    class_key: str,
     active_enhancers: dict[str, list[str]],
     key_prefix: str = "X_deepscenic_",
+    zscore: bool = False,
 ) -> pd.DataFrame:
     """
     Compute TF activity scores weighted by binding to active enhancers.
@@ -749,12 +1041,16 @@ def compute_tf_activity_scores(
         Trained DeepSCENICModel
     mdata
         MuData with RNA modality
-    celltype_key
-        Column in mdata.obs containing cell type labels
+    class_key
+        Column in mdata.obs containing class labels
     active_enhancers
         Active enhancers per cell type from identify_active_enhancers()
     key_prefix
         Prefix for obsm keys. Default: "X_deepscenic_"
+    zscore
+        If True, z-score each TF across classes. Each TF row is centered to
+        mean zero and scaled to unit population standard deviation. TFs with
+        zero variance across classes are set to zero. Default: False.
 
     Returns
     -------
@@ -764,7 +1060,10 @@ def compute_tf_activity_scores(
 
     Notes
     -----
-    Score formula: mean(|TF_activity × E1[active_enhancers]|)
+    Score formula: mean(TF_activity × E1[active_enhancers])
+
+    Scores retain their sign: positive and negative values represent the signed
+    contribution implied by TF activity and tf2r weights.
     """
     from ._inference import to_latent
 
@@ -779,7 +1078,7 @@ def compute_tf_activity_scores(
         E1 = model.adj_tf2r.cpu().numpy()  # (n_regions, n_tfs)
 
     # Get cell type labels
-    celltypes = mdata.obs[celltype_key]
+    celltypes = mdata.obs[class_key]
     unique_celltypes = celltypes.unique()
 
     # Build region name to index mapping
@@ -806,54 +1105,22 @@ def compute_tf_activity_scores(
         # E1 subset for active enhancers: (n_active, n_tfs)
         E1_active = E1[region_indices, :]
 
-        # TF score = mean(|mean_tf_act × E1_active|) across enhancers
+        # TF score = mean(mean_tf_act × E1_active) across enhancers
         # mean_tf_act: (n_tfs,), E1_active.T: (n_tfs, n_active)
-        tf_scores = np.abs(mean_tf_act[:, None] * E1_active.T).mean(axis=1)
+        tf_scores = (mean_tf_act[:, None] * E1_active.T).mean(axis=1)
         results[ct] = tf_scores
 
-    return pd.DataFrame(
+    scores = pd.DataFrame(
         results,
         index=model.tf_names,  # type: ignore[arg-type]
     )
 
+    if zscore:
+        row_mean = scores.mean(axis=1)
+        row_std = scores.std(axis=1, ddof=0).replace(0, np.nan)
+        scores = scores.sub(row_mean, axis=0).div(row_std, axis=0).fillna(0.0)
 
-def identify_key_tfs(
-    tf_activity_scores: pd.DataFrame,
-    method: str = "otsu",
-) -> list[str]:
-    """
-    Identify key TFs across all cell types using Otsu thresholding.
-
-    Parameters
-    ----------
-    tf_activity_scores
-        TF activity scores from compute_tf_activity_scores()
-    method
-        Thresholding method, currently only "otsu" supported
-
-    Returns
-    -------
-    list[str]
-        Unique list of key TF names across all cell types
-    """
-    if method != "otsu":
-        raise ValueError(f"Unknown method: {method}. Only 'otsu' is supported.")
-
-    key_tfs: set[str] = set()
-
-    for celltype in tf_activity_scores.columns:
-        scores = tf_activity_scores[celltype].abs()
-        thresh, used_otsu = _get_otsu_threshold(scores.values, fallback=0.0)
-
-        if used_otsu:
-            logger.info(f"Cell type '{celltype}': Otsu TF threshold = {thresh:.4f}")
-        else:
-            logger.info(f"Cell type '{celltype}': Otsu failed, using threshold = {thresh:.4f}")
-
-        ct_key_tfs = scores[scores > thresh].index.tolist()
-        key_tfs.update(ct_key_tfs)
-
-    return sorted(key_tfs)
+    return scores
 
 
 def build_grn_for_tfs(

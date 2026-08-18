@@ -320,13 +320,10 @@ def train(
     batch_size: int = 16,
     seq_batch_size: int = 200,
     lr: float = 1e-4,
-    weight_decay: float = 0.0,
     use_scheduler: bool = False,
     # Loss settings
     loss_rna: str = "mae",
     loss_atac: str = "cosine",
-    dropout_mask_rna: bool = False,
-    dropout_mask_atac: bool = False,
     beta: float = 1e-2,
     alpha: float = 1e-2,
     gamma: float = 1.0,
@@ -336,7 +333,6 @@ def train(
     device: str | None = None,
     num_workers: int = 0,
     # Data settings
-    batch_key: str | None = None,
     balance_class: bool = False,
     class_key: str | None = None,
     balance_dars: bool = False,
@@ -371,18 +367,12 @@ def train(
         Sequences per batch for E1 cache updates.
     lr
         Learning rate for all trainable components (VAE, MotifNet, Enformer).
-    weight_decay
-        Weight decay for optimizer.
     use_scheduler
         Whether to use CosineAnnealingLR scheduler.
     loss_rna
         RNA loss type: 'mse', 'mae', 'cosine'.
     loss_atac
         ATAC loss type: 'mse', 'mae', 'bce', 'cosine'.
-    dropout_mask_rna
-        Whether to mask RNA loss on zeros.
-    dropout_mask_atac
-        Whether to mask ATAC loss on zeros.
     beta
         KL divergence weight.
     alpha
@@ -397,8 +387,6 @@ def train(
         Training device ('cuda', 'cpu', or None for auto-detect).
     num_workers
         Number of workers for parallel data loading.
-    batch_key
-        Column in obs for batch correction.
     balance_class
         Whether to use weighted sampling for class balance.
     class_key
@@ -540,11 +528,6 @@ def train(
     n_train_links = train_r2g_link_mask.sum().item()
     log.info(f"R2G sparsity on {n_train_links}/{len(r2g_distances)} links (train split)")
 
-    # Batch correction
-    n_batches = 0
-    if batch_key is not None:
-        n_batches = int(mdata.obs[batch_key].nunique())
-
     # Initialize models
     vae = DeepSCENICVAE(
         n_tfs=n_tfs,
@@ -557,7 +540,7 @@ def train(
         region_indices=region_indices,
         n_hidden=model_config.n_hidden,
         binary_atac=model_config.binary_atac,
-        n_batches=n_batches,
+        n_batches=0,
     ).to(device)
     train_r2g_link_mask = train_r2g_link_mask.to(device)
 
@@ -587,7 +570,6 @@ def train(
         shuffle=True,
         balance_class=balance_class,
         class_key=class_key,
-        batch_key=batch_key,
         num_workers=num_workers,
     )
 
@@ -596,7 +578,6 @@ def train(
         split="test",
         batch_size=batch_size,
         shuffle=False,
-        batch_key=batch_key,
         num_workers=num_workers,
     )
 
@@ -679,7 +660,6 @@ def train(
             {"params": motifnet.parameters(), "lr": lr},
             {"params": sequence_model.parameters(), "lr": lr},
         ],
-        weight_decay=weight_decay,
     )
 
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs) if use_scheduler else None
@@ -760,10 +740,6 @@ def train(
         for batch in pbar:
             x_rna = batch["rna"].to(device)
             x_atac = batch["atac"].to(device)
-            batch_id = batch.get("batch_id")
-            if batch_id is not None:
-                batch_id = batch_id.to(device)
-
             # Update E1 with fresh sequence predictions
             # Clone persistent cache, then insert fresh predictions WITH gradients
             sequences, seq_idx_local = seq_iterator.next()
@@ -783,7 +759,6 @@ def train(
                 x_rna,
                 adj_tf2r_batch,
                 use_mean=False,
-                batch_id=batch_id,
             )
 
             # Compute losses
@@ -801,8 +776,6 @@ def train(
                 region_indices=vae.region_indices,  # type: ignore[arg-type]
                 loss_rna=loss_rna,
                 loss_atac=loss_atac,
-                dropout_mask_rna=dropout_mask_rna,
-                dropout_mask_atac=dropout_mask_atac,
                 beta=beta,
                 alpha=alpha,
                 gamma=gamma,
@@ -877,16 +850,11 @@ def train(
             for batch in test_cell_loader:
                 x_rna = batch["rna"].to(device)
                 x_atac = batch["atac"].to(device)
-                batch_id = batch.get("batch_id")
-                if batch_id is not None:
-                    batch_id = batch_id.to(device)
-
                 # Validation
                 output = vae(
                     x_rna,
                     adj_tf2r_cache,
                     use_mean=True,
-                    batch_id=batch_id,
                 )
 
                 losses = compute_total_loss(
@@ -1060,17 +1028,18 @@ def finetune_r2g(
     model: DeepSCENICModel,
     mdata: md.MuData,
     *,
-    feature_split: str = "train",
     epochs: int = 500,
     batch_size: int = 16,
     lr: float = 1e-3,
+    use_scheduler: bool = False,
     lr_patience: int = 50,
     reinit_r2g: bool = True,
     gamma: float = 1.0,
     loss_rna: str = "mae",
-    dropout_mask_rna: bool = False,
     device: str | None = None,
     num_workers: int = 0,
+    balance_class: bool = False,
+    class_key: str | None = None,
     checkpoint_dir: str | None = None,
     checkpoint_every: int = 0,
     save_best_checkpoints: bool | None = None,
@@ -1080,20 +1049,12 @@ def finetune_r2g(
 ) -> DeepSCENICModel:
     """Finetune the region->gene matrix.
 
-    Phases 2 and 3 of the training workflow. Recomputes tf2r from scratch
+    The second stage of the training workflow. Recomputes tf2r for all regions
     using the trained sequence model and MotifNet, then freezes all model
-    parameters except the region->gene weights and optimizes with
-    ReduceLROnPlateau scheduler.
-
-    Phase 2 (``feature_split="train"``): Refit r2g on training features
-    with a fully updated tf2r matrix. This compensates for partial tf2r
-    cache staleness from Phase 1 training, where train-region tf2r values
-    are updated incrementally in batches rather than all at once.
-
-    Phase 3 (``feature_split="test"``): Fit r2g on held-out chromosome
-    features to evaluate cross-chromosome generalization.
-
-    Both phases train on train cells and validate on test cells.
+    parameters except the region->gene weights. All r2g links are optimized
+    together using reconstruction loss over all genes. The chromosome split is
+    used only during main training; this stage trains on train cells and
+    validates on test cells.
 
     Parameters
     ----------
@@ -1101,30 +1062,32 @@ def finetune_r2g(
         Trained DeepSCENICModel from ds.tl.train().
     mdata
         MuData with preprocessed RNA + ATAC data.
-    feature_split
-        Which features to use: "train" or "test".
-        - Phase 2: feature_split="train" (train regions/genes)
-        - Phase 3: feature_split="test" (test regions/genes from test chromosome)
     epochs
         Finetuning epochs.
     batch_size
         Cells per batch.
     lr
         Learning rate.
+    use_scheduler
+        Whether to reduce the learning rate when validation loss plateaus.
+        Disabled by default.
     lr_patience
-        Epochs before reducing LR if no improvement.
+        Epochs before reducing the learning rate when ``use_scheduler=True``.
     reinit_r2g
         If True, reinitialize region->gene weights to near-zero before finetuning.
     gamma
         R2G sparsity weight.
     loss_rna
         RNA loss type: 'mse', 'mae', 'cosine'.
-    dropout_mask_rna
-        Whether to mask RNA loss on zeros.
     device
         Training device ('cuda', 'cpu', or None for auto-detect).
     num_workers
         Number of workers for parallel data loading.
+    balance_class
+        Whether to use weighted sampling to balance classes among training cells.
+    class_key
+        Column in ``mdata.obs`` containing the labels used when
+        ``balance_class=True``.
     checkpoint_dir
         Directory for checkpoints (None = no checkpoints).
     checkpoint_every
@@ -1146,18 +1109,10 @@ def finetune_r2g(
 
     Examples
     --------
-    Phase 2: Refit r2g with fresh tf2r on training features:
+    Finetune all r2g links with a freshly recomputed tf2r matrix:
 
     >>> model = ds.tl.train(mdata, epochs=100)
-    >>> model = ds.tl.finetune_r2g(model, mdata, feature_split="train", epochs=500)
-
-    Phase 3: Fit r2g on held-out chromosomes:
-
-    >>> model = ds.tl.finetune_r2g(
-    ...     model, mdata,
-    ...     feature_split="test",
-    ...     epochs=500,
-    ... )
+    >>> model = ds.tl.finetune_r2g(model, mdata, epochs=500)
     """
     # Resolve device (auto-detect if None)
     device = _resolve_device(device)
@@ -1169,26 +1124,25 @@ def finetune_r2g(
     if "atac" not in mdata.mod:
         raise ValueError("MuData missing 'atac' modality. Ensure your data has both 'rna' and 'atac' modalities.")
 
-    # Validate split parameters
-    if feature_split not in ("train", "test"):
-        raise ValueError(f"feature_split must be 'train' or 'test', got '{feature_split}'")
-
     # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run
-    _phase_name = f"finetune_r2g_feat-{feature_split}"
+    _phase_name = "finetune_r2g"
     _phase_log_dir = str(Path(log_dir) / _phase_name)
     _logger_kwargs = {"log_dir": _phase_log_dir}
     if logger_kwargs:
         _logger_kwargs.update(logger_kwargs)
     training_logger = get_logger(logger, **_logger_kwargs)
     hyperparams = {
-        "feature_split": feature_split,
         "epochs": epochs,
         "batch_size": batch_size,
         "lr": lr,
+        "use_scheduler": use_scheduler,
+        "lr_patience": lr_patience,
         "gamma": gamma,
         "loss_rna": loss_rna,
         "reinit_r2g": reinit_r2g,
+        "balance_class": balance_class,
+        "class_key": class_key,
     }
     training_logger.log_hyperparams(hyperparams)
 
@@ -1206,65 +1160,29 @@ def finetune_r2g(
         else:
             param.requires_grad = False
 
-    # Compute link mask and gene_indices based on feature_split
-    # This ensures we only train E2 weights for the appropriate region-gene links,
-    # matching legacy behavior where separate r2g matrices were used per phase.
-    rna_var = mdata.mod["rna"].var
-    atac_var = mdata.mod["atac"].var
+    # Reconstruct every gene and optimize every r2g link. The chromosome split
+    # remains relevant to main training only.
+    n_genes = mdata.mod["rna"].n_vars
+    gene_indices = torch.arange(n_genes, dtype=torch.long, device=device)
+    e2_link_mask = torch.ones_like(vae.adj_r2g, dtype=torch.bool, device=device)
+    log.info(f"Using all {n_genes} genes for reconstruction")
+    log.info(f"Using all {len(e2_link_mask)} r2g links for finetuning")
 
-    if "split" not in rna_var.columns:
-        raise ValueError("RNA modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
-    if "split" not in atac_var.columns:
-        raise ValueError("ATAC modality missing 'split' column in var. Run ds.pp.split_features_by_chromosome() first.")
-
-    # Determine which genes and regions match the feature_split
-    if feature_split == "train":
-        gene_mask = (rna_var["split"] == "train").values
-        region_mask = (atac_var["split"] == "train").values
-    elif feature_split == "test":
-        gene_mask = (rna_var["split"] == "test").values
-        region_mask = (atac_var["split"] == "test").values
-    else:
-        raise ValueError(f"Invalid feature_split: {feature_split}. Must be 'train' or 'test'.")
-
-    # Compute gene_indices for loss computation
-    gene_indices = torch.tensor(np.where(gene_mask)[0], dtype=torch.long, device=device)
-    log.info(f"Using {len(gene_indices)}/{len(rna_var)} genes for loss (feature_split='{feature_split}')")
-
-    # Compute E2 link mask: only links where BOTH region AND gene match the split
-    # r2g_indices: (2, n_links) - row 0 = region indices, row 1 = gene indices
-    r2g_region_idx = vae.r2g_indices[0].cpu().numpy()  # type: ignore
-    r2g_gene_idx = vae.r2g_indices[1].cpu().numpy()  # type: ignore
-
-    # For each link, check if both region AND gene are in the target split
-    link_region_in_split = region_mask[r2g_region_idx]
-    link_gene_in_split = gene_mask[r2g_gene_idx]
-    e2_link_mask = torch.tensor(link_region_in_split & link_gene_in_split, device=device)
-
-    n_active_links = e2_link_mask.sum().item()
-    log.info(f"Using {n_active_links}/{len(e2_link_mask)} E2 links for training (feature_split='{feature_split}')")
-
-    # Optionally reinitialize ONLY the active E2 links (matching legacy behavior)
+    # Optionally reinitialize all r2g links.
     if reinit_r2g:
         with torch.no_grad():
             vae.adj_r2g[e2_link_mask] = 1e-8
 
-    # Register gradient mask hook to only update matching E2 links
-    # This prevents data leakage by not training E2 on cross-split links
-    def r2g_grad_hook(grad: torch.Tensor) -> torch.Tensor:
-        return grad * e2_link_mask.float()
-
-    r2g_hook_handle = vae.adj_r2g.register_hook(r2g_grad_hook)
-
     # Build dataloaders WITHOUT feature filtering
     # The VAE needs all genes for TF indexing and E2 computation.
-    # The feature_split is applied via gene_indices (loss) and e2_link_mask (gradients).
-    # Always train on train cells, validate on test cells (matching legacy behavior).
+    # Train on train cells and validate on test cells.
     train_cell_loader = build_cell_dataloader(
         mdata,
         split="train",
         batch_size=batch_size,
         shuffle=True,
+        balance_class=balance_class,
+        class_key=class_key,
         num_workers=num_workers,
         feature_split=None,  # Don't filter - VAE needs all genes
     )
@@ -1278,11 +1196,13 @@ def finetune_r2g(
         feature_split=None,  # Don't filter - VAE needs all genes
     )
 
-    log.info(f"R2G finetuning: features={feature_split}")
+    log.info("R2G finetuning: all genes, regions, and links")
 
     # Single optimizer for E2 only
     optimizer = Adam([vae.adj_r2g], lr=lr)
-    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=lr_patience, factor=0.5)
+    scheduler = (
+        ReduceLROnPlateau(optimizer, mode="min", patience=lr_patience, factor=0.5) if use_scheduler else None
+    )
 
     # History tracking
     history = TrainingHistory()
@@ -1310,6 +1230,28 @@ def finetune_r2g(
 
     log.info(f"Starting R2G finetuning: {epochs} epochs")
 
+    def _save_finetune_checkpoint(path: Path, epoch: int) -> None:
+        """Save a complete model plus state needed to resume finetuning."""
+        checkpoint_model = DeepSCENICModel(
+            vae=vae,
+            motifnet=model.motifnet,
+            sequence_model=model.sequence_model,
+            adj_tf2r=adj_tf2r,
+            config=model.config,
+            tf_names=model.tf_names,
+            gene_names=model.gene_names,
+            region_names=model.region_names,
+            history=history,
+        )
+        checkpoint_model.save(
+            path,
+            include_training_state=True,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            epoch=epoch,
+            best_loss=best_loss,
+        )
+
     # Import loss functions
     from ._loss import r2g_sparsity_loss, reconstruction_loss
 
@@ -1333,16 +1275,14 @@ def finetune_r2g(
                 use_mean=False,
             )
 
-            # Compute RNA reconstruction loss only on genes matching feature_split
-            # This prevents data leakage by not evaluating reconstruction on test genes during train finetune
+            # Compute RNA reconstruction loss over all genes.
             loss_rec_rna = reconstruction_loss(
                 output.x_rna_rec[:, gene_indices],
                 x_rna[:, gene_indices],
                 loss_type=loss_rna,
-                dropout_mask=dropout_mask_rna,
             )
 
-            # E2 sparsity only on active links (matching feature_split)
+            # Apply sparsity regularization to all r2g links.
             loss_r2g_sparse = r2g_sparsity_loss(
                 vae.adj_r2g[e2_link_mask],
                 vae.r2g_distances[e2_link_mask],  # type: ignore[arg-type]
@@ -1387,7 +1327,6 @@ def finetune_r2g(
                     output.x_rna_rec[:, gene_indices],
                     x_rna[:, gene_indices],
                     loss_type=loss_rna,
-                    dropout_mask=dropout_mask_rna,
                 )
                 loss_r2g_sparse = r2g_sparsity_loss(
                     vae.adj_r2g[e2_link_mask],
@@ -1402,47 +1341,23 @@ def finetune_r2g(
         training_logger.log_metrics({"val_cells/total": val_loss}, step=epoch)
 
         # Step scheduler
-        scheduler.step(val_loss)
+        if scheduler is not None:
+            scheduler.step(val_loss)
 
         # Track best model
         if val_loss < best_loss:
             best_loss = val_loss
             best_r2g = vae.adj_r2g.data.clone()
-            # Save best checkpoint
+            # Save a complete, directly loadable model checkpoint.
             if save_best_checkpoints and (checkpoint_dir is not None):
                 best_path = Path(checkpoint_dir) / "finetune_best.pt"
-                best_path.parent.mkdir(parents=True, exist_ok=True)
-                torch.save(
-                    {
-                        "epoch": epoch,
-                        "adj_r2g": vae.adj_r2g.data,
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "scheduler_state_dict": scheduler.state_dict(),
-                        "history": history.to_dict(),
-                        "best_loss": best_loss,
-                    },
-                    best_path,
-                )
+                _save_finetune_checkpoint(best_path, epoch)
                 log.info(f"New best val loss: {val_loss:.6f} - saved to {best_path}")
 
         # Periodic checkpointing
         if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = Path(checkpoint_dir) / f"finetune_epoch_{epoch + 1}.pt"
-            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "adj_r2g": vae.adj_r2g.data,
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict(),
-                    "history": history.to_dict(),
-                    "best_loss": best_loss,
-                },
-                checkpoint_path,
-            )
-
-    # Remove gradient hook
-    r2g_hook_handle.remove()
+            _save_finetune_checkpoint(checkpoint_path, epoch)
 
     # Close logger
     training_logger.close()

@@ -179,8 +179,6 @@ def compute_total_loss(
     region_indices: Tensor,
     loss_rna: str = "mse",
     loss_atac: str = "mse",
-    dropout_mask_rna: bool = False,
-    dropout_mask_atac: bool = False,
     beta: float = 1e-2,
     alpha: float = 1e-2,
     gamma: float = 1.0,
@@ -222,10 +220,6 @@ def compute_total_loss(
         RNA loss type
     loss_atac
         ATAC loss type
-    dropout_mask_rna
-        Whether to mask RNA loss on zeros
-    dropout_mask_atac
-        Whether to mask ATAC loss on zeros
     beta
         KL divergence weight
     alpha
@@ -250,12 +244,9 @@ def compute_total_loss(
     # Reconstruction losses - filter both prediction and target to train features
     # This ensures reconstruction loss only evaluates on held-in features.
     # E2 sparsity loss scope depends on what adj_r2g/r2g_distances are passed in.
-    loss_rec_rna = (
-        reconstruction_loss(x_rna_rec[:, gene_indices], x_rna[:, gene_indices], loss_rna, dropout_mask_rna) * rna_tau
-    )
+    loss_rec_rna = reconstruction_loss(x_rna_rec[:, gene_indices], x_rna[:, gene_indices], loss_rna) * rna_tau
     loss_rec_atac = (
-        reconstruction_loss(x_atac_rec[:, region_indices], x_atac[:, region_indices], loss_atac, dropout_mask_atac)
-        * atac_tau
+        reconstruction_loss(x_atac_rec[:, region_indices], x_atac[:, region_indices], loss_atac) * atac_tau
     )
 
     # KL divergence

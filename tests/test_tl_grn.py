@@ -8,6 +8,9 @@ from deepscenic.tl._grn import (
     _get_otsu_threshold,
     _normalize_r2g_per_gene,
     build_grn_for_tfs,
+    compute_celltype_r2g,
+    compute_celltype_tf2g,
+    compute_celltype_tf2r,
     compute_tf_activity_scores,
     extract_grn,
     extract_r2g_matrix,
@@ -16,22 +19,21 @@ from deepscenic.tl._grn import (
     get_region_info,
     get_tf_targets,
     identify_active_enhancers,
-    identify_key_tfs,
 )
 
 
 class TestExtractGRN:
     """Tests for extract_grn function."""
 
-    def test_e1_index_is_regions(self, mock_deepscenic_model):
-        """tf2r index should be region names."""
+    def test_e1_index_is_tfs(self, mock_deepscenic_model):
+        """tf2r index should be TF names."""
         result = extract_grn(mock_deepscenic_model)
-        assert list(result["tf2r"].index) == mock_deepscenic_model.region_names
+        assert list(result["tf2r"].index) == mock_deepscenic_model.tf_names
 
-    def test_e1_columns_are_tfs(self, mock_deepscenic_model):
-        """tf2r columns should be TF names."""
+    def test_e1_columns_are_regions(self, mock_deepscenic_model):
+        """tf2r columns should be region names."""
         result = extract_grn(mock_deepscenic_model)
-        assert list(result["tf2r"].columns) == mock_deepscenic_model.tf_names
+        assert list(result["tf2r"].columns) == mock_deepscenic_model.region_names
 
 
 class TestExtractTf2rMatrix:
@@ -41,7 +43,7 @@ class TestExtractTf2rMatrix:
         """Should have correct shape."""
         result = extract_tf2r_matrix(mock_deepscenic_model)
         d = minimal_dims
-        assert result.shape == (d["n_regions"], d["n_tfs"])
+        assert result.shape == (d["n_tfs"], d["n_regions"])
 
 
 class TestExtractR2gMatrix:
@@ -71,6 +73,211 @@ class TestExtractR2gMatrix:
         d = minimal_dims
         assert isinstance(result, pd.DataFrame)
         assert result.shape == (d["n_regions"], d["n_genes"])
+
+
+class TestComputeCelltypeTf2r:
+    """Tests for TF-activity-weighted cell-type tf2r scores."""
+
+    @staticmethod
+    def _add_activity(mdata, n_tfs):
+        n_cells = len(mdata.obs)
+        activity = np.arange(n_cells * n_tfs, dtype=float).reshape(n_cells, n_tfs)
+        mdata.obsm["X_deepscenic_z_tf"] = activity
+        mdata.obs["celltype"] = ["Oligo"] * 2 + ["Other"] * (n_cells - 2)
+        return activity
+
+    def test_dense_matches_legacy_calculation(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Dense output should equal mean TF activity[:, None] * E1."""
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        activity = self._add_activity(mock_mdata_for_model, n_tfs)
+        raw_tf2r = extract_tf2r_matrix(mock_deepscenic_model)
+
+        result = compute_celltype_tf2r(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            class_label="Oligo",
+        )
+
+        expected = activity[:2].mean(axis=0)[:, None] * raw_tf2r.values
+        np.testing.assert_allclose(result.values, expected)
+        assert result.index.tolist() == mock_deepscenic_model.tf_names
+        assert result.columns.tolist() == mock_deepscenic_model.region_names
+
+    def test_edgelist_scores(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Edge-list score should be TF activity times raw tf2r weight."""
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        self._add_activity(mock_mdata_for_model, n_tfs)
+
+        result = compute_celltype_tf2r(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            class_label="Oligo",
+            as_edgelist=True,
+        )
+
+        assert list(result.columns) == [
+            "tf",
+            "region",
+            "tf2r_weight",
+            "tf_activity",
+            "celltype_tf2r_weight",
+        ]
+        np.testing.assert_allclose(
+            result["celltype_tf2r_weight"],
+            result["tf_activity"] * result["tf2r_weight"],
+        )
+
+    def test_missing_class_raises(self, mock_deepscenic_model, mock_mdata_for_model):
+        """An absent class label should produce an informative error."""
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        self._add_activity(mock_mdata_for_model, n_tfs)
+
+        with pytest.raises(ValueError, match="No cells found"):
+            compute_celltype_tf2r(
+                mock_deepscenic_model,
+                mock_mdata_for_model,
+                class_key="celltype",
+                class_label="Missing",
+            )
+
+
+class TestComputeCelltypeR2g:
+    """Tests for enhancer-activity-weighted cell-type r2g scores."""
+
+    @staticmethod
+    def _add_activity(mdata, n_regions):
+        n_cells = len(mdata.obs)
+        activity = np.arange(n_cells * n_regions, dtype=float).reshape(n_cells, n_regions)
+        mdata.obsm["X_deepscenic_enh_act"] = activity
+        mdata.obs["celltype"] = ["Vip"] * 2 + ["Other"] * (n_cells - 2)
+        return activity
+
+    def test_dense_matches_legacy_calculation(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Dense output should equal mean enhancer activity[:, None] * E2."""
+        n_regions = len(mock_deepscenic_model.region_names)
+        activity = self._add_activity(mock_mdata_for_model, n_regions)
+        raw_r2g = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=False, normalize=False)
+
+        result = compute_celltype_r2g(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            class_label="Vip",
+        )
+
+        expected = raw_r2g.values * activity[:2].mean(axis=0)[:, None]
+        np.testing.assert_allclose(result.values, expected)
+        assert result.index.tolist() == mock_deepscenic_model.region_names
+        assert result.columns.tolist() == mock_deepscenic_model.gene_names
+
+    def test_edgelist_scores(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Edge-list score should be enhancer activity times raw r2g weight."""
+        n_regions = len(mock_deepscenic_model.region_names)
+        self._add_activity(mock_mdata_for_model, n_regions)
+
+        result = compute_celltype_r2g(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            class_label="Vip",
+            as_edgelist=True,
+        )
+
+        assert list(result.columns) == [
+            "region",
+            "gene",
+            "r2g_weight",
+            "enhancer_activity",
+            "celltype_r2g_weight",
+        ]
+        np.testing.assert_allclose(
+            result["celltype_r2g_weight"],
+            result["enhancer_activity"] * result["r2g_weight"],
+        )
+
+    def test_missing_class_raises(self, mock_deepscenic_model, mock_mdata_for_model):
+        """An absent class label should produce an informative error."""
+        n_regions = len(mock_deepscenic_model.region_names)
+        self._add_activity(mock_mdata_for_model, n_regions)
+
+        with pytest.raises(ValueError, match="No cells found"):
+            compute_celltype_r2g(
+                mock_deepscenic_model,
+                mock_mdata_for_model,
+                class_key="celltype",
+                class_label="Missing",
+            )
+
+
+class TestComputeCelltypeTf2g:
+    """Tests for TF-activity-weighted cell-type tf2g scores."""
+
+    @staticmethod
+    def _add_activity(mdata, n_tfs):
+        n_cells = len(mdata.obs)
+        activity = np.arange(n_cells * n_tfs, dtype=float).reshape(n_cells, n_tfs)
+        mdata.obsm["X_deepscenic_z_tf"] = activity
+        mdata.obs["celltype"] = ["Oligo"] * 2 + ["Other"] * (n_cells - 2)
+        return activity
+
+    def test_dense_matches_legacy_calculation(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Dense output should equal mean TF activity[:, None] * (E1 @ E2)."""
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        activity = self._add_activity(mock_mdata_for_model, n_tfs)
+        tf2r = extract_tf2r_matrix(mock_deepscenic_model)
+        r2g = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=False, normalize=False)
+
+        result = compute_celltype_tf2g(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            class_label="Oligo",
+        )
+
+        expected = activity[:2].mean(axis=0)[:, None] * (tf2r.values @ r2g.values)
+        np.testing.assert_allclose(result.values, expected)
+        assert result.index.tolist() == mock_deepscenic_model.tf_names
+        assert result.columns.tolist() == mock_deepscenic_model.gene_names
+
+    def test_edgelist_scores(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Edge-list score should be TF activity times combined tf2g weight."""
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        self._add_activity(mock_mdata_for_model, n_tfs)
+
+        result = compute_celltype_tf2g(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            class_label="Oligo",
+            as_edgelist=True,
+        )
+
+        assert list(result.columns) == [
+            "tf",
+            "gene",
+            "tf2g_weight",
+            "tf_activity",
+            "celltype_tf2g_weight",
+        ]
+        np.testing.assert_allclose(
+            result["celltype_tf2g_weight"],
+            result["tf_activity"] * result["tf2g_weight"],
+        )
+
+    def test_missing_class_raises(self, mock_deepscenic_model, mock_mdata_for_model):
+        """An absent class label should produce an informative error."""
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        self._add_activity(mock_mdata_for_model, n_tfs)
+
+        with pytest.raises(ValueError, match="No cells found"):
+            compute_celltype_tf2g(
+                mock_deepscenic_model,
+                mock_mdata_for_model,
+                class_key="celltype",
+                class_label="Missing",
+            )
 
 
 class TestGetTFTargets:
@@ -230,7 +437,7 @@ class TestIdentifyActiveEnhancers:
     def test_returns_dict(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should return dict mapping celltype to region list."""
         mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
-        result = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype")
+        result = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, class_key="celltype")
         assert isinstance(result, dict)
         assert "A" in result and "B" in result
         assert all(isinstance(v, list) for v in result.values())
@@ -261,36 +468,64 @@ class TestComputeTFActivityScores:
         mock_mdata_for_model.obs["celltype"] = ["A", "B"] * (len(mock_mdata_for_model.obs) // 2)
 
         active_enh = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype")
-        result = compute_tf_activity_scores(mock_deepscenic_model, mock_mdata_for_model, "celltype", active_enh)
+        result = compute_tf_activity_scores(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            active_enhancers=active_enh,
+        )
 
         assert list(result.index) == mock_deepscenic_model.tf_names
         assert set(result.columns) == {"A", "B"}
 
+    def test_preserves_signed_scores(self, mock_deepscenic_model, mock_mdata_for_model):
+        """TF scores should retain the sign of TF activity times tf2r."""
+        n_cells = len(mock_mdata_for_model.obs)
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        mock_mdata_for_model.obs["celltype"] = ["A"] * n_cells
 
-class TestIdentifyKeyTFs:
-    """Tests for identify_key_tfs."""
+        tf_activity = np.ones((n_cells, n_tfs))
+        tf_activity[:, 0] = -2.0
+        mock_mdata_for_model.obsm["X_deepscenic_z_tf"] = tf_activity
 
-    def test_returns_sorted_list(self):
-        """Should return sorted unique TF list."""
-        scores = pd.DataFrame(
-            {
-                "A": [0.1, 0.2, 0.8],
-                "B": [0.9, 0.1, 0.2],
-            },
-            index=["TF1", "TF2", "TF3"],
+        region = mock_deepscenic_model.region_names[0]
+        result = compute_tf_activity_scores(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            active_enhancers={"A": [region]},
         )
 
-        result = identify_key_tfs(scores)
+        tf2r = mock_deepscenic_model.adj_tf2r[0].cpu().numpy()
+        expected = tf_activity.mean(axis=0) * tf2r
+        np.testing.assert_allclose(result["A"].values, expected)
+        assert result["A"].iloc[0] < 0
 
-        assert isinstance(result, list)
-        assert result == sorted(result)  # Should be sorted
+    def test_zscores_each_tf_across_classes(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Optional z-scoring should normalize each TF row across classes."""
+        n_cells = len(mock_mdata_for_model.obs)
+        n_tfs = len(mock_deepscenic_model.tf_names)
+        classes = np.array(["A"] * (n_cells // 2) + ["B"] * (n_cells - n_cells // 2))
+        mock_mdata_for_model.obs["celltype"] = classes
 
-    def test_invalid_method_raises(self):
-        """Should raise error for invalid method."""
-        scores = pd.DataFrame({"A": [0.1, 0.2]}, index=["TF1", "TF2"])
+        tf_activity = np.ones((n_cells, n_tfs))
+        tf_activity[classes == "A", 0] = 1.0
+        tf_activity[classes == "B", 0] = 3.0
+        mock_mdata_for_model.obsm["X_deepscenic_z_tf"] = tf_activity
 
-        with pytest.raises(ValueError, match="Unknown method"):
-            identify_key_tfs(scores, method="invalid")
+        region = mock_deepscenic_model.region_names[0]
+        result = compute_tf_activity_scores(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            class_key="celltype",
+            active_enhancers={"A": [region], "B": [region]},
+            zscore=True,
+        )
+
+        np.testing.assert_allclose(result.mean(axis=1).values, 0.0, atol=1e-7)
+        variable = result.std(axis=1, ddof=0) > 0
+        np.testing.assert_allclose(result.loc[variable].std(axis=1, ddof=0).values, 1.0)
+        assert (result.loc[~variable] == 0).all().all()
 
 
 class TestBuildGRNForTFs:
@@ -347,15 +582,11 @@ class TestCelltypeWorkflowIntegration:
         assert tf_scores.shape[0] > 0
         assert set(tf_scores.columns) == {"TypeA", "TypeB"}
 
-        # Step 3: Identify key TFs
-        key_tfs = identify_key_tfs(tf_scores)
-        assert isinstance(key_tfs, list)
-
-        # Step 4: Build GRN (only if we have key TFs)
-        if key_tfs:
-            grn = build_grn_for_tfs(mock_deepscenic_model, key_tfs)
-            expected_cols = ["TF", "region", "gene", "tf2r_score", "r2g_score", "tf2g_score"]
-            assert list(grn.columns) == expected_cols
+        # Step 3: Build a focused GRN for explicitly selected TFs
+        selected_tfs = list(mock_deepscenic_model.tf_names[:2])
+        grn = build_grn_for_tfs(mock_deepscenic_model, selected_tfs)
+        expected_cols = ["TF", "region", "gene", "tf2r_score", "r2g_score", "tf2g_score"]
+        assert list(grn.columns) == expected_cols
 
     def test_workflow_with_single_celltype(self, mock_deepscenic_model, mock_mdata_for_model):
         """Workflow should work with single cell type."""
