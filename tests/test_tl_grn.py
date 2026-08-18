@@ -237,7 +237,9 @@ class TestComputeCelltypeTf2g:
         )
 
         expected = activity[:2].mean(axis=0)[:, None] * (tf2r.values @ r2g.values)
-        np.testing.assert_allclose(result.values, expected)
+        # Sparse and dense matrix multiplication accumulate float32 values in
+        # a different order, so allow the resulting machine-precision noise.
+        np.testing.assert_allclose(result.values, expected, rtol=1e-6, atol=1e-12)
         assert result.index.tolist() == mock_deepscenic_model.tf_names
         assert result.columns.tolist() == mock_deepscenic_model.gene_names
 
