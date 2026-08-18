@@ -195,9 +195,7 @@ def simulate_perturbation(
             logFC_all.append(logFC_decoded.cpu().numpy())
 
     if return_intermediate:
-        perturbed_trace = {
-            i: np.concatenate(perturbed_per_iter[i], axis=0) for i in range(1, n_iter + 1)
-        }
+        perturbed_trace = {i: np.concatenate(perturbed_per_iter[i], axis=0) for i in range(1, n_iter + 1)}
         logFC_trace = {i: np.concatenate(logFC_per_iter[i], axis=0) for i in range(1, n_iter + 1)}
         return perturbed_trace, logFC_trace
     return np.concatenate(perturbed_all, axis=0), np.concatenate(logFC_all, axis=0)

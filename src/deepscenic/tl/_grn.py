@@ -343,10 +343,7 @@ def compute_celltype_tf2r(
 
     tf_activity = np.asarray(mdata.obsm[tf_act_key])
     if tf_activity.shape[1] != len(model.tf_names):
-        raise ValueError(
-            f"{tf_act_key!r} has {tf_activity.shape[1]} TFs, "
-            f"but the model has {len(model.tf_names)}"
-        )
+        raise ValueError(f"{tf_act_key!r} has {tf_activity.shape[1]} TFs, but the model has {len(model.tf_names)}")
 
     mean_activity = tf_activity[class_mask].mean(axis=0)
     tf2r = extract_tf2r_matrix(model)
@@ -355,10 +352,14 @@ def compute_celltype_tf2r(
     if not as_edgelist:
         return weighted_tf2r
 
-    result = tf2r.rename_axis("tf").reset_index().melt(
-        id_vars="tf",
-        var_name="region",
-        value_name="tf2r_weight",
+    result = (
+        tf2r.rename_axis("tf")
+        .reset_index()
+        .melt(
+            id_vars="tf",
+            var_name="region",
+            value_name="tf2r_weight",
+        )
     )
     tf_to_activity = dict(zip(model.tf_names, mean_activity, strict=True))
     result["tf_activity"] = result["tf"].map(tf_to_activity)
@@ -437,8 +438,7 @@ def compute_celltype_r2g(
     enhancer_activity = np.asarray(mdata.obsm[enh_act_key])
     if enhancer_activity.shape[1] != len(model.region_names):
         raise ValueError(
-            f"{enh_act_key!r} has {enhancer_activity.shape[1]} regions, "
-            f"but the model has {len(model.region_names)}"
+            f"{enh_act_key!r} has {enhancer_activity.shape[1]} regions, but the model has {len(model.region_names)}"
         )
 
     mean_activity = enhancer_activity[class_mask].mean(axis=0)
@@ -528,10 +528,7 @@ def compute_celltype_tf2g(
 
     tf_activity = np.asarray(mdata.obsm[tf_act_key])
     if tf_activity.shape[1] != len(model.tf_names):
-        raise ValueError(
-            f"{tf_act_key!r} has {tf_activity.shape[1]} TFs, "
-            f"but the model has {len(model.tf_names)}"
-        )
+        raise ValueError(f"{tf_act_key!r} has {tf_activity.shape[1]} TFs, but the model has {len(model.tf_names)}")
 
     mean_activity = tf_activity[class_mask].mean(axis=0)
     from scipy.sparse import coo_matrix
@@ -557,10 +554,14 @@ def compute_celltype_tf2g(
     if not as_edgelist:
         return weighted_tf2g
 
-    result = tf2g.rename_axis("tf").reset_index().melt(
-        id_vars="tf",
-        var_name="gene",
-        value_name="tf2g_weight",
+    result = (
+        tf2g.rename_axis("tf")
+        .reset_index()
+        .melt(
+            id_vars="tf",
+            var_name="gene",
+            value_name="tf2g_weight",
+        )
     )
     tf_to_activity = dict(zip(model.tf_names, mean_activity, strict=True))
     result["tf_activity"] = result["tf"].map(tf_to_activity)

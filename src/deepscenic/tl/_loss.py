@@ -245,9 +245,7 @@ def compute_total_loss(
     # This ensures reconstruction loss only evaluates on held-in features.
     # E2 sparsity loss scope depends on what adj_r2g/r2g_distances are passed in.
     loss_rec_rna = reconstruction_loss(x_rna_rec[:, gene_indices], x_rna[:, gene_indices], loss_rna) * rna_tau
-    loss_rec_atac = (
-        reconstruction_loss(x_atac_rec[:, region_indices], x_atac[:, region_indices], loss_atac) * atac_tau
-    )
+    loss_rec_atac = reconstruction_loss(x_atac_rec[:, region_indices], x_atac[:, region_indices], loss_atac) * atac_tau
 
     # KL divergence
     loss_kl = kl_divergence(mu, logvar) * beta

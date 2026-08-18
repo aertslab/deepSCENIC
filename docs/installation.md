@@ -51,10 +51,12 @@ pip install deepscenic[enformer,sequence]
 
 ```python
 import deepscenic as ds
+
 print(ds.__version__)
 
 # Check GPU availability
 import torch
+
 print(f"CUDA available: {torch.cuda.is_available()}")
 ```
 
@@ -70,7 +72,8 @@ model = ds.tl.train(mdata, batch_size=32, seq_batch_size=500)
 The Enformer model (~1GB) downloads automatically on first use. If download fails:
 ```python
 from enformer_pytorch import Enformer
-Enformer.from_pretrained('EleutherAI/enformer-official-rough')
+
+Enformer.from_pretrained("EleutherAI/enformer-official-rough")
 ```
 
 ### Import Errors

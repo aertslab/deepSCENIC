@@ -72,7 +72,8 @@ model = ds.tl.train(mdata, epochs=100, device="cuda")
 
 # Phase 2: Recompute tf2r and finetune all r2g links
 model = ds.tl.finetune_r2g(
-    model, mdata,
+    model,
+    mdata,
     epochs=500,
 )
 
@@ -98,7 +99,8 @@ ds.pl.heatmap_grn(grn, tfs=["SOX10", "MITF", "PAX3"])
 ```python
 # Simulate TF knockdown (level=0) or overexpression (level=2)
 perturbed, logFC = ds.tl.simulate_perturbation(
-    model, mdata,
+    model,
+    mdata,
     tf_name="SOX10",
     level=0,  # knockdown
 )

@@ -77,8 +77,7 @@ def _mean_tf_activity(
         z_tf = np.asarray(mdata.obsm[latent_key])
         if z_tf.shape != (mdata.n_obs, len(model.tf_names)):
             raise ValueError(
-                f"mdata.obsm[{latent_key!r}] has shape {z_tf.shape}; expected "
-                f"({mdata.n_obs}, {len(model.tf_names)})"
+                f"mdata.obsm[{latent_key!r}] has shape {z_tf.shape}; expected ({mdata.n_obs}, {len(model.tf_names)})"
             )
         return torch.as_tensor(z_tf[mask].mean(axis=0), dtype=torch.float32, device=device)
 
@@ -209,10 +208,7 @@ def in_silico_mutagenesis(
         )
         tf2r = model.motifnet(embeddings)
         if tf2r.ndim != 2 or tf2r.shape[1] != len(model.tf_names):
-            raise ValueError(
-                "motifnet must return shape (batch, n_tfs); got "
-                f"{tuple(tf2r.shape)}"
-            )
+            raise ValueError(f"motifnet must return shape (batch, n_tfs); got {tuple(tf2r.shape)}")
         return (tf2r * class_activity).sum(dim=1)
 
     n_mutations = context_length * 4
@@ -220,9 +216,7 @@ def in_silico_mutagenesis(
     with torch.no_grad():
         baseline = predict(reference.unsqueeze(0))[0]
         for offset in range(0, n_mutations, batch_size):
-            flat_indices = torch.arange(
-                offset, min(offset + batch_size, n_mutations), device=device
-            )
+            flat_indices = torch.arange(offset, min(offset + batch_size, n_mutations), device=device)
             positions = torch.div(flat_indices, 4, rounding_mode="floor")
             bases = flat_indices.remainder(4)
             mutants = reference.unsqueeze(0).expand(len(flat_indices), -1, -1).clone()

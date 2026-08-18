@@ -131,9 +131,7 @@ def perturbation_pca(
     if original_array.ndim != 2 or perturbed_array.ndim != 2:
         raise ValueError("original and perturbed must be two-dimensional matrices")
     if original_array.shape != perturbed_array.shape:
-        raise ValueError(
-            f"Shape mismatch: original {original_array.shape} != perturbed {perturbed_array.shape}"
-        )
+        raise ValueError(f"Shape mismatch: original {original_array.shape} != perturbed {perturbed_array.shape}")
     if n_components < 2:
         raise ValueError("n_components must be at least 2")
     max_components = min(original_array.shape)
@@ -150,10 +148,7 @@ def perturbation_pca(
         if color not in obs.columns:
             raise KeyError(f"Annotation {color!r} not found in obs")
         if len(obs) != original_array.shape[0]:
-            raise ValueError(
-                f"obs has {len(obs)} rows, but the matrices have "
-                f"{original_array.shape[0]} cells"
-            )
+            raise ValueError(f"obs has {len(obs)} rows, but the matrices have {original_array.shape[0]} cells")
 
     pca = PCA(n_components=n_components)
     original_pca = pca.fit_transform(original_array)
@@ -213,9 +208,7 @@ def perturbation_pca(
             values = values.astype("string").fillna("<NA>")
             categories = values.drop_duplicates().tolist()
             if palette is None:
-                category_colors = dict(
-                    zip(categories, get_cmap_colors(len(categories)), strict=True)
-                )
+                category_colors = dict(zip(categories, get_cmap_colors(len(categories)), strict=True))
             elif isinstance(palette, dict):
                 missing = [category for category in categories if category not in palette]
                 if missing:
@@ -272,11 +265,7 @@ def perturbation_pca(
             angles="xy",
             scale_units="xy",
             scale=1,
-            color=(
-                annotation_colors[arrow_indices]
-                if annotation_colors is not None
-                else perturbed_color
-            ),
+            color=(annotation_colors[arrow_indices] if annotation_colors is not None else perturbed_color),
             alpha=arrow_alpha,
             width=0.002,
         )

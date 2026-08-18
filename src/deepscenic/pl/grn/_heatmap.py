@@ -271,10 +271,7 @@ def heatmap_grn(
     elif normalize is None:
         normalization_label = None
     else:
-        raise ValueError(
-            f"Unknown normalize method: {normalize!r}. "
-            "Use 'tf', 'gene', or None."
-        )
+        raise ValueError(f"Unknown normalize method: {normalize!r}. Use 'tf', 'gene', or None.")
 
     grn_matrix = grn_matrix.loc[selected_tfs, selected_genes]
 

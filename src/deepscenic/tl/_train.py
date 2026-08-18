@@ -1200,9 +1200,7 @@ def finetune_r2g(
 
     # Single optimizer for E2 only
     optimizer = Adam([vae.adj_r2g], lr=lr)
-    scheduler = (
-        ReduceLROnPlateau(optimizer, mode="min", patience=lr_patience, factor=0.5) if use_scheduler else None
-    )
+    scheduler = ReduceLROnPlateau(optimizer, mode="min", patience=lr_patience, factor=0.5) if use_scheduler else None
 
     # History tracking
     history = TrainingHistory()
