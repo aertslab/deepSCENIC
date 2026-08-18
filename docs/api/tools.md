@@ -1,6 +1,6 @@
 # Tools (`ds.tl`)
 
-Functions for training, inference, perturbation simulation, and GRN extraction.
+Functions for training, inference, perturbation simulation, sequence interpretation, and GRN extraction.
 
 ## Training
 
@@ -10,7 +10,7 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 .. autofunction:: deepscenic.tl.train
 ```
 
-### Phases 2-3: R2G Finetuning
+### Phase 2: R2G Finetuning
 
 ```{eval-rst}
 .. autofunction:: deepscenic.tl.finetune_r2g
@@ -60,6 +60,14 @@ Functions for training, inference, perturbation simulation, and GRN extraction.
 .. autofunction:: deepscenic.tl.simulate_multi_perturbation
 ```
 
+## Sequence Interpretation
+
+```{eval-rst}
+.. autofunction:: deepscenic.tl.in_silico_mutagenesis
+.. autoclass:: deepscenic.tl.ISMResult
+   :no-members:
+```
+
 ## GRN Extraction
 
 ### Basic Extraction
@@ -84,7 +92,9 @@ For cell-type specific GRN analysis, use these functions in order:
 
 ```{eval-rst}
 .. autofunction:: deepscenic.tl.identify_active_enhancers
+.. autofunction:: deepscenic.tl.compute_celltype_tf2r
+.. autofunction:: deepscenic.tl.compute_celltype_r2g
+.. autofunction:: deepscenic.tl.compute_celltype_tf2g
 .. autofunction:: deepscenic.tl.compute_tf_activity_scores
-.. autofunction:: deepscenic.tl.identify_key_tfs
 .. autofunction:: deepscenic.tl.build_grn_for_tfs
 ```

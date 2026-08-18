@@ -17,7 +17,10 @@ __all__ = ["read", "read_bed", "write"]
 
 log = logging.getLogger("deepscenic.io")
 
-md.set_options(pull_on_update=False)  # adopt new mudata behaviour
+# Older MuData releases do not expose ``set_options`` and already use the
+# legacy update behaviour, so no opt-out is required for those versions.
+if hasattr(md, "set_options"):
+    md.set_options(pull_on_update=False)  # adopt new mudata behaviour
 
 ad.settings.allow_write_nullable_strings = True
 

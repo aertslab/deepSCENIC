@@ -203,16 +203,20 @@ class TestTrainingPipeline:
         assert loaded.tf_names == model.tf_names
         assert loaded.gene_names == model.gene_names
 
-    def test_finetune_r2g_with_trained_model(self, pipeline_trained_model, preprocessed_mdata):
-        """Verify r2g finetuning works with trained model."""
+    def test_finetune_r2g_with_trained_model(self, pipeline_trained_model, preprocessed_mdata, tmp_path):
+        """Verify r2g finetuning and its full checkpoint work."""
+        from tests.conftest import MockEnformer
+
         model = pipeline_trained_model
 
-        # Phase 2: finetune on train features (with tf2r recomputation)
+        # Phase 2: finetune all r2g links (with tf2r recomputation)
         model = ds.tl.finetune_r2g(
             model,
             preprocessed_mdata,
-            feature_split="train",
             epochs=1,
+            balance_class=True,
+            class_key="celltype",
+            checkpoint_dir=str(tmp_path),
         )
 
         # Model should still be valid after finetuning
@@ -220,6 +224,15 @@ class TestTrainingPipeline:
         assert hasattr(model, "adj_tf2r")
         # tf2r should still have TFs as second dimension
         assert model.adj_tf2r.shape[1] == len(model.tf_names)
+
+        checkpoint = tmp_path / "finetune_best.pt"
+        assert checkpoint.exists()
+
+        mock_seq = MockEnformer(bottleneck_size=16, emb_len=2)
+        loaded = ds.tl.load_model(checkpoint, device="cpu", sequence_model=mock_seq)
+        assert loaded.gene_names == model.gene_names
+        assert loaded.training_state is not None
+        assert loaded.training_state.epoch == 0
 
 
 class TestAnalysisPipeline:
@@ -309,11 +322,11 @@ class TestAnalysisPipeline:
 class TestPerturbationPipeline:
     """Test Tutorial 5: Perturbation Analysis flow."""
 
-    def test_simulate_perturbation_returns_logfc(self, pipeline_trained_model, preprocessed_mdata):
-        """Verify simulate_perturbation returns log fold change array."""
+    def test_simulate_perturbation_returns_matrices(self, pipeline_trained_model, preprocessed_mdata):
+        """Verify simulate_perturbation returns perturbed and logFC arrays."""
         tf_name = pipeline_trained_model.tf_names[0]
 
-        logFC = ds.tl.simulate_perturbation(
+        perturbed, logFC = ds.tl.simulate_perturbation(
             pipeline_trained_model,
             preprocessed_mdata,
             tf_name=tf_name,
@@ -322,7 +335,9 @@ class TestPerturbationPipeline:
             batch_size=8,
         )
 
+        assert isinstance(perturbed, np.ndarray)
         assert isinstance(logFC, np.ndarray)
+        assert perturbed.shape == logFC.shape
         assert logFC.shape == (
             preprocessed_mdata.n_obs,
             len(pipeline_trained_model.gene_names),
@@ -334,7 +349,7 @@ class TestPerturbationPipeline:
         """Verify perturbation respects cell split."""
         tf_name = pipeline_trained_model.tf_names[0]
 
-        logFC = ds.tl.simulate_perturbation(
+        perturbed, logFC = ds.tl.simulate_perturbation(
             pipeline_trained_model,
             preprocessed_mdata,
             tf_name=tf_name,
@@ -345,13 +360,14 @@ class TestPerturbationPipeline:
         )
 
         n_test_cells = (preprocessed_mdata.obs["split"] == "test").sum()
+        assert perturbed.shape[0] == n_test_cells
         assert logFC.shape[0] == n_test_cells
 
     def test_simulate_perturbation_intermediate(self, pipeline_trained_model, preprocessed_mdata):
         """Verify return_intermediate returns dict with per-iteration results."""
         tf_name = pipeline_trained_model.tf_names[0]
 
-        logFC_dict = ds.tl.simulate_perturbation(
+        perturbed_dict, logFC_dict = ds.tl.simulate_perturbation(
             pipeline_trained_model,
             preprocessed_mdata,
             tf_name=tf_name,
@@ -361,7 +377,9 @@ class TestPerturbationPipeline:
             batch_size=8,
         )
 
+        assert isinstance(perturbed_dict, dict)
         assert isinstance(logFC_dict, dict)
+        assert len(perturbed_dict) == 3
         assert len(logFC_dict) == 3  # 3 iterations
         assert 1 in logFC_dict and 2 in logFC_dict and 3 in logFC_dict
 
@@ -370,7 +388,7 @@ class TestPerturbationPipeline:
         tf_name = pipeline_trained_model.tf_names[0]
 
         # Get logFC
-        logFC = ds.tl.simulate_perturbation(
+        _, logFC = ds.tl.simulate_perturbation(
             pipeline_trained_model,
             preprocessed_mdata,
             tf_name=tf_name,
@@ -395,7 +413,7 @@ class TestPerturbationPipeline:
         """Verify multi-TF perturbation works."""
         tf_names = pipeline_trained_model.tf_names[:2]  # First 2 TFs
 
-        logFC = ds.tl.simulate_multi_perturbation(
+        perturbed, logFC = ds.tl.simulate_multi_perturbation(
             pipeline_trained_model,
             preprocessed_mdata,
             tf_names=tf_names,
@@ -403,7 +421,9 @@ class TestPerturbationPipeline:
             batch_size=8,
         )
 
+        assert isinstance(perturbed, np.ndarray)
         assert isinstance(logFC, np.ndarray)
+        assert perturbed.shape == logFC.shape
         assert logFC.shape == (
             preprocessed_mdata.n_obs,
             len(pipeline_trained_model.gene_names),
@@ -542,7 +562,7 @@ class TestFullPipeline:
         # Tutorial 5: Perturbation Analysis
         # ====================================================================
 
-        logFC = ds.tl.simulate_perturbation(
+        perturbed, logFC = ds.tl.simulate_perturbation(
             model,
             mdata,
             tf_name="G0",
@@ -551,6 +571,7 @@ class TestFullPipeline:
             batch_size=8,
         )
 
+        assert perturbed.shape == (n_cells, len(model.gene_names))
         assert logFC.shape == (n_cells, len(model.gene_names))
         assert np.isfinite(logFC).all()
 

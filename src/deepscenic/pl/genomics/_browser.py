@@ -31,6 +31,8 @@ def genome_browser(
     show_genes: bool = True,
     show_links: bool = True,
     link_cmap: str = "Blues",
+    link_alpha: float = 0.7,
+    link_width: float = 1.0,
     show: bool | None = None,
     save: str | bool | None = None,
     return_fig: bool = False,
@@ -70,6 +72,10 @@ def genome_browser(
         Show region-gene link arcs.
     link_cmap
         Colormap for link arcs.
+    link_alpha
+        Opacity of link arcs, between 0 and 1.
+    link_width
+        Line width of link arcs.
     show
         Display figure.
     save
@@ -93,6 +99,11 @@ def genome_browser(
     ... )
     """
     import pandas as pd
+
+    if not 0 <= link_alpha <= 1:
+        raise ValueError("link_alpha must be between 0 and 1")
+    if link_width <= 0:
+        raise ValueError("link_width must be positive")
 
     # Extract data from mdata if provided
     if mdata is not None:
@@ -156,7 +167,7 @@ def genome_browser(
                 ax = axes[track_idx]
 
                 # Aggregate accessibility for this group
-                group_signal = np.mean(atac_data[cell_idx][:, region_mask], axis=0)
+                group_signal = np.asarray(atac_data[cell_idx][:, region_mask].mean(axis=0)).ravel()
 
                 # Plot as bars
                 for (r_start, r_end), signal in zip(region_coords, group_signal, strict=False):
@@ -172,7 +183,7 @@ def genome_browser(
             ax = axes[track_idx]
 
             # Aggregate all cells
-            agg_signal = np.mean(atac_data[:, region_mask], axis=0)
+            agg_signal = np.asarray(atac_data[:, region_mask].mean(axis=0)).ravel()
 
             for (r_start, r_end), signal in zip(region_coords, agg_signal, strict=False):
                 ax.fill_between([r_start, r_end], 0, signal, alpha=0.7, color=COLORS["gene"])
@@ -261,8 +272,8 @@ def genome_browser(
                     (pos_gene, 0),
                     connectionstyle="arc3,rad=-0.3",
                     color=cmap_obj(norm(link["weight"])),
-                    linewidth=1,
-                    alpha=0.7,
+                    linewidth=link_width,
+                    alpha=link_alpha,
                 )
                 ax.add_patch(arc)
 

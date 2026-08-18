@@ -70,17 +70,10 @@ ds.register_genome(fasta_path="/path/to/hg38.fa")
 # Phase 1: Train full model (VAE + MotifNet + Enformer)
 model = ds.tl.train(mdata, epochs=100, device="cuda")
 
-# Phase 2: Refit r2g with fresh tf2r on training features
+# Phase 2: Recompute tf2r and finetune all r2g links
 model = ds.tl.finetune_r2g(
-    model, mdata,
-    feature_split="train",  # Train features (genes/regions)
-    epochs=500,
-)
-
-# Phase 3: Finetune r2g on test chromosomes
-model = ds.tl.finetune_r2g(
-    model, mdata,
-    feature_split="test",   # Test features (held-out chromosomes)
+    model,
+    mdata,
     epochs=500,
 )
 
@@ -105,14 +98,16 @@ ds.pl.heatmap_grn(grn, tfs=["SOX10", "MITF", "PAX3"])
 
 ```python
 # Simulate TF knockdown (level=0) or overexpression (level=2)
-results = ds.tl.simulate_perturbation(
-    model, mdata,
+perturbed, logFC = ds.tl.simulate_perturbation(
+    model,
+    mdata,
     tf_name="SOX10",
     level=0,  # knockdown
 )
 
-# Visualize perturbation effects
-ds.pl.volcano_perturbation(results, tf_name="SOX10")
+# Summarize and visualize perturbation effects
+results = ds.tl.process_perturbation_results(logFC, mdata, tf_name="SOX10")
+ds.pl.waterfall_perturbation(results)
 ```
 
 For complete workflows, see the [tutorials](https://deepscenic.readthedocs.io/en/latest/tutorials.html).

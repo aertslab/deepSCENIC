@@ -68,6 +68,8 @@ def ism_heatmap(
     >>> ism_scores = np.random.randn(100, 4)
     >>> ds.pl.ism_heatmap(ism_scores)
     """
+    supplied_ax = ax is not None
+
     # Ensure shape is (4, seq_len) for heatmap
     if ism_scores.shape[1] == 4 and ism_scores.shape[0] != 4:
         ism_scores = ism_scores.T
@@ -93,7 +95,12 @@ def ism_heatmap(
     if title:
         ax.set_title(title)
 
-    savefig_or_show("ism_heatmap", show=show, save=save)
+    savefig_or_show(
+        "ism_heatmap",
+        show=show,
+        save=save,
+        close=not supplied_ax,
+    )
 
     if return_fig:
         return fig

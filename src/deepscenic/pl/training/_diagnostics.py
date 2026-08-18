@@ -172,98 +172,6 @@ def loss_curves(
     return None
 
 
-def sparsity_histogram(
-    model: DeepSCENICModel,
-    *,
-    which: str = "both",
-    bins: int = 50,
-    threshold: float = 0.01,
-    ax: Axes | None = None,
-    show: bool | None = None,
-    save: str | bool | None = None,
-    return_fig: bool = False,
-    figsize: tuple[float, float] = (10, 4),
-) -> Axes | Figure | None:
-    """
-    Histogram of tf2r/r2g weight distributions.
-
-    Parameters
-    ----------
-    model
-        Trained DeepSCENICModel.
-    which
-        'tf2r', 'r2g', or 'both'.
-    bins
-        Number of histogram bins.
-    threshold
-        Threshold for sparsity calculation.
-    ax
-        Pre-existing axes.
-    show
-        Display figure.
-    save
-        Save figure.
-    return_fig
-        Return Figure.
-    figsize
-        Figure size.
-
-    Returns
-    -------
-    Axes, Figure, or None depending on parameters.
-
-    Examples
-    --------
-    >>> model = ds.tl.load_model("model.pt")
-    >>> ds.pl.sparsity_histogram(model)
-    """
-    import torch
-
-    with torch.no_grad():
-        tf2r_vals = model.adj_tf2r.flatten().cpu().numpy()
-        r2g_vals = model.vae.adj_r2g.abs().flatten().cpu().numpy()
-
-    if which == "both":
-        fig, axes = plt.subplots(1, 2, figsize=figsize)
-
-        axes[0].hist(tf2r_vals, bins=bins, alpha=0.7, color=COLORS["tf"])
-        axes[0].set_xlabel("Weight")
-        axes[0].set_ylabel("Count")
-        tf2r_sparsity = (tf2r_vals < threshold).mean()
-        axes[0].set_title(f"TF->Region (tf2r)\nSparsity: {tf2r_sparsity:.1%}")
-
-        axes[1].hist(r2g_vals, bins=bins, alpha=0.7, color=COLORS["gene"])
-        axes[1].set_xlabel("Weight")
-        axes[1].set_ylabel("Count")
-        r2g_sparsity = (r2g_vals < threshold).mean()
-        axes[1].set_title(f"Region->Gene (r2g)\nSparsity: {r2g_sparsity:.1%}")
-
-        plt.tight_layout()
-        savefig_or_show("sparsity_histogram", show=show, save=save)
-
-        if return_fig:
-            return fig
-        return None
-    else:
-        fig, ax = setup_axes(ax, figsize=(figsize[0] // 2, figsize[1]))
-        vals = tf2r_vals if which == "tf2r" else r2g_vals
-        color = COLORS["tf"] if which == "tf2r" else COLORS["gene"]
-
-        ax.hist(vals, bins=bins, alpha=0.7, color=color)
-        ax.set_xlabel("Weight")
-        ax.set_ylabel("Count")
-        sparsity = (vals < threshold).mean()
-        ax.set_title(f"{which} Weights\nSparsity: {sparsity:.1%}")
-
-        savefig_or_show(f"sparsity_{which}", show=show, save=save)
-
-        if return_fig:
-            return fig
-        if show is False:
-            return ax
-        return None
-
-
 def enhancer_activity_histogram(
     model: DeepSCENICModel,
     mdata: MuData,
@@ -432,8 +340,10 @@ def tf_activity_clustermap(
     >>> model = ds.tl.load_model("model.pt")
     >>>
     >>> # Compute TF activity scores
-    >>> active_enh = ds.tl.identify_active_enhancers(model, mdata, "celltype")
-    >>> tf_scores = ds.tl.compute_tf_activity_scores(model, mdata, "celltype", active_enh)
+    >>> active_enh = ds.tl.identify_active_enhancers(model, mdata, class_key="celltype")
+    >>> tf_scores = ds.tl.compute_tf_activity_scores(
+    ...     model, mdata, class_key="celltype", active_enhancers=active_enh
+    ... )
     >>>
     >>> # Plot clustermap
     >>> ds.pl.tf_activity_clustermap(tf_scores, xlabel="celltype")
