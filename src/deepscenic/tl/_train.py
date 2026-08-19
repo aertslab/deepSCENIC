@@ -930,7 +930,6 @@ def train(
                 "region_indices": vae.region_indices,
                 "r2g_indices": vae.r2g_indices,
                 "r2g_distances": vae.r2g_distances,
-                "use_ppi": vae.use_ppi,
             }
             _get_checkpoint_executor().submit(
                 _save_checkpoint_data,
@@ -971,7 +970,6 @@ def train(
                 "region_indices": vae.region_indices,
                 "r2g_indices": vae.r2g_indices,
                 "r2g_distances": vae.r2g_distances,
-                "use_ppi": vae.use_ppi,
             }
             _get_checkpoint_executor().submit(
                 _save_checkpoint_data,

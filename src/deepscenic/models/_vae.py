@@ -82,10 +82,6 @@ class DeepSCENICVAE(nn.Module):
         self.n_hidden = n_hidden
         self.n_batches = n_batches
 
-        # PPI removed for initial release, kept as attribute for legacy loading
-        self.use_ppi = False
-        self.ppi = None
-
         # Store indices as buffers (not parameters)
         self.register_buffer("tf_indices", tf_indices)
         self.register_buffer("gene_indices", gene_indices)
