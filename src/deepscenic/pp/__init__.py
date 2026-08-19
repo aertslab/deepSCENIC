@@ -288,14 +288,14 @@ def split_features_by_chromosome(
     Adds a 'split' column to both ``atac.var`` and ``rna.var`` inside ``mdata``.
     All genes (including TFs) are assigned to ``'train'`` or ``'test'`` based on
     their chromosome. TFs are always available as encoder input regardless of split
-    (determined by ``is_tf``), but only genes in the current split contribute to
-    reconstruction loss.
+    (determined by ``is_tf``).
 
     Note: The feature split affects training and evaluation:
 
-    - **Phase 1**: Reconstruction loss on train-chromosome genes/regions only
-    - **Phase 3 (r2g finetuning)**: Reconstruction loss on test-chromosome genes/regions
-    - **r2g sparsity loss** is applied to train-chromosome links only (matching reconstruction scope)
+    - **Main training**: reconstruction loss is computed on train-chromosome
+      genes and regions, while held-out chromosomes are used for evaluation.
+    - **r2g finetuning**: the chromosome split is no longer applied; all genes
+      are reconstructed and all r2g links are optimized together.
 
     Expects ``mdata["rna"].var`` to contain a ``"chromosome"`` column.
     Run :func:`~deepscenic.pp.add_gene_annotation` first to assign gene positions based on TSS.

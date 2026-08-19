@@ -69,7 +69,7 @@ Total Loss =
 
 ```python
 # Set TF expression to perturbation level
-perturbed_matrix[:, 'SOX10'] = 0
+perturbed_matrix[:, "SOX10"] = 0
 
 # Iterate to steady state
 for i in range(n_iter):

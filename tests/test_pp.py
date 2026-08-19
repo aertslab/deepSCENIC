@@ -697,7 +697,7 @@ class TestFilterRegionsByCelltype:
         # sample_atac has random values 0-1, most should be > 0
         original_n_regions = sample_atac.n_vars
 
-        ds.pp.filter_regions_by_celltype(sample_atac, celltype_key="celltype", min_fraction=0.1)
+        ds.pp.filter_regions_by_celltype(sample_atac, class_key="celltype", min_fraction=0.1)
 
         # Most regions should be kept since random values are mostly nonzero
         assert sample_atac.n_vars == original_n_regions
@@ -719,7 +719,7 @@ class TestFilterRegionsByCelltype:
         # Region 5-9: present in only 8% of cells (should be removed at min_fraction=0.1)
         adata.X[:4, 5:] = 1.0  # 4 cells out of 50 = 8% # type: ignore[index]
 
-        ds.pp.filter_regions_by_celltype(adata, celltype_key="celltype", min_fraction=0.1)
+        ds.pp.filter_regions_by_celltype(adata, class_key="celltype", min_fraction=0.1)
 
         # Only first 5 regions should remain
         assert adata.n_vars == 5
@@ -745,7 +745,7 @@ class TestFilterRegionsByCelltype:
         # region_C: fails in both
         adata.X[0, 2] = 1.0  # 1/50 = 2% in TypeA # type: ignore[index]
 
-        ds.pp.filter_regions_by_celltype(adata, celltype_key="celltype", min_fraction=0.1)
+        ds.pp.filter_regions_by_celltype(adata, class_key="celltype", min_fraction=0.1)
 
         # region_A and region_B should be kept, region_C removed
         assert adata.n_vars == 2
@@ -757,7 +757,7 @@ class TestFilterRegionsByCelltype:
         """Test inplace=False returns a copy."""
         original_n_vars = sample_atac.n_vars
 
-        result = ds.pp.filter_regions_by_celltype(sample_atac, celltype_key="celltype", min_fraction=0.1, inplace=False)
+        result = ds.pp.filter_regions_by_celltype(sample_atac, class_key="celltype", min_fraction=0.1, inplace=False)
 
         assert result is not None
         assert result is not sample_atac

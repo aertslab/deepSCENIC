@@ -115,8 +115,9 @@ def heatmap_grn(
     tfs: list[str] | None = None,
     genes: list[str] | None = None,
     top_k: int | None = 30,
-    normalize: str | None = "zscore",
-    ax: Axes | None = None,
+    normalize: str | None = "tf",
+    cluster_tfs: bool = True,
+    cluster_genes: bool = True,
     cmap: str = "RdBu_r",
     center: float = 0,
     show: bool | None = None,
@@ -126,28 +127,39 @@ def heatmap_grn(
     **kwargs,
 ) -> Axes | Figure | None:
     """
-    Plot combined TF->gene GRN heatmap (E1 @ E2).
+    Plot a clustered combined TF->gene GRN heatmap (E1 @ E2).
 
     Computes TF-gene regulatory weights by multiplying E1 (TF->region) and
     E2 (region->gene) matrices. By default, values are z-score normalized
-    per TF to highlight gene-specific regulation patterns.
+    per TF to highlight gene-specific regulation patterns. Alternatively,
+    values can be z-score normalized per gene to compare TF-specific effects.
 
     Parameters
     ----------
     model
         Trained DeepSCENICModel.
     tfs
-        TFs to include.
+        TFs to include. Their requested order is retained when
+        ``cluster_tfs=False``. If omitted, select ``top_k`` TFs by their mean
+        absolute TF→gene weight across the selected genes (or across all genes
+        when ``genes`` is also omitted).
     genes
-        Genes to include.
+        Genes to include. Their requested order is retained when
+        ``cluster_genes=False``. If omitted, select ``top_k`` genes by their
+        mean absolute TF→gene weight across the selected TFs.
     top_k
-        Number of top TFs/genes to show.
+        Number of features to select for each axis whose explicit list is
+        omitted. Selection uses raw weights before optional normalization.
     normalize
-        Normalization method for the GRN matrix.
-        ``'zscore'`` (default): Z-score per TF (row), matching legacy workflow.
-        ``None``: Raw E1 @ E2 values.
-    ax
-        Pre-existing axes.
+        Axis used to z-score the GRN matrix:
+
+        - ``'tf'``: Z-score each TF across genes (rows).
+        - ``'gene'``: Z-score each gene across TFs (columns).
+        - ``None``: Plot raw E1 @ E2 values.
+    cluster_tfs
+        Whether to hierarchically cluster TF rows. Default is True.
+    cluster_genes
+        Whether to hierarchically cluster gene columns. Default is True.
     cmap
         Colormap.
     center
@@ -161,7 +173,7 @@ def heatmap_grn(
     figsize
         Figure size.
     **kwargs
-        Passed to seaborn.heatmap.
+        Passed to seaborn.clustermap.
 
     Returns
     -------
@@ -171,6 +183,13 @@ def heatmap_grn(
     --------
     >>> model = ds.tl.load_model("model.pt")
     >>> ds.pl.heatmap_grn(model, top_k=20)
+    >>> ds.pl.heatmap_grn(
+    ...     model,
+    ...     tfs=["MITF", "SOX10"],
+    ...     genes=["TYR", "DCT", "MLANA"],
+    ...     normalize="gene",
+    ...     cluster_tfs=False,
+    ... )
     """
     import numpy as np
     import pandas as pd
@@ -179,7 +198,7 @@ def heatmap_grn(
 
     from deepscenic.tl import extract_tf2r_matrix
 
-    # Get E1 as dense DataFrame (n_regions, n_tfs)
+    # Get E1 as dense DataFrame (n_tfs, n_regions)
     E1_df = extract_tf2r_matrix(model)
 
     # Build sparse E2 matrix using scipy (avoids dense materialization)
@@ -192,8 +211,8 @@ def heatmap_grn(
         shape=(len(model.region_names), len(model.gene_names)),
     ).tocsr()
 
-    # Sparse matrix multiplication: GRN = E1.T @ E2 -> (n_tfs, n_genes)
-    grn_values = E1_df.values.T @ E2_scipy
+    # Sparse matrix multiplication: GRN = E1 @ E2 -> (n_tfs, n_genes)
+    grn_values = E1_df.values @ E2_scipy
 
     grn_matrix = pd.DataFrame(
         grn_values.toarray() if hasattr(grn_values, "toarray") else np.asarray(grn_values),
@@ -201,54 +220,87 @@ def heatmap_grn(
         columns=model.gene_names,
     )
 
-    # Remove all-zero columns (genes with no E2 links)
-    grn_matrix = grn_matrix.loc[:, (grn_matrix != 0).any(axis=0)]
+    # Resolve explicit selections first, preserving the requested order.
+    if tfs is not None:
+        missing_tfs = [tf for tf in tfs if tf not in grn_matrix.index]
+        if missing_tfs:
+            raise ValueError(f"TFs not found in model: {missing_tfs}")
+        selected_tfs = list(tfs)
+    elif top_k is not None:
+        candidate_genes = genes if genes is not None else list(grn_matrix.columns)
+        missing_genes = [gene for gene in candidate_genes if gene not in grn_matrix.columns]
+        if missing_genes:
+            raise ValueError(f"Genes not found in model: {missing_genes}")
+        tf_scores = grn_matrix.loc[:, candidate_genes].abs().mean(axis=1)
+        selected_tfs = tf_scores.nlargest(top_k).index.tolist()
+    else:
+        selected_tfs = list(grn_matrix.index)
 
-    # Normalize
-    if normalize == "zscore":
+    if genes is not None:
+        missing_genes = [gene for gene in genes if gene not in grn_matrix.columns]
+        if missing_genes:
+            raise ValueError(f"Genes not found in model: {missing_genes}")
+        selected_genes = list(genes)
+    elif top_k is not None:
+        gene_scores = grn_matrix.loc[selected_tfs].abs().mean(axis=0)
+        selected_genes = gene_scores.nlargest(top_k).index.tolist()
+    else:
+        selected_genes = list(grn_matrix.columns)
+
+    # Normalize the full matrix after feature ranking, then subset for plotting.
+    if normalize == "tf":
         # Z-score per TF (row): (value - row_mean) / row_std
         row_mean = grn_matrix.mean(axis=1)
         row_std = grn_matrix.std(axis=1)
         # Avoid division by zero for TFs with zero variance
         row_std = row_std.replace(0, np.nan)
         grn_matrix = grn_matrix.sub(row_mean, axis=0).div(row_std, axis=0)
-        # Drop TFs with zero variance (all NaN after zscore)
-        grn_matrix = grn_matrix.dropna(how="all")
-    elif normalize is not None:
-        raise ValueError(f"Unknown normalize method: {normalize!r}. Use 'zscore' or None.")
+        # A constant TF has no relative preference across genes.
+        grn_matrix = grn_matrix.fillna(0.0)
+        normalization_label = "z-score per TF"
+    elif normalize == "gene":
+        # Z-score per gene (column): (value - column_mean) / column_std
+        column_mean = grn_matrix.mean(axis=0)
+        column_std = grn_matrix.std(axis=0)
+        # Avoid division by zero for genes with zero variance
+        column_std = column_std.replace(0, np.nan)
+        grn_matrix = grn_matrix.sub(column_mean, axis=1).div(column_std, axis=1)
+        # A constant gene has no relative preference across TFs.
+        grn_matrix = grn_matrix.fillna(0.0)
+        normalization_label = "z-score per gene"
+    elif normalize is None:
+        normalization_label = None
+    else:
+        raise ValueError(f"Unknown normalize method: {normalize!r}. Use 'tf', 'gene', or None.")
 
-    # Filter TFs
-    if tfs is not None:
-        grn_matrix = grn_matrix.loc[[t for t in tfs if t in grn_matrix.index]]
-    elif top_k is not None:
-        tf_var = grn_matrix.var(axis=1)
-        top_tfs = tf_var.nlargest(top_k).index.tolist()
-        grn_matrix = grn_matrix.loc[top_tfs]
+    grn_matrix = grn_matrix.loc[selected_tfs, selected_genes]
 
-    # Filter genes
-    if genes is not None:
-        valid_genes = [g for g in genes if g in grn_matrix.columns]
-        if valid_genes:
-            grn_matrix = grn_matrix[valid_genes]
-    elif top_k is not None:
-        gene_var = grn_matrix.var()
-        top_genes = gene_var.nlargest(top_k).index.tolist()
-        grn_matrix = grn_matrix[top_genes]
+    # A single observation cannot be hierarchically clustered.
+    row_cluster = cluster_tfs and len(grn_matrix.index) > 1
+    col_cluster = cluster_genes and len(grn_matrix.columns) > 1
 
-    # Create plot
-    fig, ax = setup_axes(ax, figsize=figsize)
-    sns.heatmap(grn_matrix, ax=ax, cmap=cmap, center=center, **kwargs)
-    ax.set_xlabel("Target Genes")
-    ax.set_ylabel("Transcription Factors")
+    # Create clustered plot. Unlike sns.heatmap, clustermap owns its figure and
+    # cannot be drawn into a pre-existing Axes.
+    grid = sns.clustermap(
+        grn_matrix,
+        row_cluster=row_cluster,
+        col_cluster=col_cluster,
+        cmap=cmap,
+        center=center,
+        figsize=figsize,
+        **kwargs,
+    )
+    grid.ax_heatmap.set_xlabel("Target Genes")
+    grid.ax_heatmap.set_ylabel("Transcription Factors")
     title = "GRN: TF -> Gene Regulatory Weights"
-    if normalize:
-        title += f" ({normalize})"
-    ax.set_title(title)
+    if normalization_label is not None:
+        title += f" ({normalization_label})"
+    grid.figure.suptitle(title, y=1.02)
 
     savefig_or_show("heatmap_grn", show=show, save=save)
 
     if return_fig:
-        return fig
+        return grid.figure
     if show is False:
-        return ax
+        return grid.ax_heatmap
     return None

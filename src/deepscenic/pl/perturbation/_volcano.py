@@ -70,7 +70,7 @@ def waterfall_perturbation(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> logFC = ds.tl.simulate_perturbation(model, mdata, "SOX10")
+    >>> _, logFC = ds.tl.simulate_perturbation(model, mdata, "SOX10")
     >>> results = ds.tl.process_perturbation_results(logFC, mdata, "SOX10")
     >>> ds.pl.waterfall_perturbation(results, highlight_genes=["MITF", "DCT"])
     """
