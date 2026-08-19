@@ -133,8 +133,10 @@ class LazyImputeAnndata(AnnData):
         X_fake = scipy.sparse.csr_array((n_cells, n_regions), dtype=float)
 
         instance = cls.__new__(cls)
+        instance._allow_X_assignment = True
 
         AnnData.__init__(instance, X=X_fake, obs=cell_obs, var=region_obs)
+        instance._allow_X_assignment = False
 
         instance.obsm["cell_topic"] = X_cell_topic
         instance.varm["region_topic"] = X_region_topic
@@ -163,7 +165,9 @@ class LazyImputeAnndata(AnnData):
             )
 
         instance = cls.__new__(cls)
+        instance._allow_X_assignment = True
         AnnData.__init__(instance, adata)
+        instance._allow_X_assignment = False
         return instance
 
     @property
@@ -190,6 +194,9 @@ class LazyImputeAnndata(AnnData):
 
     @X.setter
     def X(self, value) -> None:  # type: ignore
+        if getattr(self, "_allow_X_assignment", False):
+            self._X = value
+            return
         raise AttributeError(
             "Cannot set X on LazyImputeAnndata. "
             "Accessibility is imputed on the fly from obsm['cell_topic'] and varm['region_topic']."
@@ -213,6 +220,7 @@ class LazyImputeAnndata(AnnData):
         assert isinstance(self.var, pd.DataFrame)
 
         instance = LazyImputeAnndata.__new__(LazyImputeAnndata)
+        instance._allow_X_assignment = True
         AnnData.__init__(
             instance,
             X=X_fake,
@@ -222,6 +230,7 @@ class LazyImputeAnndata(AnnData):
             obsm={k: v.copy() for k, v in self.obsm.items()},
             varm={k: v.copy() for k, v in self.varm.items()},
         )
+        instance._allow_X_assignment = False
         return instance
 
     def to_memory(self, copy: bool = False) -> "LazyImputeAnndata":  # type: ignore
@@ -237,6 +246,7 @@ class LazyImputeAnndata(AnnData):
         X_fake = scipy.sparse.csr_array((n_cells, n_regions), dtype=float)
 
         instance = LazyImputeAnndata.__new__(LazyImputeAnndata)
+        instance._allow_X_assignment = True
 
         assert isinstance(self.obs, pd.DataFrame)
         assert isinstance(self.var, pd.DataFrame)
@@ -250,6 +260,7 @@ class LazyImputeAnndata(AnnData):
             obsm={k: v.copy() for k, v in self.obsm.items()},
             varm={k: v.copy() for k, v in self.varm.items()},
         )
+        instance._allow_X_assignment = False
         return instance
 
     def __getitem__(self, index) -> "LazyImputeAnndata":  # type: ignore
@@ -262,7 +273,9 @@ class LazyImputeAnndata(AnnData):
         """
         oidx, vidx = self._normalize_indices(index)
         instance = LazyImputeAnndata.__new__(LazyImputeAnndata)
+        instance._allow_X_assignment = True
         AnnData.__init__(instance, self, oidx=oidx, vidx=vidx, asview=True)
+        instance._allow_X_assignment = False
         return instance
 
     def to_anndata(self) -> AnnData:
