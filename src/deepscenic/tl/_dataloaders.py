@@ -27,15 +27,12 @@ class CellDataset(Dataset):
         RNA expression matrix (n_cells, n_genes)
     atac
         ATAC accessibility matrix (n_cells, n_regions)
-    batch_id
-        One-hot encoded batch IDs (n_cells, n_batches), optional.
     """
 
     def __init__(
         self,
         rna: NDArray,
         atac: NDArray | LazyImpute,
-        batch_id: NDArray | None = None,
     ) -> None:
         rna = _to_dense(rna)
 
@@ -52,21 +49,17 @@ class CellDataset(Dataset):
             # __getitem__
             self.atac = atac
 
-        self.batch_id = torch.Tensor(batch_id) if batch_id is not None else None
         self.n_cells: int = rna.shape[0]
 
     def __len__(self) -> int:
         return self.n_cells
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        item = {
+        return {
             "rna": self.rna[idx],
             "atac": self.atac[idx] if not isinstance(self.atac, LazyImpute) else torch.Tensor(self.atac[idx]),
             "idx": torch.tensor(idx),
         }
-        if self.batch_id is not None:
-            item["batch_id"] = self.batch_id[idx]
-        return item
 
 
 class SequenceDatasetWithIndex(Dataset):
@@ -96,7 +89,6 @@ def build_cell_dataloader(
     shuffle: bool = True,
     balance_class: bool = False,
     class_key: str | None = None,
-    batch_key: str | None = None,
     num_workers: int = 0,
     feature_split: str | None = None,
 ) -> DataLoader:
@@ -116,9 +108,6 @@ def build_cell_dataloader(
         Whether to use weighted sampling for class balance.
     class_key
         Column in obs for class balancing.
-    batch_key
-        Column in obs for batch correction. When specified, one-hot encodes
-        batch IDs and includes them in each batch for the VAE batch correction layer.
     num_workers
         Number of data loading workers.
     feature_split
@@ -166,16 +155,7 @@ def build_cell_dataloader(
         rna = rna_adata.X
         atac = atac_adata.X
 
-    # Create batch_id one-hot encoding for batch correction
-    batch_id = None
-    if batch_key is not None:
-        import pandas as pd
-
-        batch_values = mdata.obs.loc[cell_mask, batch_key].values
-        batch_encoder = pd.get_dummies(batch_values)
-        batch_id = batch_encoder.values.astype(np.float32)
-
-    dataset = CellDataset(rna, atac, batch_id=batch_id)
+    dataset = CellDataset(rna, atac)
 
     # Weighted sampling for class balance
     sampler = None

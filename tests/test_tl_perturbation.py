@@ -16,19 +16,21 @@ class TestSimulatePerturbation:
 
     def test_returns_numpy_array(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should return numpy array."""
-        result = simulate_perturbation(
+        perturbed, logFC = simulate_perturbation(
             mock_deepscenic_model, mock_mdata_for_model, tf_name="TF0", level=0.0, n_iter=2, batch_size=4, device="cpu"
         )
-        assert isinstance(result, np.ndarray)
+        assert isinstance(perturbed, np.ndarray)
+        assert isinstance(logFC, np.ndarray)
 
     def test_output_shape(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
         """Output should have shape (n_cells, n_genes)."""
-        result = simulate_perturbation(
+        perturbed, logFC = simulate_perturbation(
             mock_deepscenic_model, mock_mdata_for_model, tf_name="TF0", level=0.0, n_iter=2, batch_size=4, device="cpu"
         )
         d = minimal_dims
         n_cells = d["n_cells"] * 2
-        assert result.shape == (n_cells, d["n_genes"])
+        assert perturbed.shape == (n_cells, d["n_genes"])
+        assert logFC.shape == (n_cells, d["n_genes"])
 
     def test_invalid_tf_raises(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should raise error for invalid TF name."""
@@ -46,7 +48,7 @@ class TestSimulatePerturbation:
     def test_return_intermediate(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
         """Should return dict of iterations when return_intermediate=True."""
         n_iter = 3
-        result = simulate_perturbation(
+        perturbed_trace, logFC_trace = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_name="TF0",
@@ -56,12 +58,44 @@ class TestSimulatePerturbation:
             device="cpu",
             return_intermediate=True,
         )
-        assert isinstance(result, dict)
-        assert set(result.keys()) == {1, 2, 3}
+        assert isinstance(perturbed_trace, dict)
+        assert isinstance(logFC_trace, dict)
+        assert set(perturbed_trace.keys()) == {1, 2, 3}
+        assert set(logFC_trace.keys()) == {1, 2, 3}
         d = minimal_dims
         n_cells = d["n_cells"] * 2
         for i in range(1, n_iter + 1):
-            assert result[i].shape == (n_cells, d["n_genes"])
+            assert perturbed_trace[i].shape == (n_cells, d["n_genes"])
+            assert logFC_trace[i].shape == (n_cells, d["n_genes"])
+
+    def test_multiple_tfs(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Should accept multiple TFs and one level per TF."""
+        perturbed, logFC = simulate_perturbation(
+            mock_deepscenic_model,
+            mock_mdata_for_model,
+            tf_name=["TF0", "TF1"],
+            level=[0.0, 2.0],
+            n_iter=2,
+            batch_size=4,
+            device="cpu",
+        )
+
+        tf0_idx = int(mock_deepscenic_model.vae.tf_indices[0])
+        tf1_idx = int(mock_deepscenic_model.vae.tf_indices[1])
+        assert np.all(perturbed[:, tf0_idx] == 0.0)
+        assert np.all(perturbed[:, tf1_idx] == 2.0)
+        assert perturbed.shape == logFC.shape
+
+    def test_mismatched_levels_raises(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Test that function raises error when levels and TF names have different lengths."""
+        with pytest.raises(ValueError, match="same length"):
+            simulate_perturbation(
+                mock_deepscenic_model,
+                mock_mdata_for_model,
+                tf_name=["TF0", "TF1"],
+                level=[0.0],
+                device="cpu",
+            )
 
 
 class TestSimulateMultiPerturbation:
@@ -69,19 +103,21 @@ class TestSimulateMultiPerturbation:
 
     def test_returns_numpy_array(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should return numpy array."""
-        result = simulate_multi_perturbation(
+        perturbed, logFC = simulate_multi_perturbation(
             mock_deepscenic_model, mock_mdata_for_model, tf_names=["TF0", "TF1"], n_iter=2, batch_size=4, device="cpu"
         )
-        assert isinstance(result, np.ndarray)
+        assert isinstance(perturbed, np.ndarray)
+        assert isinstance(logFC, np.ndarray)
 
     def test_output_shape(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
         """Output should have shape (n_cells, n_genes)."""
-        result = simulate_multi_perturbation(
+        perturbed, logFC = simulate_multi_perturbation(
             mock_deepscenic_model, mock_mdata_for_model, tf_names=["TF0", "TF1"], n_iter=2, batch_size=4, device="cpu"
         )
         d = minimal_dims
         n_cells = d["n_cells"] * 2
-        assert result.shape == (n_cells, d["n_genes"])
+        assert perturbed.shape == (n_cells, d["n_genes"])
+        assert logFC.shape == (n_cells, d["n_genes"])
 
     def test_invalid_tf_raises(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should raise error for invalid TF name."""
@@ -106,7 +142,7 @@ class TestSimulateMultiPerturbation:
             batch_size=4,
             device="cpu",
         )
-        assert result is not None
+        assert all(value is not None for value in result)
 
     def test_mismatched_levels_raises(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should raise error if levels length doesn't match tf_names."""
@@ -124,7 +160,7 @@ class TestSimulateMultiPerturbation:
     def test_return_intermediate(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
         """Should return dict of iterations when return_intermediate=True."""
         n_iter = 3
-        result = simulate_multi_perturbation(
+        perturbed_trace, logFC_trace = simulate_multi_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_names=["TF0", "TF1"],
@@ -133,12 +169,15 @@ class TestSimulateMultiPerturbation:
             device="cpu",
             return_intermediate=True,
         )
-        assert isinstance(result, dict)
-        assert set(result.keys()) == {1, 2, 3}
+        assert isinstance(perturbed_trace, dict)
+        assert isinstance(logFC_trace, dict)
+        assert set(perturbed_trace.keys()) == {1, 2, 3}
+        assert set(logFC_trace.keys()) == {1, 2, 3}
         d = minimal_dims
         n_cells = d["n_cells"] * 2
         for i in range(1, n_iter + 1):
-            assert result[i].shape == (n_cells, d["n_genes"])
+            assert perturbed_trace[i].shape == (n_cells, d["n_genes"])
+            assert logFC_trace[i].shape == (n_cells, d["n_genes"])
 
 
 class TestProcessPerturbationResults:
@@ -146,7 +185,7 @@ class TestProcessPerturbationResults:
 
     def test_returns_dataframe(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should return pandas DataFrame."""
-        logFC = simulate_perturbation(
+        _, logFC = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_name="TF0",
@@ -160,7 +199,7 @@ class TestProcessPerturbationResults:
 
     def test_output_columns(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should have expected columns."""
-        logFC = simulate_perturbation(
+        _, logFC = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_name="TF0",
@@ -177,7 +216,7 @@ class TestProcessPerturbationResults:
 
     def test_output_rows(self, mock_deepscenic_model, mock_mdata_for_model, minimal_dims):
         """Should have one row per gene."""
-        logFC = simulate_perturbation(
+        _, logFC = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_name="TF0",
@@ -191,7 +230,7 @@ class TestProcessPerturbationResults:
 
     def test_no_pvalue_columns(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should not include pvalue/padj columns (removed from API)."""
-        logFC = simulate_perturbation(
+        _, logFC = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_name="TF0",
@@ -206,7 +245,7 @@ class TestProcessPerturbationResults:
 
     def test_gene_subset(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should filter to gene subset."""
-        logFC = simulate_perturbation(
+        _, logFC = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_name="TF0",
@@ -223,7 +262,7 @@ class TestProcessPerturbationResults:
 
     def test_multi_tf_label(self, mock_deepscenic_model, mock_mdata_for_model):
         """Should combine multiple TF names with '+'."""
-        logFC = simulate_perturbation(
+        _, logFC = simulate_perturbation(
             mock_deepscenic_model,
             mock_mdata_for_model,
             tf_name="TF0",

@@ -75,6 +75,8 @@ def logo_attribution(
 
     import pandas as pd
 
+    supplied_ax = ax is not None
+
     # Ensure shape is (seq_len, 4)
     if attributions.shape[0] == 4 and attributions.shape[1] != 4:
         attributions = attributions.T
@@ -102,7 +104,12 @@ def logo_attribution(
     ax.set_xlabel("Position")
     ax.set_ylabel("Attribution")
 
-    savefig_or_show("logo_attribution", show=show, save=save)
+    savefig_or_show(
+        "logo_attribution",
+        show=show,
+        save=save,
+        close=not supplied_ax,
+    )
 
     if return_fig:
         return fig
@@ -158,6 +165,8 @@ def logo_motif(
     >>> pwm = pwm / pwm.sum(axis=1, keepdims=True)
     >>> ds.pl.logo_motif(pwm)
     """
+    supplied_ax = ax is not None
+
     try:
         import logomaker
     except ImportError as e:
@@ -178,7 +187,12 @@ def logo_motif(
     if title:
         ax.set_title(title)
 
-    savefig_or_show("logo_motif", show=show, save=save)
+    savefig_or_show(
+        "logo_motif",
+        show=show,
+        save=save,
+        close=not supplied_ax,
+    )
 
     if return_fig:
         return fig

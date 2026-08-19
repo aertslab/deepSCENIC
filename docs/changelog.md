@@ -33,7 +33,6 @@ Initial release with core functionality:
 ### Added
 - TF2rNet (Enformer + MotifNet) for sequence-based TF binding prediction
 - VAE architecture for multimodal learning (RNA + ATAC)
-- PPI network integration via Graph Attention Network
 - Perturbation simulation for TF knockdown/overexpression
 - GRN extraction and visualization tools
 - Basic preprocessing functions

@@ -12,6 +12,7 @@ notebooks/02_training
 notebooks/03_model_diagnosis
 notebooks/04_grn_analysis
 notebooks/05_perturbation_analysis
+notebooks/06_sequence_interpretation
 notebooks/06_legacy_migration
 ```
 
@@ -32,4 +33,5 @@ Before starting, ensure you have:
 | 03 | Model Diagnosis | `ds.tl.to_latent()`, `sc.tl.umap()` |
 | 04 | GRN Analysis | `ds.tl.extract_grn()`, `ds.tl.identify_active_enhancers()` |
 | 05 | Perturbation Analysis | `ds.tl.simulate_perturbation()`, `ds.pl.waterfall_perturbation()` |
-| 06 | Legacy Migration | Migrating from legacy deepSCENIC format |
+| 06 | Sequence Interpretation | `ds.tl.in_silico_mutagenesis()`, `ds.pl.ism_heatmap()` |
+| 07 | Legacy Migration | Migrating from legacy deepSCENIC format |

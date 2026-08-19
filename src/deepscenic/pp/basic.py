@@ -259,7 +259,7 @@ def mark_tfs(
 
 def filter_regions_by_celltype(
     adata: AnnData,
-    celltype_key: str,
+    class_key: str,
     min_fraction: float = 0.1,
     inplace: bool = True,
 ) -> AnnData | None:
@@ -270,8 +270,8 @@ def filter_regions_by_celltype(
     ----------
     adata
         ATAC accessibility data
-    celltype_key
-        Key in adata.obs for cell type labels
+    class_key
+        Key in adata.obs for class labels
     min_fraction
         Minimum fraction of cells per cell type
     inplace
@@ -286,11 +286,11 @@ def filter_regions_by_celltype(
     if not inplace:
         adata = adata.copy()
 
-    celltypes = adata.obs[celltype_key].unique()
+    celltypes = adata.obs[class_key].unique()
     keep_regions: set = set()
 
     for ct in tqdm(celltypes, desc="Filtering regions by cell type"):
-        mask = adata.obs[celltype_key] == ct
+        mask = adata.obs[class_key] == ct
         ct_adata = adata[mask]
         n_cells_ct = ct_adata.n_obs
         min_cells = int(n_cells_ct * min_fraction)

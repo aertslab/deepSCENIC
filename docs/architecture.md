@@ -6,7 +6,6 @@ deepSCENIC is a hierarchical Gene Regulatory Network (GRN) model that learns TF�
 
 ```
 TF expression
-  ↓ PPI modulation
   ↓ InferenceNet (per-TF MLP)
   ↓ z_tf (latent TF activity)
   ↓ × tf2r (TF→region weights)
@@ -26,32 +25,22 @@ Predicts TF binding potential from DNA sequence:
 - **MotifNet**: Context head that learns TF binding patterns
 - **Output**: tf2r matrix (n_regions × n_tfs)
 
-### 2. PPI Network
-
-Models post-transcriptional TF regulation:
-- **Architecture**: 3-layer Graph Attention Network (GAT)
-- **Input**: Gene expression for genes with PPI information
-- **Output**: TF activity modulation weights
-
-### 3. VAE (Variational Autoencoder)
+### 2. VAE (Variational Autoencoder)
 
 Transforms TF expression to regulatory activity:
 - **InferenceNet**: Per-TF MLP encoder with Gaussian sampling
 - **GenerativeNet_RNA**: Per-gene MLP decoder for RNA
 - **GenerativeNet_ATAC**: Per-region MLP decoder for ATAC
 
-### 4. GRN Matrices
+### 3. GRN Matrices
 
 - **tf2r (TF→region)**: Learned from DNA sequence via TF2rNet
 - **r2g (region→gene)**: Sparse learnable matrix, distance-constrained
 
 ## Training Strategy
 
-Training proceeds in stages:
-
-1. **warmup_vae** epochs: Train VAE only (tf2r frozen)
-2. **warmup_grn** epochs: Enable TF2rNet updates
-3. **Remaining epochs**: Enable PPI network
+The sequence model, MotifNet, and VAE are trained jointly. Region-to-gene
+weights can subsequently be refined with `finetune_r2g`.
 
 ## Loss Components
 
@@ -62,14 +51,13 @@ Total Loss =
   + loss_gauss_rna    # KL divergence (VAE regularization)
   + tf2r_sparse         # L1 sparsity on TF→region
   + r2g_sparse         # L1 sparsity on region→gene (distance-weighted)
-  + ppi_loss          # PPI network activation
 ```
 
 ## Perturbation Simulation
 
 ```python
 # Set TF expression to perturbation level
-perturbed_matrix[:, 'SOX10'] = 0
+perturbed_matrix[:, "SOX10"] = 0
 
 # Iterate to steady state
 for i in range(n_iter):
@@ -102,10 +90,9 @@ Input:
 
 Processing:
   1. TF2rNet: DNA → tf2r (TF binding predictions)
-  2. PPI Network: All genes → TF modulation weights
-  3. InferenceNet: TF expression × PPI → z_tf (latent activity)
-  4. tf2r × r2g: z_tf → region activity → gene signal
-  5. Decoders: Reconstruct RNA and ATAC
+  2. InferenceNet: TF expression → z_tf (latent activity)
+  3. tf2r × r2g: z_tf → region activity → gene signal
+  4. Decoders: Reconstruct RNA and ATAC
 
 Output:
   - Trained GRN (tf2r, r2g matrices)

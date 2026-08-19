@@ -152,12 +152,6 @@ class DeepSCENICModel:
             "region_indices": self.vae.region_indices,
             "r2g_indices": self.vae.r2g_indices,
             "r2g_distances": self.vae.r2g_distances,
-            # PPI buffers (if present)
-            "use_ppi": self.vae.use_ppi,
-            "ppi_edge_index": getattr(self.vae, "ppi_edge_index", None),
-            "ppi_genes_idx": getattr(self.vae, "ppi_genes_idx", None),
-            "ppi_tfs_idx_keys": getattr(self.vae, "ppi_tfs_idx_keys", None),
-            "ppi_tfs_idx_values": getattr(self.vae, "ppi_tfs_idx_values", None),
             # Custom sequence model flag
             "is_custom_sequence_model": is_custom_sequence_model,
         }
@@ -228,10 +222,6 @@ class DeepSCENICModel:
 
         # Reconstruct config (handles both old TrainingConfig and new ModelConfig)
         config = ModelConfig.from_dict(data["config"])
-
-        # Reconstruct VAE (PPI removed for initial release - legacy PPI weights are ignored)
-        if data.get("use_ppi", False):
-            log.info("  Note: Legacy checkpoint had PPI enabled - PPI is removed in this release")
 
         # Ensure index tensors have correct dtype (int64) for scatter operations
         # This fixes checkpoints saved before the dtype fix
@@ -632,7 +622,6 @@ def load_legacy_model(
         - VAE: 'adj_r2g' (legacy: 'adj_E2'), 'inference_rna.*', 'generative_rna.*', 'generative_atac.*'
         - MotifNet: 'ctx_head_layer.weight', 'ctx_lin.weight', 'ctx_lin.bias'
         - Enformer: Full Enformer state dict
-        - Note: 'PPInet.*' keys in legacy models are ignored (PPI removed in this release)
 
     See Also
     --------
@@ -683,13 +672,7 @@ def load_legacy_model(
     log.info(f"  R2G links: {r2g_indices.shape[1]}")
 
     # =========================================================================
-    # Step 2: Check for PPI in h5mu (PPI removed for initial release)
-    # =========================================================================
-    if "ppi_edge_index" in mdata.uns:
-        log.info("  Note: Legacy data has PPI info - PPI is removed in this release, ignoring")
-
-    # =========================================================================
-    # Step 3: Construct VAE and load state dict
+    # Step 2: Construct VAE and load state dict
     # =========================================================================
     log.info("Loading VAE...")
     vae = DeepSCENICVAE(
@@ -734,10 +717,7 @@ def load_legacy_model(
     # Map legacy state dict keys to new format
     vae_state = _map_legacy_vae_state_dict(vae_state)
 
-    # PPI removed for initial release - always remove PPI keys from legacy state dict
-    vae_state = {k: v for k, v in vae_state.items() if not k.startswith("ppi.")}
-
-    # Log ignored keys (e.g., generative_rec.* dead code in PPI models)
+    # Log ignored legacy keys (e.g., generative_rec.* dead code)
     expected_keys = set(vae.state_dict().keys())
     ignored_keys = [k for k in vae_state.keys() if k not in expected_keys]
     if ignored_keys:
@@ -900,8 +880,6 @@ def _map_legacy_vae_state_dict(state_dict: dict) -> dict:
     - inference_rna.inference_qzyx.* → encoder.mlp.* / encoder.gaussian.*
     - generative_rna.generative_pxz.* → decoder_rna.mlp.*
     - generative_atac.generative_pxz.* → decoder_atac.mlp.*
-    - PPInet.* → ppi.*
-
     Returns new state dict with mapped keys.
     """
     key_mapping = {
@@ -931,10 +909,6 @@ def _map_legacy_vae_state_dict(state_dict: dict) -> dict:
         # Check for exact mapping
         if old_key in key_mapping:
             new_key = key_mapping[old_key]
-            new_state_dict[new_key] = value
-        # Handle PPInet.* → ppi.* prefix change
-        elif old_key.startswith("PPInet."):
-            new_key = "ppi." + old_key[7:]  # Remove "PPInet." and add "ppi."
             new_state_dict[new_key] = value
         # Map adj_E2 → adj_r2g for legacy checkpoints
         elif old_key == "adj_E2":
