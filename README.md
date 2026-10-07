@@ -28,7 +28,7 @@ If you want to use the [enformer](https://github.com/lucidrains/enformer-pytorch
 pip install deepscenic[enformer]
 ```
 
-**Requirements**: Python ≥3.11, PyTorch ≥2.0
+**Requirements**: Python ≥3.12, PyTorch ≥2.6
 
 ## Documentation
 

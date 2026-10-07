@@ -4,10 +4,10 @@ build-backend = "hatchling.build"
 
 [project]
 name = "deepscenic"
-version = "0.1.0"
+dynamic = ["version"]  # from git tags via hatch-vcs
 description = "Deep learning for single-cell Gene Regulatory Networks"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license-files = ["LICENSE"]
 authors = [
     {name = "Gabriele Partel", email = "gabriele.partel@kuleuven.be"}
@@ -21,9 +21,9 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
@@ -64,8 +64,7 @@ dependencies = [
 
 [project.optional-dependencies]
 enformer = [
-    "enformer-pytorch>=0.8",
-    "transformers>=4.30,<4.38",  # Pin for all_tied_weights_keys compatibility
+    "enformer-pytorch>=0.8.12",  # pins a transformers version compatible with its PreTrainedModel subclass
 ]
 dev = [
     "pre-commit>=3.0",
@@ -87,15 +86,11 @@ doc = [
     "sphinx-tabs",
     "sphinxcontrib-bibtex>=1",
     "sphinxext-opengraph",
-    "enformer-pytorch>=0.8",
-    "transformers>=4.30,<4.38",  # Pin for all_tied_weights_keys compatibility
+    "enformer-pytorch>=0.8.12",  # pins a transformers version compatible with its PreTrainedModel subclass
 ]
 test = [
-    "enformer-pytorch>=0.8",
-    "transformers>=4.30,<4.38",  # Pin for all_tied_weights_keys compatibility
+    "enformer-pytorch>=0.8.12",  # pins a transformers version compatible with its PreTrainedModel subclass
     "pytest>=7.0",
-    "pytest-cov>=4.0",
-    "coverage>=7.0",
     "debugpy",
 ]
 
@@ -106,6 +101,9 @@ Repository = "https://github.com/aertslab/deepSCENIC"
 Issues = "https://github.com/aertslab/deepSCENIC/issues"
 
 # Hatch build configuration
+[tool.hatch.version]
+source = "vcs"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/deepscenic"]
 
@@ -114,22 +112,12 @@ packages = ["src/deepscenic"]
 installer = "uv"
 features = ["dev", "test"]
 
-[tool.hatch.envs.test]
-features = ["test"]
-
-[tool.hatch.envs.test.scripts]
-run = "pytest {args:tests}"
-cov = "pytest --cov=src/deepscenic --cov-report=term-missing {args:tests}"
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
-
-# hatch test --all uses this environment (not the custom 'test' env above)
+# Run tests with `hatch test` (add --all for the full matrix); CI uses the same environment
 [tool.hatch.envs.hatch-test]
 features = ["test"]
 
 [[tool.hatch.envs.hatch-test.matrix]]
-python = ["3.11", "3.12", "3.13"]
+python = ["3.12", "3.13", "3.14"]
 
 [tool.hatch.envs.docs]
 features = ["doc"]
@@ -144,7 +132,7 @@ linkcheck = "sphinx-build -b linkcheck docs docs/_build/linkcheck {args}"
 # Ruff configuration
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py312"
 src = ["src"]
 exclude = ["src/legacy", "main.py"]
 
@@ -184,18 +172,6 @@ filterwarnings = [
     "ignore::deepscenic._data.SchemaWarning",
     "ignore:'pin_memory' argument is set as true:UserWarning",
     "ignore:Cannot join columns with the same name:UserWarning",
-]
-
-# Coverage configuration
-[tool.coverage.run]
-source = ["src/deepscenic"]
-omit = ["*/tests/*", "*/__init__.py"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "raise NotImplementedError",
-    "if TYPE_CHECKING:",
 ]
 
 [tool.hatch.envs.hatch-static-analysis]

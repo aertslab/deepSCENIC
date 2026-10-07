@@ -1,0 +1,10 @@
+# Install once with `pre-commit install`; hooks then run on every commit.
+# Ruff config lives in pyproject.toml. Scope matches the CI ruff workflow (src/ and tests/).
+files: ^(src|tests)/
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
