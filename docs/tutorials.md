@@ -13,7 +13,7 @@ notebooks/03_model_diagnosis
 notebooks/04_grn_analysis
 notebooks/05_perturbation_analysis
 notebooks/06_sequence_interpretation
-notebooks/06_legacy_migration
+notebooks/07_legacy_migration
 ```
 
 ## Prerequisites

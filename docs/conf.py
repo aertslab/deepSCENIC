@@ -1,6 +1,7 @@
 # Configuration file for the Sphinx documentation builder.
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import logging
 import sys
 from datetime import datetime
 from importlib.metadata import metadata
@@ -8,6 +9,10 @@ from pathlib import Path
 
 # Add source to path for autodoc
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+# sphinxext-opengraph renders social cards with Roboto Flex, which has no bold
+# weight; silence matplotlib's harmless fallback notice.
+logging.getLogger("matplotlib.font_manager").setLevel(logging.ERROR)
 
 # -- Project information -----------------------------------------------------
 info = metadata("deepscenic")
@@ -185,3 +190,24 @@ nitpick_ignore_regex = [
     (r"py:class", r"MuData.*"),
     (r"py:class", r"None\."),
 ]
+
+
+# Type hints point at private module paths (e.g. ``deepscenic._genome.Genome``);
+# resolve them to the public, documented names re-exported from ``deepscenic``.
+_PUBLIC_ALIASES = {
+    "deepscenic._genome.Genome": "deepscenic.Genome",
+    "deepscenic._genome.GenomeIntervalDataset": "deepscenic.GenomeIntervalDataset",
+}
+
+
+def _resolve_public_alias(app, env, node, contnode):
+    target = _PUBLIC_ALIASES.get(node.get("reftarget"))
+    if target is None:
+        return None
+    domain = env.get_domain("py")
+    return domain.resolve_xref(env, node["refdoc"], app.builder, node["reftype"], target, node, contnode)
+
+
+def setup(app):
+    """Register Sphinx event handlers."""
+    app.connect("missing-reference", _resolve_public_alias)

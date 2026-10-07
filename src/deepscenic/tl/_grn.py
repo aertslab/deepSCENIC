@@ -979,7 +979,7 @@ def identify_active_enhancers(
     pval_threshold
         Maximum adjusted p-value threshold. Default 0.05.
     key_prefix
-        Prefix for obsm keys. Default: "X_deepscenic_"
+        Prefix for obsm keys. Default: ``"X_deepscenic_"``.
 
     Returns
     -------
@@ -1047,7 +1047,7 @@ def compute_tf_activity_scores(
     active_enhancers
         Active enhancers per cell type from identify_active_enhancers()
     key_prefix
-        Prefix for obsm keys. Default: "X_deepscenic_"
+        Prefix for obsm keys. Default: ``"X_deepscenic_"``.
     zscore
         If True, z-score each TF across classes. Each TF row is centered to
         mean zero and scaled to unit population standard deviation. TFs with

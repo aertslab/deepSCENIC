@@ -54,7 +54,7 @@ def to_latent(
     device
         Device for inference (None = use model's current device)
     key_prefix
-        Prefix for keys stored in mdata.obsm. Default: "X_deepscenic_"
+        Prefix for keys stored in mdata.obsm. Default: ``"X_deepscenic_"``.
 
     Returns
     -------
