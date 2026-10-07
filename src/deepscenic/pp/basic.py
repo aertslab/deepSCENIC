@@ -221,7 +221,7 @@ def mark_tfs(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> tfs = ds.datasets.fetch_tf_collection(species="mouse")
+    >>> tfs = ds.fetch_tf_collection(species="mouse")
     >>> ds.pp.mark_tfs(rna, tfs)
     >>> print(f"Marked {rna.var['is_tf'].sum()} TFs")
     """
@@ -339,7 +339,7 @@ def add_gene_annotation(
         - End / end
         - Strand / strand
 
-        Use ``ds.datasets.fetch_gene_annotation()`` to download.
+        Use :func:`deepscenic.fetch_gene_annotation` to download.
     columns
         Columns to add to var. Default: ``['chromosome', 'tss']``.
         Available: chromosome, tss, start, end, strand.
@@ -353,7 +353,7 @@ def add_gene_annotation(
     Examples
     --------
     >>> import deepscenic as ds
-    >>> annot, _ = ds.datasets.fetch_gene_annotation(species="mmusculus")
+    >>> annot, _ = ds.fetch_gene_annotation(species="mmusculus")
     >>> ds.pp.add_gene_annotation(adata_rna, annot)
     >>> # Now adata_rna.var has 'chromosome' and 'tss' columns
     >>> print(adata_rna.var['chromosome'].value_counts())

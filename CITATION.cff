@@ -1,0 +1,34 @@
+cff-version: 1.2.0
+message: "If you use deepSCENIC in your research, please cite the paper below."
+title: "deepSCENIC"
+abstract: "Deep learning for single-cell Gene Regulatory Networks"
+type: software
+authors:
+  - family-names: Partel
+    given-names: Gabriele
+repository-code: "https://github.com/aertslab/deepSCENIC"
+url: "https://deepscenic.readthedocs.io"
+keywords:
+  - single-cell
+  - gene regulatory networks
+  - deep learning
+  - multiomics
+  - scverse
+preferred-citation:
+  type: article
+  title: "DeepSCENIC: transfer learning from sequence-to-function models enables causal gene regulatory network inference"
+  authors:
+    - family-names: Partel
+      given-names: Gabriele
+    - family-names: De Winter
+      given-names: Seppe
+    - family-names: Konstantakos
+      given-names: Vasileios
+    - family-names: Blaauw
+      given-names: Casper H.
+    - family-names: Aerts
+      given-names: Stein
+  journal: "bioRxiv"
+  year: 2026
+  doi: "10.64898/2026.09.18.752607"
+  url: "https://www.biorxiv.org/content/10.64898/2026.09.18.752607v1"

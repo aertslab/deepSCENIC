@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/deepscenic.svg)](https://pypi.org/project/deepscenic)
 [![Python](https://img.shields.io/pypi/pyversions/deepscenic.svg)](https://pypi.org/project/deepscenic)
 
-<img src="https://github.com/aertslab/deepSCENIC/blob/main/docs/deepSCENIC.png" width=100%>
+<img src="https://raw.githubusercontent.com/aertslab/deepSCENIC/main/docs/deepSCENIC.png" width=100%>
 
 deepSCENIC learns hierarchical TF→region→gene regulatory cascades by integrating scRNA-seq, scATAC-seq, and DNA sequence data. It combines a VAE-based multimodal framework with Enformer-derived sequence embeddings to infer cell-type-specific gene regulatory networks.
 
@@ -43,15 +43,15 @@ deepSCENIC follows the scanpy-style API with modules for preprocessing (`ds.pp`)
 ```python
 import deepscenic as ds
 
-mdata = ds.pp.create_mudata(rna=adata_rna, atac=adata_atac)
-
-# Annotate transcription factors
+# Annotate transcription factors on the RNA data
 tfs = ds.fetch_tf_collection(species="human")
-ds.pp.mark_tfs(mdata, tf_list=tfs)
+ds.pp.mark_tfs(adata_rna, tf_list=tfs)
 
 # Add gene annotations (for chromosome-based splitting)
 annot, chromsizes = ds.fetch_gene_annotation(species="hsapiens")
-ds.pp.add_gene_annotation(mdata, annotation=annot)
+ds.pp.add_gene_annotation(adata_rna, gene_annotation=annot)
+
+mdata = ds.pp.create_mudata(rna=adata_rna, atac=adata_atac)
 
 # Compute region-to-gene search space (regions within 1Mb of gene TSS)
 ds.pp.compute_r2g_penalty(mdata)
@@ -65,7 +65,7 @@ ds.pp.split_features_by_chromosome(mdata, test_chromosomes=["chr7", "chr11"])
 
 ```python
 # Register genome for sequence extraction
-ds.register_genome(fasta_path="/path/to/hg38.fa")
+ds.register_genome("/path/to/hg38.fa")
 
 # Phase 1: Train full model (VAE + MotifNet + Enformer)
 model = ds.tl.train(mdata, epochs=100, device="cuda")
@@ -78,20 +78,20 @@ model = ds.tl.finetune_r2g(
 )
 
 # Save trained model
-model.save("my_model/")
+model.save("my_model.pt")
 ```
 
 ### GRN Extraction & Analysis
 
 ```python
 # Extract gene regulatory network
-grn = ds.tl.extract_grn(model, mdata)
+grn = ds.tl.extract_grn(model)
 
 # Get targets of a specific TF
-targets = ds.tl.get_tf_targets(grn, tf="SOX10", top_n=100)
+targets = ds.tl.get_tf_targets(model, tf_name="SOX10", top_k=100)
 
 # Visualize GRN heatmap
-ds.pl.heatmap_grn(grn, tfs=["SOX10", "MITF", "PAX3"])
+ds.pl.heatmap_grn(model, tfs=["SOX10", "MITF", "PAX3"])
 ```
 
 ### Perturbation Simulation
@@ -116,12 +116,17 @@ For complete workflows, see the [tutorials](https://deepscenic.readthedocs.io/en
 
 If you use deepSCENIC in your research, please cite:
 
-> [Citation to be added]
+> Partel G, et al. DeepSCENIC: transfer learning from sequence-to-function models enables causal gene regulatory network inference. *bioRxiv* (2026). [doi:10.64898/2026.09.18.752607](https://doi.org/10.64898/2026.09.18.752607)
 
-## Contributors
-
-- **Gabriele Partel** (Author)
-- Lukas Mahieu
+```bibtex
+@article{partel2026deepscenic,
+  title={DeepSCENIC: transfer learning from sequence-to-function models enables causal gene regulatory network inference},
+  author={Partel, Gabriele and De Winter, Seppe and Konstantakos, Vasileios and Blaauw, Casper H. and Aerts, Stein},
+  journal={bioRxiv},
+  year={2026},
+  doi={10.64898/2026.09.18.752607}
+}
+```
 
 ## Links
 

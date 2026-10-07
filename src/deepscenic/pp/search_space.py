@@ -216,7 +216,7 @@ def compute_r2g_penalty(
     >>> import deepscenic as ds
     >>> mdata = ds.pp.create_mudata(rna=adata_rna, atac=adata_atac)
     >>> # Option 1: Provide annotation directly
-    >>> annot, _ = ds.datasets.fetch_gene_annotation(species="mmusculus")
+    >>> annot, _ = ds.fetch_gene_annotation(species="mmusculus")
     >>> ds.pp.compute_r2g_penalty(mdata, annot)
     >>>
     >>> # Option 2: Use pre-populated rna.var columns
