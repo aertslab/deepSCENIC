@@ -24,16 +24,21 @@ ruff check src/
 ruff format src/
 ```
 
+To run these automatically on every commit, install the pre-commit hooks once:
+
+```bash
+pre-commit install
+```
+
 ## Running Tests
 
 ```bash
 # Using hatch
-hatch run test:run
-hatch run test:cov  # with coverage
+hatch test           # current Python version
+hatch test --all     # all supported Python versions (as in CI)
 
 # Or using pytest directly
 pytest tests/
-pytest tests/ --cov=src/deepscenic
 ```
 
 ## Documentation

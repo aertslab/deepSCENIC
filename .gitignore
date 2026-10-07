@@ -23,10 +23,8 @@ build/
 docs/_build/
 docs/api/_autosummary/
 
-# Testing/Coverage
+# Testing
 .pytest_cache/
-.coverage
-htmlcov/
 
 # IDE
 .vscode/

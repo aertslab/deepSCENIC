@@ -58,6 +58,7 @@ Functions for training, inference, perturbation simulation, sequence interpretat
 ```{eval-rst}
 .. autofunction:: deepscenic.tl.simulate_perturbation
 .. autofunction:: deepscenic.tl.simulate_multi_perturbation
+.. autofunction:: deepscenic.tl.process_perturbation_results
 ```
 
 ## Sequence Interpretation

@@ -10,6 +10,7 @@ api/tools
 api/plotting
 api/io
 api/datasets
+api/genome
 api/data
 ```
 
