@@ -4,7 +4,6 @@
 
 [![Documentation](https://readthedocs.org/projects/deepscenic/badge/?version=latest)](https://deepscenic.readthedocs.io)
 [![PyPI](https://img.shields.io/pypi/v/deepscenic.svg)](https://pypi.org/project/deepscenic)
-[![Python](https://img.shields.io/pypi/pyversions/deepscenic.svg)](https://pypi.org/project/deepscenic)
 
 <img src="https://raw.githubusercontent.com/aertslab/deepSCENIC/main/docs/deepSCENIC.png" width=100%>
 
