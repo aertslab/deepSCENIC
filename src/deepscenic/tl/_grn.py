@@ -949,7 +949,7 @@ def identify_active_enhancers(
     mdata: md.MuData,
     class_key: str,
     top_n: int | None = 3000,
-    logfc_threshold: float | None = None,
+    min_mean_diff: float | None = None,
     pval_threshold: float = 0.05,
     key_prefix: str = "X_deepscenic_",
 ) -> dict[str, list[str]]:
@@ -971,11 +971,11 @@ def identify_active_enhancers(
     top_n
         Maximum number of active enhancers per cell type.
         Applied after logfc/pval filtering. If None, no limit. Default 3000.
-    logfc_threshold
-        Minimum Scanpy log-fold-change threshold. If None, no logFC filter.
-        Model-derived enhancer activities can be negative, so Scanpy may report
-        undefined log-fold changes for some regions. The Wilcoxon scores and
-        p-values remain valid because they are rank-based.
+    min_mean_diff
+        Minimum difference in mean enhancer activity between the cell type and
+        all other cells. If None, no effect-size filter. Enhancer activities are
+        signed model outputs, not log counts, so a mean difference is used
+        instead of Scanpy's log-fold change, which is undefined for them.
     pval_threshold
         Maximum adjusted p-value threshold. Default 0.05.
     key_prefix
@@ -1003,8 +1003,13 @@ def identify_active_enhancers(
     )
     ad_enh.var_names = list(model.region_names)
 
-    # Run Wilcoxon rank-sum test
-    sc.tl.rank_genes_groups(ad_enh, class_key, method="wilcoxon", use_raw=False)
+    # Run Wilcoxon rank-sum test. Scanpy's log-fold changes assume log counts and
+    # are invalid (often NaN) for signed activities, so their warning is silenced.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        sc.tl.rank_genes_groups(ad_enh, class_key, method="wilcoxon", use_raw=False)
+
+    labels = ad_enh.obs[class_key].to_numpy()
+    enh_act_dense = np.asarray(enh_act)
 
     # Extract active enhancers per cell type
     active_enhancers = {}
@@ -1014,8 +1019,13 @@ def identify_active_enhancers(
         # Apply filters
         if pval_threshold is not None:
             df = df[df["pvals_adj"] < pval_threshold]
-        if logfc_threshold is not None:
-            df = df[df["logfoldchanges"] > logfc_threshold]
+        if min_mean_diff is not None:
+            in_group = labels == ct
+            mean_diff = pd.Series(
+                enh_act_dense[in_group].mean(axis=0) - enh_act_dense[~in_group].mean(axis=0),
+                index=ad_enh.var_names,
+            )
+            df = df[mean_diff.loc[df["names"]].to_numpy() > min_mean_diff]
         if top_n is not None:
             df = df.head(top_n)
 

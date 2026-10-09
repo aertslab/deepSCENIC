@@ -1,5 +1,7 @@
 """Tests for GRN extraction functions (_grn.py)."""
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -460,6 +462,36 @@ class TestIdentifyActiveEnhancers:
         loose = identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype", pval_threshold=1.0)
         for ct in strict:
             assert len(strict[ct]) <= len(loose[ct])
+
+    @staticmethod
+    def _set_signed_activity(model, mdata):
+        """Store signed enhancer activity with one strong and one weak A-specific region."""
+        n_cells, n_regions = mdata.n_obs, len(model.region_names)
+        mdata.obs["celltype"] = ["A", "B"] * (n_cells // 2)
+        in_a = (mdata.obs["celltype"] == "A").to_numpy()
+        rng = np.random.default_rng(0)
+        enh_act = rng.normal(-0.5, 0.1, (n_cells, n_regions)).astype(np.float32)
+        enh_act[in_a, 0] += 2.0
+        enh_act[in_a, 1] += 0.5
+        mdata.obsm["X_deepscenic_enh_act"] = enh_act
+
+    def test_signed_activity_no_log2_warning(self, mock_deepscenic_model, mock_mdata_for_model):
+        """Negative activities should not surface Scanpy's invalid log2 warning."""
+        self._set_signed_activity(mock_deepscenic_model, mock_mdata_for_model)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", RuntimeWarning)
+            identify_active_enhancers(mock_deepscenic_model, mock_mdata_for_model, "celltype", pval_threshold=1.0)
+
+    def test_min_mean_diff_filters_by_effect_size(self, mock_deepscenic_model, mock_mdata_for_model):
+        """min_mean_diff keeps regions whose mean activity gap exceeds the threshold."""
+        self._set_signed_activity(mock_deepscenic_model, mock_mdata_for_model)
+        strong, weak = mock_deepscenic_model.region_names[:2]
+        result = identify_active_enhancers(
+            mock_deepscenic_model, mock_mdata_for_model, "celltype", pval_threshold=1.0, min_mean_diff=1.0
+        )
+        assert strong in result["A"]
+        assert weak not in result["A"]
+        assert result["B"] == []
 
 
 class TestComputeTFActivityScores:
