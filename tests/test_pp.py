@@ -8,6 +8,22 @@ import scanpy as sc
 import deepscenic as ds
 
 
+@pytest.fixture
+def forbid_sparse_densify(monkeypatch):
+    """Return a callable that makes densifying a scipy sparse matrix raise."""
+    from scipy import sparse
+
+    def _raise(*args, **kwargs):
+        raise AssertionError("sparse matrix was densified")
+
+    def _forbid():
+        for cls in (sparse.csr_matrix, sparse.csc_matrix):
+            monkeypatch.setattr(cls, "toarray", _raise)
+            monkeypatch.setattr(cls, "todense", _raise)
+
+    return _forbid
+
+
 class TestMarkDars:
     """Tests for mark_dars function."""
 
@@ -100,6 +116,33 @@ class TestRemoveZeroVarianceGenes:
         assert result is not adata
         assert result.n_vars == 45
         assert adata.n_vars == 50
+
+    def test_constant_float_column_removed(self):
+        """A constant non-representable float column should count as zero variance."""
+        X = np.random.randn(100, 3).astype(np.float32)
+        X[:, 0] = 0.1
+        adata = sc.AnnData(X)
+
+        ds.pp.remove_zero_variance_genes(adata)
+
+        assert adata.n_vars == 2
+
+    def test_sparse_input_not_densified(self, forbid_sparse_densify):
+        """Sparse input should give the same result as dense without densifying."""
+        from scipy import sparse
+
+        X = sparse.random(100, 50, density=0.05, dtype=np.float32, random_state=0).toarray()
+        X[:, :5] = 0
+        X[:, 5:8] = 2.0  # constant nonzero columns
+        adata = sc.AnnData(sparse.csr_matrix(X))
+        adata.var_names = [f"Gene_{i}" for i in range(50)]
+        expected = adata.var_names[X.std(axis=0) > 0]
+
+        forbid_sparse_densify()
+        ds.pp.remove_zero_variance_genes(adata)
+
+        assert sparse.issparse(adata.X)
+        assert list(adata.var_names) == list(expected)
 
 
 class TestComputeR2GPenalty:
@@ -763,6 +806,30 @@ class TestFilterRegionsByCelltype:
         assert result is not sample_atac
         # Original should be unchanged
         assert sample_atac.n_vars == original_n_vars
+
+    def test_filter_regions_sparse_matches_dense(self, forbid_sparse_densify):
+        """Sparse input should give the same regions as dense input without densifying."""
+        from scipy import sparse
+
+        rng = np.random.default_rng(0)
+        X = (rng.random((100, 40)) < rng.random(40) * 0.3).astype(np.float32)
+        X[0, 0] = -1.0  # negative values do not count as accessible
+        celltypes = ["TypeA"] * 60 + ["TypeB"] * 40
+
+        dense = sc.AnnData(X.copy())
+        dense.var_names = [f"region_{i}" for i in range(40)]
+        dense.obs["celltype"] = celltypes
+        ds.pp.filter_regions_by_celltype(dense, class_key="celltype", min_fraction=0.1)
+
+        adata = sc.AnnData(sparse.csr_matrix(X))
+        adata.var_names = [f"region_{i}" for i in range(40)]
+        adata.obs["celltype"] = celltypes
+        forbid_sparse_densify()
+        ds.pp.filter_regions_by_celltype(adata, class_key="celltype", min_fraction=0.1)
+
+        assert sparse.issparse(adata.X)
+        assert 0 < adata.n_vars < 40
+        assert list(adata.var_names) == list(dense.var_names)
 
 
 class TestCreateMuDataParsesCoordinates:
