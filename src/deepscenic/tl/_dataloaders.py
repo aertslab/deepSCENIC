@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
+from scipy import sparse
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 from .._types import LazyImpute
-from ..pp.basic import _to_dense
 
 if TYPE_CHECKING:
     import mudata as md
@@ -18,8 +18,40 @@ if TYPE_CHECKING:
     from .._genome import Genome
 
 
+_RowSource = torch.Tensor | sparse.csr_matrix | LazyImpute
+
+
+def _as_row_source(X: Any) -> _RowSource:
+    """Store a cell matrix in a form that supports cheap row slicing.
+
+    Sparse input (including backed anndata sparse datasets) is kept sparse as
+    CSR and only densified per batch, since densifying a full ATAC matrix can
+    take orders of magnitude more memory than the sparse representation.
+    """
+    if isinstance(X, LazyImpute):
+        return X
+    if hasattr(X, "to_memory"):
+        # Backed anndata sparse dataset (CSRDataset, CSCDataset)
+        X = X.to_memory()
+    if sparse.issparse(X):
+        return sparse.csr_matrix(X, dtype=np.float32)
+    return torch.as_tensor(np.asarray(X), dtype=torch.float32)
+
+
+def _take_rows(X: _RowSource, indices: list[int]) -> torch.Tensor:
+    """Return the requested rows of ``X`` as a dense float32 tensor."""
+    if isinstance(X, torch.Tensor):
+        return X[indices]
+    rows = X[indices]
+    if sparse.issparse(rows):
+        rows = rows.toarray()
+    return torch.as_tensor(rows, dtype=torch.float32)
+
+
 class CellDataset(Dataset):
     """Dataset for cell batches (RNA + ATAC).
+
+    Sparse inputs are kept sparse and densified per batch.
 
     Parameters
     ----------
@@ -31,35 +63,25 @@ class CellDataset(Dataset):
 
     def __init__(
         self,
-        rna: NDArray,
-        atac: NDArray | LazyImpute,
+        rna: NDArray | sparse.spmatrix,
+        atac: NDArray | sparse.spmatrix | LazyImpute,
     ) -> None:
-        rna = _to_dense(rna)
-
-        if not isinstance(atac, LazyImpute):
-            atac = _to_dense(atac)
-
-        self.rna = torch.Tensor(rna)
-
-        self.atac: torch.Tensor | LazyImpute
-        if not isinstance(atac, LazyImpute):
-            self.atac = torch.Tensor(atac)
-        else:
-            # pass atac as lazy compute and create Tensor with calling
-            # __getitem__
-            self.atac = atac
-
+        self.rna = _as_row_source(rna)
+        self.atac = _as_row_source(atac)
         self.n_cells: int = rna.shape[0]
 
     def __len__(self) -> int:
         return self.n_cells
 
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
-        return {
-            "rna": self.rna[idx],
-            "atac": self.atac[idx] if not isinstance(self.atac, LazyImpute) else torch.Tensor(self.atac[idx]),
-            "idx": torch.tensor(idx),
-        }
+        return self.__getitems__([idx])[0]
+
+    def __getitems__(self, indices: list[int]) -> list[dict[str, torch.Tensor]]:
+        # Called by DataLoader with all indices of a batch, so sparse rows are
+        # sliced and densified once per batch instead of once per cell.
+        rna = _take_rows(self.rna, indices)
+        atac = _take_rows(self.atac, indices)
+        return [{"rna": rna[i], "atac": atac[i], "idx": torch.tensor(idx)} for i, idx in enumerate(indices)]
 
 
 class SequenceDatasetWithIndex(Dataset):
