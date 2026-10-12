@@ -10,6 +10,7 @@ import torch
 from scipy.sparse import issparse
 
 from .._genome import Genome, get_genome
+from ._model import _check_mdata_matches_model
 from ._train import _get_sequence_embeddings
 
 if TYPE_CHECKING:
@@ -85,6 +86,7 @@ def _mean_tf_activity(
         raise KeyError("mdata must contain an 'rna' modality when TF latent activity is absent")
     if mdata.mod["rna"].n_obs != mdata.n_obs:
         raise ValueError("The RNA modality must contain the same cells, in the same order, as mdata.obs")
+    _check_mdata_matches_model(model, mdata)
 
     cell_indices = np.flatnonzero(mask)
     rna = mdata.mod["rna"].X

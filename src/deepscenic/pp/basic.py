@@ -13,25 +13,31 @@ from scipy import sparse
 log = logging.getLogger("deepscenic.pp")
 
 
-def _to_dense(X: Any) -> np.ndarray:
+def _as_matrix(X: Any) -> np.ndarray | sparse.spmatrix:
     """
-    Convert any array-like to dense numpy array.
+    Return X as an in-memory numpy array or scipy sparse matrix.
 
-    Handles sparse matrices, anndata array views (CSRDataset, CSCDataset),
-    H5Array, and regular numpy arrays.
+    Sparse input stays sparse; backed anndata datasets (CSRDataset, CSCDataset,
+    H5Array) are loaded into memory without densifying.
     """
     if X is None:
-        raise ValueError("Cannot convert None to dense array")
+        raise ValueError("Cannot convert None to a matrix")
+
+    if hasattr(X, "to_memory"):
+        X = X.to_memory()
 
     if sparse.issparse(X):
-        return X.toarray()  # type: ignore[union-attr]
+        return X
 
-    if hasattr(X, "toarray"):
-        # Handles CSRDataset, CSCDataset, and other anndata views
-        return X.toarray()  # type: ignore[union-attr]
-
-    # Already dense
     return np.asarray(X)
+
+
+def _column_reduce(X: np.ndarray | sparse.spmatrix, op: str) -> np.ndarray:
+    """Apply a column-wise reduction (e.g. 'min', 'max') and return a 1-d array."""
+    result = getattr(X, op)(axis=0)
+    if sparse.issparse(result):
+        result = result.toarray()
+    return np.asarray(result).ravel()
 
 
 def remove_zero_variance_genes(
@@ -68,11 +74,10 @@ def remove_zero_variance_genes(
     if not inplace:
         adata = adata.copy()
 
-    # Convert to dense and compute variance
-    X_dense = _to_dense(adata.X)
-    var = X_dense.std(axis=0).flatten()
-
-    keep = var > 0
+    # A column has zero variance iff its min equals its max. Unlike std(),
+    # this is exact in floating point and works on sparse matrices directly.
+    X = _as_matrix(adata.X)
+    keep = _column_reduce(X, "max") > _column_reduce(X, "min")
     if not keep.all():
         n_removed = (~keep).sum()
         adata._inplace_subset_var(keep)
@@ -286,24 +291,20 @@ def filter_regions_by_celltype(
     if not inplace:
         adata = adata.copy()
 
+    X = _as_matrix(adata.X)
+    if sparse.issparse(X):
+        X = sparse.csr_matrix(X)  # efficient row slicing per cell type
     celltypes = adata.obs[class_key].unique()
-    keep_regions: set = set()
+    keep_mask = np.zeros(adata.n_vars, dtype=bool)
 
     for ct in tqdm(celltypes, desc="Filtering regions by cell type"):
-        mask = adata.obs[class_key] == ct
-        ct_adata = adata[mask]
-        n_cells_ct = ct_adata.n_obs
-        min_cells = int(n_cells_ct * min_fraction)
+        mask = (adata.obs[class_key] == ct).to_numpy()
+        min_cells = int(mask.sum() * min_fraction)
 
-        # Count cells per region
-        # Convert to dense for boolean operations to avoid sparse matrix issues
-        X_dense = _to_dense(ct_adata.X)
-        nonzero_counts = (X_dense > 0).sum(axis=0).flatten()
+        # Count cells per region with a positive value (stays sparse for sparse X)
+        nonzero_counts = np.asarray((X[mask] > 0).sum(axis=0)).ravel()
+        keep_mask |= nonzero_counts >= min_cells
 
-        passing = ct_adata.var_names[nonzero_counts >= min_cells]
-        keep_regions.update(passing)
-
-    keep_mask = adata.var_names.isin(keep_regions)
     adata._inplace_subset_var(keep_mask)
 
     log.info(f"Kept {keep_mask.sum()} / {len(keep_mask)} regions")

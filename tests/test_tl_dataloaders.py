@@ -42,6 +42,36 @@ class TestCellDataset:
         item = dataset[0]
         assert item["rna"].shape == (50,)
 
+    def test_sparse_input_stays_sparse(self):
+        """Sparse input should not be densified at construction time."""
+        from scipy import sparse
+
+        rna = sparse.random(100, 50, density=0.1, format="csr", dtype=np.float32)
+        atac = sparse.random(100, 200, density=0.05, format="csc", dtype=np.float64)
+        dataset = CellDataset(rna, atac)  # type: ignore
+
+        assert sparse.issparse(dataset.rna)
+        assert sparse.issparse(dataset.atac)
+
+    def test_sparse_items_match_dense(self):
+        """Rows densified on demand should equal the dense input rows."""
+        import torch
+        from scipy import sparse
+
+        rna_dense = sparse.random(100, 50, density=0.1, dtype=np.float64).toarray()
+        atac_dense = sparse.random(100, 200, density=0.05, dtype=np.float64).toarray()
+        dataset = CellDataset(sparse.csr_matrix(rna_dense), sparse.csr_matrix(atac_dense))  # type: ignore
+
+        item = dataset[7]
+        assert item["rna"].dtype == torch.float32
+        assert item["atac"].shape == (200,)
+        np.testing.assert_allclose(item["atac"].numpy(), atac_dense[7], rtol=1e-6)
+        assert item["idx"].item() == 7
+
+        items = dataset.__getitems__([3, 0, 42])
+        assert [it["idx"].item() for it in items] == [3, 0, 42]
+        np.testing.assert_allclose(np.stack([it["rna"].numpy() for it in items]), rna_dense[[3, 0, 42]], rtol=1e-6)
+
 
 class TestBuildCellDataloader:
     """Tests for build_cell_dataloader function."""
@@ -120,6 +150,40 @@ class TestBuildCellDataloader:
 
         with pytest.raises(ValueError, match="requires class_key"):
             build_cell_dataloader(mock_mdata, split="train", balance_class=True)
+
+    def test_sparse_mdata_batches(self):
+        """Sparse modalities should stay sparse and yield correct dense batches."""
+        import warnings
+
+        import anndata as ad
+        import mudata as md
+        import torch
+        from scipy import sparse
+
+        from deepscenic.tl._dataloaders import build_cell_dataloader
+
+        rna_dense = sparse.random(100, 50, density=0.2, dtype=np.float32).toarray()
+        atac_dense = sparse.random(100, 200, density=0.05, dtype=np.float32).toarray()
+        rna = ad.AnnData(sparse.csr_matrix(rna_dense))
+        rna.var_names = [f"Gene_{i}" for i in range(50)]
+        rna.var["split"] = ["train"] * 30 + ["test"] * 20
+        atac = ad.AnnData(sparse.csr_matrix(atac_dense))
+        atac.var_names = [f"Region_{i}" for i in range(200)]
+        atac.var["split"] = ["train"] * 150 + ["test"] * 50
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            mdata = md.MuData({"rna": rna, "atac": atac})
+        mdata.obs["split"] = ["train"] * 80 + ["test"] * 20
+
+        loader = build_cell_dataloader(mdata, split="test", batch_size=8, shuffle=False, feature_split="train")
+        assert sparse.issparse(loader.dataset.atac)
+
+        batch = next(iter(loader))
+        assert batch["atac"].dtype == torch.float32
+        assert batch["rna"].shape == (8, 30)
+        np.testing.assert_allclose(batch["atac"].numpy(), atac_dense[80:88, :150])
+        np.testing.assert_array_equal(batch["idx"].numpy(), np.arange(8))
 
 
 class TestBuildSequenceDataloader:
