@@ -338,6 +338,34 @@ class DeepSCENICModel:
         return self
 
 
+def _check_mdata_matches_model(model: DeepSCENICModel, mdata: MuData, *, atac: bool = False) -> None:
+    """Raise if MuData features are not in the exact order the model was trained on.
+
+    The model indexes RNA (and ATAC) columns by position, so data with the same
+    features in a different order, or with extra features, gives silently wrong
+    results. :func:`deepscenic.pp.align_to_model` fixes the order.
+    """
+    checks = [("rna", model.gene_names, "genes")]
+    if atac:
+        checks.append(("atac", model.region_names, "regions"))
+
+    for mod, expected, label in checks:
+        actual = mdata.mod[mod].var_names
+        if np.array_equal(actual.to_numpy(), np.asarray(expected)):
+            continue
+        n = min(len(actual), len(expected))
+        mismatch = np.flatnonzero(actual[:n].to_numpy() != np.asarray(expected[:n]))
+        detail = (
+            f"first mismatch at position {mismatch[0]}: {actual[mismatch[0]]!r} vs {expected[mismatch[0]]!r}"
+            if len(mismatch)
+            else "one is a prefix of the other"
+        )
+        raise ValueError(
+            f"mdata['{mod}'] {label} do not match the model ({len(actual)} in data vs {len(expected)} in model; "
+            f"{detail}). Run ds.pp.align_to_model(mdata, model) first."
+        )
+
+
 def load_model(
     path: str | Path,
     device: str = "cpu",

@@ -1,6 +1,7 @@
 """Preprocessing functions for deepSCENIC. Functions in the __init__ operate on mudatas."""
 
 import logging
+from typing import TYPE_CHECKING
 
 import mudata as md
 import numpy as np
@@ -11,6 +12,9 @@ from sklearn.model_selection import train_test_split
 from .._types import LazyImputeAnndata
 from .basic import add_gene_annotation, filter_regions_by_celltype, mark_dars, mark_tfs, remove_zero_variance_genes
 from .search_space import compute_r2g_penalty
+
+if TYPE_CHECKING:
+    from ..tl._model import DeepSCENICModel
 
 log = logging.getLogger("deepscenic.pp")
 
@@ -277,6 +281,95 @@ def filter_by_genome(
     return None
 
 
+def align_to_model(
+    mdata: md.MuData,
+    model: "DeepSCENICModel",
+    inplace: bool = True,
+) -> md.MuData | None:
+    """
+    Reorder and subset MuData features to match a trained model.
+
+    The model indexes genes and regions by position, so data processed separately
+    from the model's training data (e.g. a reprocessed dataset) must have exactly
+    the model's genes and regions, in the model's order. This reorders the RNA
+    modality to ``model.gene_names`` and the ATAC modality to ``model.region_names``,
+    dropping features the model does not know. If ``mdata.uns["r2g"]`` is present,
+    it is reordered to match.
+
+    Parameters
+    ----------
+    mdata
+        MuData with ``rna`` and ``atac`` modalities.
+    model
+        Trained deepSCENIC model.
+    inplace
+        Whether to modify in-place.
+
+    Returns
+    -------
+    If ``inplace=False``, returns the aligned MuData.
+
+    Raises
+    ------
+    ValueError
+        If the data lacks genes or regions the model needs.
+
+    Examples
+    --------
+    >>> model = ds.tl.load_model("model.pt")
+    >>> ds.pp.align_to_model(mdata, model)
+    >>> ds.tl.to_latent(model, mdata)
+    """
+    genes = pd.Index(model.gene_names)
+    regions = pd.Index(model.region_names)
+
+    for mod, needed, label in [("rna", genes, "genes"), ("atac", regions, "regions")]:
+        missing = needed.difference(mdata.mod[mod].var_names)
+        if len(missing) > 0:
+            raise ValueError(
+                f"mdata['{mod}'] is missing {len(missing)} {label} the model needs, e.g. {list(missing[:5])}. "
+                "The model cannot be applied to this data."
+            )
+
+    if not inplace:
+        mdata = mdata.copy()
+
+    n_extra_genes = mdata.mod["rna"].n_vars - len(genes)
+    n_extra_regions = mdata.mod["atac"].n_vars - len(regions)
+
+    mdata.mod["rna"] = mdata.mod["rna"][:, genes].copy()
+    mdata.mod["atac"] = mdata.mod["atac"][:, regions].copy()
+    mdata.mod["rna"].uns["tf_order"] = list(model.tf_names)
+
+    # Keep r2g consistent: its rows and columns align positionally with atac/rna var_names
+    if "r2g" in mdata.uns:
+        r2g = mdata.uns["r2g"]
+        r2g_regions = pd.Index(r2g.get("region_names", []))
+        r2g_genes = pd.Index(r2g.get("gene_names", []))
+        if regions.isin(r2g_regions).all() and genes.isin(r2g_genes).all():
+            matrix = r2g["matrix"].tocsr()[r2g_regions.get_indexer(regions)][:, r2g_genes.get_indexer(genes)]
+            r2g["matrix"] = matrix
+            r2g["region_names"] = list(regions)
+            r2g["gene_names"] = list(genes)
+            if "config" in r2g:
+                n_r, n_g = matrix.shape
+                r2g["config"]["n_links"] = matrix.nnz
+                r2g["config"]["density"] = matrix.nnz / (n_r * n_g) if (n_r * n_g) > 0 else 0
+        else:
+            del mdata.uns["r2g"]
+            log.warning("Removed mdata.uns['r2g']: it does not cover all model genes and regions.")
+
+    mdata.update()
+    log.info(
+        f"Aligned to model: {len(genes)} genes ({n_extra_genes} dropped), "
+        f"{len(regions)} regions ({n_extra_regions} dropped)"
+    )
+
+    if not inplace:
+        return mdata
+    return None
+
+
 def split_features_by_chromosome(
     mdata: md.MuData,
     test_chromosomes: list[str] | None = None,
@@ -386,6 +479,7 @@ __all__ = [
     "split_cells",
     "split_features_by_chromosome",
     "filter_by_genome",
+    "align_to_model",
     # High-level
     "create_mudata",
 ]

@@ -232,6 +232,9 @@ def enhancer_activity_histogram(
         # Get device from model
         device = model.adj_tf2r.device
 
+        from deepscenic.tl._model import _check_mdata_matches_model
+
+        _check_mdata_matches_model(model, mdata)
         rna_data = mdata.mod["rna"].X
         if hasattr(rna_data, "toarray"):
             rna_data = rna_data.toarray()
