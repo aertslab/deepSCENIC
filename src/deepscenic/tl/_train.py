@@ -18,7 +18,7 @@ from ..models import DeepSCENICVAE, MotifNet
 from ._dataloaders import build_cell_dataloader, build_sequence_dataloader, build_test_sequence_dataloader
 from ._logging import get_logger
 from ._loss import compute_test_chromosome_loss, compute_total_loss, f1_score_binary
-from ._model import DeepSCENICModel, load_model
+from ._model import DeepSCENICModel, _check_mdata_matches_model, load_model
 from ._training_state import (
     EarlyStopping,
     ModelConfig,
@@ -1121,6 +1121,7 @@ def finetune_r2g(
         raise ValueError("MuData missing 'rna' modality. Ensure your data has both 'rna' and 'atac' modalities.")
     if "atac" not in mdata.mod:
         raise ValueError("MuData missing 'atac' modality. Ensure your data has both 'rna' and 'atac' modalities.")
+    _check_mdata_matches_model(model, mdata, atac=True)
 
     # Setup logging - use phase-specific subdirectory so TensorBoard shows
     # each phase as a separate named run

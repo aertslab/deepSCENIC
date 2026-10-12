@@ -9,6 +9,8 @@ import torch
 from scipy.sparse import issparse
 from tqdm.auto import tqdm
 
+from ._model import _check_mdata_matches_model
+
 if TYPE_CHECKING:
     import mudata as md
 
@@ -75,6 +77,7 @@ def to_latent(
     >>> sc.tl.umap(mdata)
     >>> sc.pl.umap(mdata, color="cell_state")
     """
+    _check_mdata_matches_model(model, mdata)
     model.eval()
 
     if device is None:

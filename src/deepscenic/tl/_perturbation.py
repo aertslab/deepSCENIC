@@ -9,6 +9,8 @@ import torch
 from scipy.sparse import issparse
 from tqdm.auto import tqdm
 
+from ._model import _check_mdata_matches_model
+
 if TYPE_CHECKING:
     import mudata as md
     import pandas as pd
@@ -100,6 +102,8 @@ def simulate_perturbation(
         levels = [float(value) for value in level]
         if len(levels) != len(tf_names):
             raise ValueError("level must have the same length as tf_name")
+
+    _check_mdata_matches_model(model, mdata)
 
     tf_indices = []
     for name in tf_names:

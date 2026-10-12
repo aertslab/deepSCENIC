@@ -41,3 +41,9 @@ Functions for preparing multimodal data for GRN learning.
 .. autofunction:: deepscenic.pp.split_cells
 .. autofunction:: deepscenic.pp.split_features_by_chromosome
 ```
+
+## Using a Trained Model on New Data
+
+```{eval-rst}
+.. autofunction:: deepscenic.pp.align_to_model
+```
