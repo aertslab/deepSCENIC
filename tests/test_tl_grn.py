@@ -9,6 +9,7 @@ import pytest
 from deepscenic.tl._grn import (
     _get_otsu_threshold,
     _normalize_r2g_per_gene,
+    _r2g_edgelist_for_genes,
     build_grn_for_tfs,
     compute_celltype_r2g,
     compute_celltype_tf2g,
@@ -725,6 +726,15 @@ class TestExtractR2gMatrixNormalization:
         result = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True, normalize=True)
         assert all(result["weight"] >= 0)
         assert all(result["weight"] <= 1.0 + 1e-6)
+
+    @pytest.mark.parametrize("normalize", [True, False])
+    def test_gene_subset_matches_filtered_edgelist(self, mock_deepscenic_model, normalize):
+        """The gene-subset edge list equals filtering the full edge list, bit for bit."""
+        genes = [mock_deepscenic_model.gene_names[i] for i in (3, 0, 7)] + ["NOT_A_GENE"]
+        full = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True, normalize=normalize)
+        expected = full[full["gene"].isin(genes)].reset_index(drop=True)
+        result = _r2g_edgelist_for_genes(mock_deepscenic_model, genes, normalize)
+        pd.testing.assert_frame_equal(result, expected, check_exact=True)
 
 
 class TestGetTFTargetsNormalization:

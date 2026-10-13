@@ -93,14 +93,18 @@ def arc_plot(
     >>> ds.pl.arc_plot(links, chrom="chr1", start=0, end=5000)
     """
     import matplotlib
-    import pandas as pd
     from matplotlib.colors import Normalize
 
     df = links.copy()
+    if chrom is not None:
+        # Only regions named "<chrom>:..." can be on this chromosome; parse just those
+        df = df[df[region_col].str.startswith(f"{chrom}:", na=False)]
 
     # Parse regions
-    parsed = df[region_col].apply(lambda x: pd.Series(parse_region(x)))
-    df[["chrom", "reg_start", "reg_end"]] = parsed
+    parsed = [parse_region(r) for r in df[region_col]]
+    df["chrom"] = [p[0] for p in parsed]
+    df["reg_start"] = [p[1] for p in parsed]
+    df["reg_end"] = [p[2] for p in parsed]
     df["reg_center"] = (df["reg_start"] + df["reg_end"]) // 2
 
     # Filter by coordinates

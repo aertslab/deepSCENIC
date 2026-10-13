@@ -69,17 +69,18 @@ def heatmap_r2g(
     >>> ds.pl.heatmap_r2g(model, top_k=30)
     """
     from deepscenic.tl import extract_r2g_matrix
+    from deepscenic.tl._grn import _r2g_edgelist_for_genes
 
-    # Get r2g as edge list, pivot to dense for selected genes
-    E2_sparse = extract_r2g_matrix(model, as_edgelist=True, normalize=normalize)
-
-    # Filter genes
+    # Get r2g as edge list for the selected genes, pivot to dense
     if genes is not None:
-        E2_sparse = E2_sparse[E2_sparse["gene"].isin(genes)]
-    elif top_k is not None:
-        gene_weights = E2_sparse.groupby("gene")["weight"].sum()
-        top_genes = gene_weights.nlargest(top_k).index.tolist()
-        E2_sparse = E2_sparse[E2_sparse["gene"].isin(top_genes)]
+        # Build only the requested genes' links rather than filtering the full edge list
+        E2_sparse = _r2g_edgelist_for_genes(model, genes, normalize)
+    else:
+        E2_sparse = extract_r2g_matrix(model, as_edgelist=True, normalize=normalize)
+        if top_k is not None:
+            gene_weights = E2_sparse.groupby("gene")["weight"].sum()
+            top_genes = gene_weights.nlargest(top_k).index.tolist()
+            E2_sparse = E2_sparse[E2_sparse["gene"].isin(top_genes)]
 
     # Pivot to matrix
     E2_pivot = E2_sparse.pivot_table(index="region", columns="gene", values="weight", fill_value=0)

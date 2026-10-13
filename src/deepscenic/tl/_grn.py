@@ -184,6 +184,29 @@ def _r2g_links(model: DeepSCENICModel, normalize: bool) -> tuple[np.ndarray, np.
     return r2g_indices, r2g_vals
 
 
+def _r2g_edgelist_for_genes(model: DeepSCENICModel, genes: list[str], normalize: bool) -> pd.DataFrame:
+    """r2g edge list restricted to ``genes``, identical to filtering ``extract_r2g_matrix``'s edge list.
+
+    Normalization is per gene, so normalizing only the kept links gives the same weights.
+    """
+    with torch.no_grad():
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[union-attr]
+        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[union-attr]
+    gene_names = _name_array(model.gene_names)
+    keep = pd.Index(gene_names).isin(genes)[r2g_indices[1]]
+    r2g_indices = r2g_indices[:, keep]
+    r2g_vals = r2g_vals[keep]
+    if normalize:
+        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+    return pd.DataFrame(
+        {
+            "region": _name_array(model.region_names)[r2g_indices[0]],
+            "gene": gene_names[r2g_indices[1]],
+            "weight": r2g_vals,
+        }
+    )
+
+
 def _name_array(names: list[str]) -> np.ndarray:
     """Names as an object array, so they can be gathered with integer indices."""
     return np.asarray(names, dtype=object)
