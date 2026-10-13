@@ -85,31 +85,30 @@ def to_latent(
     else:
         model.to(device)
 
-    # Get RNA data (ATAC not needed for inference)
+    # Get RNA data (ATAC not needed for inference); sparse data is densified per batch
     rna = mdata.mod["rna"].X
-
-    # Convert sparse to dense
-    if issparse(rna):
-        rna = rna.toarray()
 
     n_cells = rna.shape[0]
     n_regions = len(model.region_names)
 
-    # Initialize output arrays
-    outputs: dict[str, list[np.ndarray]] = {
-        "z_tf": [],
-        "enh_act": [],
-        "z_rna": [],
-        "rna_rec": [],
-        "atac_rec": [],
-    }
+    # Output arrays, allocated once the first batch shows their width and dtype
+    outputs: dict[str, np.ndarray] = {}
+
+    def _store(key: str, rows: slice, values: np.ndarray, cols: slice = slice(None), width: int | None = None) -> None:
+        if key not in outputs:
+            outputs[key] = np.empty((n_cells, width or values.shape[1]), dtype=values.dtype)
+        outputs[key][rows, cols] = values
 
     # Process in batches
     with torch.no_grad():
         for i in tqdm(range(0, n_cells, batch_size), desc="Extracting embeddings"):
             end_idx = min(i + batch_size, n_cells)
+            rows = slice(i, end_idx)
 
-            x_rna = torch.FloatTensor(rna[i:end_idx]).to(device)
+            batch_rna = rna[i:end_idx]
+            if issparse(batch_rna):
+                batch_rna = batch_rna.toarray()
+            x_rna = torch.FloatTensor(batch_rna).to(device)
 
             # Skip ATAC decoder in main forward pass to avoid OOM.
             # The ATAC decoder creates (batch, n_regions, 128) tensors
@@ -121,19 +120,21 @@ def to_latent(
                 skip_atac=True,
             )
 
-            outputs["z_tf"].append(output.z_tf.cpu().numpy())
-            outputs["enh_act"].append(output.enh_act.cpu().numpy())
-            outputs["z_rna"].append(output.z_rna.cpu().numpy())
-            outputs["rna_rec"].append(output.x_rna_rec.cpu().numpy())
+            _store("z_tf", rows, output.z_tf.cpu().numpy())
+            _store("enh_act", rows, output.enh_act.cpu().numpy())
+            _store("z_rna", rows, output.z_rna.cpu().numpy())
+            _store("rna_rec", rows, output.x_rna_rec.cpu().numpy())
 
-            # Decode ATAC in region chunks to avoid OOM
+            # Decode ATAC in region chunks to avoid OOM, writing each chunk into place
             enh_act = output.enh_act  # (batch, n_regions) — stays on GPU
-            atac_chunks = []
             for j in range(0, n_regions, region_chunk_size):
                 chunk = enh_act[:, j : j + region_chunk_size]
-                atac_chunks.append(model.vae.decoder_atac(chunk).cpu().numpy())
-            outputs["atac_rec"].append(np.concatenate(atac_chunks, axis=1))
+                atac_chunk = model.vae.decoder_atac(chunk).cpu().numpy()
+                _store("atac_rec", rows, atac_chunk, slice(j, j + atac_chunk.shape[1]), width=n_regions)
 
-    # Concatenate batches and store in mdata.obsm
-    for key, values in outputs.items():
-        mdata.obsm[f"{key_prefix}{key}"] = np.concatenate(values, axis=0)
+    if not outputs:
+        raise ValueError("need at least one array to concatenate")
+
+    # Store in mdata.obsm
+    for key in ["z_tf", "enh_act", "z_rna", "rna_rec", "atac_rec"]:
+        mdata.obsm[f"{key_prefix}{key}"] = outputs[key]

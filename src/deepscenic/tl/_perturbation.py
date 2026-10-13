@@ -119,26 +119,30 @@ def simulate_perturbation(
     else:
         rna = mdata.mod["rna"].X
 
-    # Convert sparse to dense
-    if issparse(rna):
-        rna = rna.toarray()
-
     n_cells = rna.shape[0]
 
-    # Compute clipping threshold from original data
-    clip_max = np.percentile(rna, clip_percentile)
+    # Compute clipping threshold from original data. Sparse data is densified only for
+    # this (a temporary copy that may be partitioned in place); batches are densified below.
+    if issparse(rna):
+        clip_max = np.percentile(rna.toarray(), clip_percentile, overwrite_input=True)
+    else:
+        clip_max = np.percentile(rna, clip_percentile)
 
-    # Output arrays
-    perturbed_per_iter: dict[int, list[np.ndarray]] = {i: [] for i in range(1, n_iter + 1)}
-    logFC_per_iter: dict[int, list[np.ndarray]] = {i: [] for i in range(1, n_iter + 1)}
-    perturbed_all: list[np.ndarray] = []
-    logFC_all: list[np.ndarray] = []
+    # Output arrays, allocated once the first batch shows their width and dtype
+    outputs: dict[object, np.ndarray] = {}
+
+    def _store(key: object, rows: slice, values: np.ndarray) -> None:
+        if key not in outputs:
+            outputs[key] = np.empty((n_cells, values.shape[1]), dtype=values.dtype)
+        outputs[key][rows] = values
 
     # Process in batches
     with torch.no_grad():
         for i in tqdm(range(0, n_cells, batch_size), desc="Simulating perturbation"):
             end_idx = min(i + batch_size, n_cells)
-            batch_rna = rna[i:end_idx].copy()
+            rows = slice(i, end_idx)
+            batch_rna = rna[i:end_idx]
+            batch_rna = batch_rna.toarray() if issparse(batch_rna) else batch_rna.copy()
 
             x_rna = torch.FloatTensor(batch_rna).to(device)
 
@@ -192,17 +196,18 @@ def simulate_perturbation(
                     perturbed_rna[:, tf_gene_idx] = perturbation_level
 
                 if return_intermediate:
-                    perturbed_per_iter[iter_num].append(perturbed_rna.cpu().numpy().copy())
-                    logFC_per_iter[iter_num].append(logFC_decoded.cpu().numpy())
+                    _store(("perturbed", iter_num), rows, perturbed_rna.cpu().numpy())
+                    _store(("logFC", iter_num), rows, logFC_decoded.cpu().numpy())
 
-            perturbed_all.append(perturbed_rna.cpu().numpy())
-            logFC_all.append(logFC_decoded.cpu().numpy())
+            if not return_intermediate:
+                _store("perturbed", rows, perturbed_rna.cpu().numpy())
+                _store("logFC", rows, logFC_decoded.cpu().numpy())
 
     if return_intermediate:
-        perturbed_trace = {i: np.concatenate(perturbed_per_iter[i], axis=0) for i in range(1, n_iter + 1)}
-        logFC_trace = {i: np.concatenate(logFC_per_iter[i], axis=0) for i in range(1, n_iter + 1)}
+        perturbed_trace = {i: outputs[("perturbed", i)] for i in range(1, n_iter + 1)}
+        logFC_trace = {i: outputs[("logFC", i)] for i in range(1, n_iter + 1)}
         return perturbed_trace, logFC_trace
-    return np.concatenate(perturbed_all, axis=0), np.concatenate(logFC_all, axis=0)
+    return outputs["perturbed"], outputs["logFC"]
 
 
 def simulate_multi_perturbation(
