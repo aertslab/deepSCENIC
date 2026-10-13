@@ -109,10 +109,10 @@ def get_cmap_colors(n: int, cmap: str = "tab20") -> list[str]:
     list[str]
         List of hex color strings.
     """
-    import matplotlib.cm as cm
+    import matplotlib
     from matplotlib.colors import rgb2hex
 
-    cmap_obj = cm.get_cmap(cmap)
+    cmap_obj = matplotlib.colormaps.get_cmap(cmap)
     return [rgb2hex(cmap_obj(i / max(n - 1, 1))) for i in range(n)]
 
 

@@ -92,8 +92,8 @@ def arc_plot(
     ... })
     >>> ds.pl.arc_plot(links, chrom="chr1", start=0, end=5000)
     """
+    import matplotlib
     import pandas as pd
-    from matplotlib import cm
     from matplotlib.colors import Normalize
 
     df = links.copy()
@@ -118,7 +118,7 @@ def arc_plot(
 
     # Color by weight
     norm = Normalize(vmin=df[weight_col].min(), vmax=df[weight_col].max())
-    cmap_obj = cm.get_cmap(cmap)
+    cmap_obj = matplotlib.colormaps.get_cmap(cmap)
 
     # Draw arcs
     for _, row in df.iterrows():

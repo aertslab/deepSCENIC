@@ -250,8 +250,8 @@ def enhancer_activity_histogram(
         _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
         z_tf = mu.squeeze(-1)
 
-        # Compute enhancer activity: z_tf @ E1
-        enh_act = (z_tf @ model.adj_tf2r).cpu().numpy()
+        # Compute enhancer activity: z_tf @ E1 (adj_tf2r is stored regions x TFs)
+        enh_act = (z_tf @ model.adj_tf2r.T).cpu().numpy()
 
     # Flatten and optionally exclude zeros
     values = enh_act.flatten()
