@@ -680,6 +680,25 @@ class TestNormalizeR2gPerGene:
         result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
         assert abs(result[0] - 1.0) < 1e-5
 
+    def test_matches_per_gene_mask_loop_exactly(self):
+        """Grouped normalization equals the plain per-gene mask loop bit for bit."""
+        rng = np.random.default_rng(0)
+        n_links = 5000
+        r2g_vals = rng.random(n_links, dtype=np.float32)
+        r2g_indices = np.stack([rng.integers(0, 800, n_links), rng.integers(0, 300, n_links)])
+        r2g_vals[r2g_indices[1] == r2g_indices[1][0]] = 0.0  # one gene with zero total
+
+        expected = r2g_vals.copy()
+        for gene_idx in np.unique(r2g_indices[1]):
+            mask = r2g_indices[1] == gene_idx
+            total = r2g_vals[mask].sum()
+            if total > 0:
+                expected[mask] = r2g_vals[mask] / total
+
+        result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+        assert result.dtype == expected.dtype
+        np.testing.assert_array_equal(result, expected)
+
 
 class TestExtractR2gMatrixNormalization:
     """Tests for normalization in extract_r2g_matrix."""

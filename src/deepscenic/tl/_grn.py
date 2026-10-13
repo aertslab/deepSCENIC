@@ -154,14 +154,82 @@ def _normalize_r2g_per_gene(
         to that gene's regulatory signal.
     """
     normalized = r2g_vals.copy()
-    gene_indices = r2g_indices[1]
-    unique_genes = np.unique(gene_indices)
-    for gene_idx in unique_genes:
-        mask = gene_indices == gene_idx
-        total = r2g_vals[mask].sum()
+    # Group links per gene with a stable sort: each gene's weights stay in link
+    # order, so every per-gene sum is computed exactly as on a boolean mask.
+    order, starts, ends = _group_slices(r2g_indices[1])
+    sorted_vals = r2g_vals[order]
+    for start, end in zip(starts, ends, strict=True):
+        total = sorted_vals[start:end].sum()
         if total > 0:
-            normalized[mask] = r2g_vals[mask] / total
+            normalized[order[start:end]] = sorted_vals[start:end] / total
     return normalized
+
+
+def _group_slices(keys: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Stable-sort ``keys`` and return the order plus start/end of each run of equal keys."""
+    order = np.argsort(keys, kind="stable")
+    sorted_keys = keys[order]
+    starts = np.flatnonzero(np.r_[True, sorted_keys[1:] != sorted_keys[:-1]]) if len(keys) else np.array([], int)
+    ends = np.r_[starts[1:], len(keys)].astype(int)
+    return order, starts, ends
+
+
+def _r2g_links(model: DeepSCENICModel, normalize: bool) -> tuple[np.ndarray, np.ndarray]:
+    """Return r2g link indices (2, n_links) and absolute (optionally per-gene normalized) weights."""
+    with torch.no_grad():
+        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[union-attr]
+        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[union-attr]
+    if normalize:
+        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+    return r2g_indices, r2g_vals
+
+
+def _name_array(names: list[str]) -> np.ndarray:
+    """Names as an object array, so they can be gathered with integer indices."""
+    return np.asarray(names, dtype=object)
+
+
+def _links_of_regions(r2g_indices: np.ndarray, region_mask: np.ndarray) -> np.ndarray:
+    """Positions of links whose region is in ``region_mask``, ordered by region, then link order."""
+    sel = np.flatnonzero(region_mask[r2g_indices[0]])
+    return sel[np.argsort(r2g_indices[0, sel], kind="stable")]
+
+
+def _r2g_dense(model: DeepSCENICModel, r2g_indices: np.ndarray, r2g_vals: np.ndarray) -> np.ndarray:
+    """Dense (n_regions, n_genes) r2g matrix from link indices and weights."""
+    r2g_sparse = torch.sparse_coo_tensor(
+        torch.from_numpy(r2g_indices),
+        torch.from_numpy(r2g_vals),
+        size=(len(model.region_names), len(model.gene_names)),
+    )
+    return r2g_sparse.to_dense().numpy()
+
+
+def _tf_edgelist(
+    tf_by_x: np.ndarray,
+    tf_names: list[str],
+    x_names: list[str],
+    x_col: str,
+    value_col: str,
+    mean_activity: np.ndarray,
+    weighted_col: str,
+) -> pd.DataFrame:
+    """Long-form edge list of a TF × X matrix, weighted by mean TF activity.
+
+    Rows follow ``DataFrame.melt`` order: all TFs for the first X, then the next X.
+    """
+    n_tfs, n_x = tf_by_x.shape
+    values = tf_by_x.ravel(order="F")
+    tf_activity = np.tile(mean_activity, n_x)
+    return pd.DataFrame(
+        {
+            "tf": np.tile(_name_array(tf_names), n_x),
+            x_col: np.repeat(_name_array(x_names), n_tfs),
+            value_col: values,
+            "tf_activity": tf_activity,
+            weighted_col: tf_activity * values,
+        }
+    )
 
 
 def extract_grn(model: DeepSCENICModel, normalize_r2g: bool = True) -> dict[str, pd.DataFrame]:
@@ -246,34 +314,22 @@ def extract_r2g_matrix(
     pd.DataFrame
         r2g matrix in edge list or dense format
     """
-    with torch.no_grad():
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
-        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
-
-    if normalize:
-        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+    r2g_indices, r2g_vals = _r2g_links(model, normalize)
 
     if as_edgelist:
         # Edge list format: (region, gene, weight) rows
         return pd.DataFrame(
             {
-                "region": [model.region_names[idx] for idx in r2g_indices[0]],
-                "gene": [model.gene_names[idx] for idx in r2g_indices[1]],
+                "region": _name_array(model.region_names)[r2g_indices[0]],
+                "gene": _name_array(model.gene_names)[r2g_indices[1]],
                 "weight": r2g_vals,
             }
         )
     else:
         # Dense format using torch sparse tensor (faster than Python loop)
         # Warning: may be very large for real datasets
-        r2g_sparse = torch.sparse_coo_tensor(
-            torch.from_numpy(r2g_indices),
-            torch.from_numpy(r2g_vals),
-            size=(len(model.region_names), len(model.gene_names)),
-        )
-        r2g_dense = r2g_sparse.to_dense().numpy()
-
         return pd.DataFrame(
-            r2g_dense,
+            _r2g_dense(model, r2g_indices, r2g_vals),
             index=model.region_names,  # type: ignore[arg-type]
             columns=model.gene_names,  # type: ignore[arg-type]
         )
@@ -347,24 +403,19 @@ def compute_celltype_tf2r(
 
     mean_activity = tf_activity[class_mask].mean(axis=0)
     tf2r = extract_tf2r_matrix(model)
-    weighted_tf2r = tf2r.mul(mean_activity, axis=0)
 
     if not as_edgelist:
-        return weighted_tf2r
+        return tf2r.mul(mean_activity, axis=0)
 
-    result = (
-        tf2r.rename_axis("tf")
-        .reset_index()
-        .melt(
-            id_vars="tf",
-            var_name="region",
-            value_name="tf2r_weight",
-        )
+    return _tf_edgelist(
+        tf2r.to_numpy(),
+        model.tf_names,
+        model.region_names,
+        "region",
+        "tf2r_weight",
+        mean_activity,
+        "celltype_tf2r_weight",
     )
-    tf_to_activity = dict(zip(model.tf_names, mean_activity, strict=True))
-    result["tf_activity"] = result["tf"].map(tf_to_activity)
-    result["celltype_tf2r_weight"] = result["tf_activity"] * result["tf2r_weight"]
-    return result
 
 
 def compute_celltype_r2g(
@@ -443,20 +494,32 @@ def compute_celltype_r2g(
 
     mean_activity = enhancer_activity[class_mask].mean(axis=0)
 
-    r2g = extract_r2g_matrix(
-        model,
-        as_edgelist=as_edgelist,
-        normalize=normalize_r2g,
-    )
+    r2g_indices, r2g_vals = _r2g_links(model, normalize_r2g)
 
     if not as_edgelist:
-        return r2g.mul(mean_activity, axis=0)
+        # Weight the dense matrix in place when the dtype allows it, saving a full copy
+        r2g_dense = _r2g_dense(model, r2g_indices, r2g_vals)
+        weights = mean_activity[:, None]
+        if np.result_type(r2g_dense, weights) == r2g_dense.dtype:
+            np.multiply(r2g_dense, weights, out=r2g_dense)
+        else:
+            r2g_dense = r2g_dense * weights
+        return pd.DataFrame(
+            r2g_dense,
+            index=model.region_names,  # type: ignore[arg-type]
+            columns=model.gene_names,  # type: ignore[arg-type]
+        )
 
-    region_to_activity = dict(zip(model.region_names, mean_activity, strict=True))
-    r2g = r2g.rename(columns={"weight": "r2g_weight"})
-    r2g["enhancer_activity"] = r2g["region"].map(region_to_activity)
-    r2g["celltype_r2g_weight"] = r2g["enhancer_activity"] * r2g["r2g_weight"]
-    return r2g
+    enhancer_activity = mean_activity[r2g_indices[0]]
+    return pd.DataFrame(
+        {
+            "region": _name_array(model.region_names)[r2g_indices[0]],
+            "gene": _name_array(model.gene_names)[r2g_indices[1]],
+            "r2g_weight": r2g_vals,
+            "enhancer_activity": enhancer_activity,
+            "celltype_r2g_weight": enhancer_activity * r2g_vals,
+        }
+    )
 
 
 def compute_celltype_tf2g(
@@ -534,11 +597,7 @@ def compute_celltype_tf2g(
     from scipy.sparse import coo_matrix
 
     tf2r = extract_tf2r_matrix(model)
-    with torch.no_grad():
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[union-attr]
-        r2g_values = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[union-attr]
-    if normalize_r2g:
-        r2g_values = _normalize_r2g_per_gene(r2g_values, r2g_indices)
+    r2g_indices, r2g_values = _r2g_links(model, normalize_r2g)
     r2g = coo_matrix(
         (r2g_values, (r2g_indices[0], r2g_indices[1])),
         shape=(len(model.region_names), len(model.gene_names)),
@@ -549,24 +608,13 @@ def compute_celltype_tf2g(
         index=model.tf_names,
         columns=model.gene_names,
     )
-    weighted_tf2g = tf2g.mul(mean_activity, axis=0)
 
     if not as_edgelist:
-        return weighted_tf2g
+        return tf2g.mul(mean_activity, axis=0)
 
-    result = (
-        tf2g.rename_axis("tf")
-        .reset_index()
-        .melt(
-            id_vars="tf",
-            var_name="gene",
-            value_name="tf2g_weight",
-        )
+    return _tf_edgelist(
+        tf2g.to_numpy(), model.tf_names, model.gene_names, "gene", "tf2g_weight", mean_activity, "celltype_tf2g_weight"
     )
-    tf_to_activity = dict(zip(model.tf_names, mean_activity, strict=True))
-    result["tf_activity"] = result["tf"].map(tf_to_activity)
-    result["celltype_tf2g_weight"] = result["tf_activity"] * result["tf2g_weight"]
-    return result
 
 
 def get_tf_targets(
@@ -614,18 +662,25 @@ def get_tf_targets(
     if tf_name not in model.tf_names:
         raise ValueError(f"TF '{tf_name}' not found")
 
+    r2g_indices, r2g_vals = _r2g_links(model, normalize_r2g)
+    return _tf_targets(model, tf_name, tf2r_threshold, r2g_threshold, top_k, r2g_indices, r2g_vals)
+
+
+def _tf_targets(
+    model: DeepSCENICModel,
+    tf_name: str,
+    tf2r_threshold: float | None,
+    r2g_threshold: float,
+    top_k: int | None,
+    r2g_indices: np.ndarray,
+    r2g_vals: np.ndarray,
+) -> pd.DataFrame:
+    """Body of :func:`get_tf_targets`, on precomputed r2g links."""
     tf_idx = model.tf_names.index(tf_name)
 
     with torch.no_grad():
         # Get tf2r weights for this TF
         tf2r_tf = model.adj_tf2r[:, tf_idx].cpu().numpy()
-
-        # Get r2g sparse info
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
-        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
-
-    if normalize_r2g:
-        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
 
     # Determine tf2r threshold (Otsu by default, computed on absolute values)
     tf2r_tf_abs = np.abs(tf2r_tf)
@@ -639,42 +694,33 @@ def get_tf_targets(
         tf2r_thresh = tf2r_threshold
         logger.info(f"TF '{tf_name}': using manual tf2r threshold = {tf2r_thresh:.4f}")
 
-    # Find regions with tf2r weight above threshold (using absolute values)
-    results = []
-    for region_idx in np.where(tf2r_tf_abs > tf2r_thresh)[0]:
-        tf2r_w = tf2r_tf[region_idx]
-        region_name = model.region_names[region_idx]
-
-        # Find genes linked to this region
-        link_mask = r2g_indices[0] == region_idx
-        if link_mask.any():
-            gene_indices = r2g_indices[1, link_mask]
-            r2g_weights = r2g_vals[link_mask]
-
-            for gene_idx, r2g_w in zip(gene_indices, r2g_weights, strict=False):
-                if r2g_w > r2g_threshold:
-                    results.append(
-                        {
-                            "tf": tf_name,
-                            "region": region_name,
-                            "tf2r_weight": tf2r_w,
-                            "gene": model.gene_names[gene_idx],
-                            "r2g_weight": r2g_w,
-                            "combined_weight": tf2r_w * r2g_w,
-                        }
-                    )
-
-    if not results:
+    # Links from regions with tf2r weight above threshold (absolute values),
+    # by region and then link order, keeping those above the r2g threshold
+    links = _links_of_regions(r2g_indices, tf2r_tf_abs > tf2r_thresh)
+    links = links[r2g_vals[links] > r2g_threshold]
+    if len(links) == 0:
         return pd.DataFrame(columns=_TF_TARGETS_COLUMNS)
-    df = pd.DataFrame(results)
 
-    if len(df) > 0:
-        # Sort by absolute combined_weight (strongest effects first, regardless of sign)
-        df = df.assign(_abs_weight=df["combined_weight"].abs())
-        df = df.sort_values("_abs_weight", ascending=False).drop(columns=["_abs_weight"])
+    region_idx = r2g_indices[0, links]
+    tf2r_w = tf2r_tf[region_idx]
+    r2g_w = r2g_vals[links]
+    df = pd.DataFrame(
+        {
+            "tf": np.full(len(links), tf_name, dtype=object),
+            "region": _name_array(model.region_names)[region_idx],
+            "tf2r_weight": tf2r_w,
+            "gene": _name_array(model.gene_names)[r2g_indices[1, links]],
+            "r2g_weight": r2g_w,
+            "combined_weight": tf2r_w * r2g_w,
+        }
+    )
 
-        if top_k is not None:
-            df = df.head(top_k)
+    # Sort by absolute combined_weight (strongest effects first, regardless of sign)
+    df = df.assign(_abs_weight=df["combined_weight"].abs())
+    df = df.sort_values("_abs_weight", ascending=False).drop(columns=["_abs_weight"])
+
+    if top_k is not None:
+        df = df.head(top_k)
 
     return df
 
@@ -728,11 +774,7 @@ def get_gene_regulators(
 
     with torch.no_grad():
         tf2r_matrix = model.adj_tf2r.cpu().numpy()
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
-        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
-
-    if normalize_r2g:
-        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+    r2g_indices, r2g_vals = _r2g_links(model, normalize_r2g)
 
     # Find regions linked to this gene
     link_mask = r2g_indices[1] == gene_idx
@@ -742,58 +784,64 @@ def get_gene_regulators(
     region_indices = r2g_indices[0, link_mask]
     r2g_weights_for_gene = r2g_vals[link_mask]
 
-    # Pre-compute per-TF thresholds if using automatic thresholding
+    # Per-TF thresholds if using automatic thresholding, else the manual threshold
     if tf2r_threshold is None:
-        # Compute Otsu threshold for each TF (same as get_tf_targets)
-        tf_thresholds = {}
-        for tf_idx in range(tf2r_matrix.shape[1]):
-            tf2r_tf_abs = np.abs(tf2r_matrix[:, tf_idx])
-            tf_thresh, _ = _get_otsu_threshold(tf2r_tf_abs, fallback=0.0)
-            tf_thresholds[tf_idx] = tf_thresh
+        # Otsu threshold for each TF (same as get_tf_targets). Cast to the weight dtype:
+        # comparing a float32 weight with a Python float threshold happens in float32.
+        thresholds = np.array(_tf2r_otsu_thresholds(tf2r_matrix), dtype=tf2r_matrix.dtype)
         logger.info(f"Gene '{gene_name}': using per-TF Otsu thresholds")
     else:
-        tf_thresholds = None  # Use manual threshold for all TFs
+        thresholds = tf2r_threshold
         logger.info(f"Gene '{gene_name}': using manual tf2r threshold = {tf2r_threshold:.4f}")
 
-    results = []
-    for region_idx, r2g_w in zip(region_indices, r2g_weights_for_gene, strict=False):
-        if r2g_w <= r2g_threshold:
-            continue
+    # Regions above the r2g threshold (written as "not <=" so NaN weights are kept, as before)
+    keep = ~(r2g_weights_for_gene <= r2g_threshold)
+    region_indices = region_indices[keep]
+    r2g_weights_for_gene = r2g_weights_for_gene[keep]
 
-        region_name = model.region_names[region_idx]
-        tf2r_weights_region = tf2r_matrix[region_idx, :]
-        tf2r_weights_region_abs = np.abs(tf2r_weights_region)
-
-        for tf_idx in range(len(model.tf_names)):
-            # Use per-TF threshold or manual threshold
-            thresh = tf_thresholds[tf_idx] if tf_thresholds else tf2r_threshold
-
-            if tf2r_weights_region_abs[tf_idx] > thresh:
-                tf2r_w = tf2r_weights_region[tf_idx]
-                results.append(
-                    {
-                        "gene": gene_name,
-                        "tf": model.tf_names[tf_idx],
-                        "region": region_name,
-                        "tf2r_weight": tf2r_w,
-                        "r2g_weight": r2g_w,
-                        "combined_weight": tf2r_w * r2g_w,
-                    }
-                )
-
-    if not results:
+    # (region, TF) pairs above threshold, by region and then TF order
+    tf2r_sub = tf2r_matrix[region_indices]
+    row, tf_idx = np.nonzero(np.abs(tf2r_sub) > thresholds)
+    if len(row) == 0:
         return pd.DataFrame(columns=_GENE_REGULATORS_COLUMNS)
-    df = pd.DataFrame(results)
 
-    if len(df) > 0:
-        # Sort by absolute combined_weight (strongest effects first, regardless of sign)
-        df = df.assign(_abs_weight=df["combined_weight"].abs())
-        df = df.sort_values("_abs_weight", ascending=False).drop(columns=["_abs_weight"])
+    tf2r_w = tf2r_sub[row, tf_idx]
+    r2g_w = r2g_weights_for_gene[row]
+    df = pd.DataFrame(
+        {
+            "gene": np.full(len(row), gene_name, dtype=object),
+            "tf": _name_array(model.tf_names)[tf_idx],
+            "region": _name_array(model.region_names)[region_indices[row]],
+            "tf2r_weight": tf2r_w,
+            "r2g_weight": r2g_w,
+            "combined_weight": tf2r_w * r2g_w,
+        }
+    )
 
-        if top_k is not None:
-            df = df.head(top_k)
+    # Sort by absolute combined_weight (strongest effects first, regardless of sign)
+    df = df.assign(_abs_weight=df["combined_weight"].abs())
+    df = df.sort_values("_abs_weight", ascending=False).drop(columns=["_abs_weight"])
+
+    if top_k is not None:
+        df = df.head(top_k)
 
     return df
+
+
+def _tf2r_otsu_thresholds(tf2r_matrix: np.ndarray, chunk_bytes: int = 64 * 2**20) -> list[float]:
+    """Otsu threshold of each TF's absolute tf2r weights (columns of ``tf2r_matrix``).
+
+    Columns are copied to contiguous blocks of at most ``chunk_bytes``, which is much
+    faster than strided column access on a (n_regions, n_tfs) matrix and gives the same values.
+    """
+    n_regions, n_tfs = tf2r_matrix.shape
+    chunk_size = max(1, chunk_bytes // max(1, n_regions * tf2r_matrix.itemsize))
+    thresholds = []
+    for start in range(0, n_tfs, chunk_size):
+        block = np.ascontiguousarray(np.abs(tf2r_matrix[:, start : start + chunk_size].T))  # (chunk, n_regions)
+        for column in block:
+            thresholds.append(_get_otsu_threshold(column, fallback=0.0)[0])
+    return thresholds
 
 
 def get_region_info(
@@ -856,15 +904,17 @@ def get_region_info(
 
     with torch.no_grad():
         tf2r_matrix = model.adj_tf2r.cpu().numpy()  # (n_regions, n_tfs)
-        r2g_indices = model.vae.r2g_indices.cpu().numpy()  # type: ignore[operator]
-        r2g_vals = model.vae.adj_r2g.abs().cpu().numpy()  # type: ignore[operator]
+    r2g_indices, r2g_vals = _r2g_links(model, normalize_r2g)
 
-    if normalize_r2g:
-        r2g_vals = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+    # Links grouped per region (stable, so each region keeps its link order)
+    link_order = np.argsort(r2g_indices[0], kind="stable")
+    sorted_link_regions = r2g_indices[0, link_order]
 
     region_to_idx = {name: idx for idx, name in enumerate(model.region_names)}
+    tf_names = _name_array(model.tf_names)
+    gene_names = _name_array(model.gene_names)
 
-    results = []
+    columns: dict[str, list] = {c: [] for c in _REGION_INFO_COLUMNS}
     for region_name in regions:
         region_idx = region_to_idx[region_name]
 
@@ -890,23 +940,20 @@ def get_region_info(
             tf_order = tf_order[:top_k_tfs]
 
         # --- Target genes for this region ---
-        link_mask = r2g_indices[0] == region_idx
-        if not link_mask.any():
+        lo, hi = np.searchsorted(sorted_link_regions, [region_idx, region_idx + 1])
+        if lo == hi:
             # No r2g links: emit TF rows with no gene
-            for tf_idx in tf_order:
-                results.append(
-                    {
-                        "region": region_name,
-                        "tf": model.tf_names[tf_idx],
-                        "tf2r_weight": float(tf2r_region[tf_idx]),
-                        "gene": None,
-                        "r2g_weight": None,
-                    }
-                )
+            n_rows = len(tf_order)
+            columns["region"] += [region_name] * n_rows
+            columns["tf"] += tf_names[tf_order].tolist()
+            columns["tf2r_weight"] += tf2r_region[tf_order].tolist()
+            columns["gene"] += [None] * n_rows
+            columns["r2g_weight"] += [None] * n_rows
             continue
 
-        gene_idxs = r2g_indices[1, link_mask]
-        gene_r2g = r2g_vals[link_mask]
+        links = link_order[lo:hi]
+        gene_idxs = r2g_indices[1, links]
+        gene_r2g = r2g_vals[links]
 
         # Filter by r2g threshold
         gene_mask = gene_r2g > r2g_threshold
@@ -921,22 +968,17 @@ def get_region_info(
         gene_r2g = gene_r2g[gene_order]
 
         # Cross-product: each TF × each gene
-        for tf_idx in tf_order:
-            for g_idx, g_r2g in zip(gene_idxs, gene_r2g, strict=False):
-                results.append(
-                    {
-                        "region": region_name,
-                        "tf": model.tf_names[tf_idx],
-                        "tf2r_weight": float(tf2r_region[tf_idx]),
-                        "gene": model.gene_names[g_idx],
-                        "r2g_weight": float(g_r2g),
-                    }
-                )
+        n_tfs, n_genes = len(tf_order), len(gene_idxs)
+        columns["region"] += [region_name] * (n_tfs * n_genes)
+        columns["tf"] += np.repeat(tf_names[tf_order], n_genes).tolist()
+        columns["tf2r_weight"] += np.repeat(tf2r_region[tf_order], n_genes).tolist()
+        columns["gene"] += np.tile(gene_names[gene_idxs], n_tfs).tolist()
+        columns["r2g_weight"] += np.tile(gene_r2g, n_tfs).tolist()
 
-    if not results:
+    if not columns["region"]:
         return pd.DataFrame(columns=_REGION_INFO_COLUMNS)
 
-    return pd.DataFrame(results)
+    return pd.DataFrame(columns)
 
 
 # =============================================================================
@@ -1162,6 +1204,7 @@ def build_grn_for_tfs(
     """
     _BUILD_GRN_COLUMNS = ["TF", "region", "gene", "tf2r_score", "r2g_score", "tf2g_score"]
     results = []
+    r2g_indices, r2g_vals = _r2g_links(model, normalize_r2g)
 
     for tf_name in tf_names:
         if tf_name not in model.tf_names:
@@ -1169,9 +1212,7 @@ def build_grn_for_tfs(
             continue
 
         # Get targets with per-TF Otsu threshold
-        targets = get_tf_targets(
-            model, tf_name, tf2r_threshold=None, r2g_threshold=r2g_threshold, normalize_r2g=normalize_r2g
-        )
+        targets = _tf_targets(model, tf_name, None, r2g_threshold, None, r2g_indices, r2g_vals)
 
         if len(targets) > 0:
             # Rename columns to match legacy format
