@@ -9,6 +9,7 @@ import pytest
 from deepscenic.tl._grn import (
     _get_otsu_threshold,
     _normalize_r2g_per_gene,
+    _r2g_edgelist_for_genes,
     build_grn_for_tfs,
     compute_celltype_r2g,
     compute_celltype_tf2g,
@@ -680,6 +681,25 @@ class TestNormalizeR2gPerGene:
         result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
         assert abs(result[0] - 1.0) < 1e-5
 
+    def test_matches_per_gene_mask_loop_exactly(self):
+        """Grouped normalization equals the plain per-gene mask loop bit for bit."""
+        rng = np.random.default_rng(0)
+        n_links = 5000
+        r2g_vals = rng.random(n_links, dtype=np.float32)
+        r2g_indices = np.stack([rng.integers(0, 800, n_links), rng.integers(0, 300, n_links)])
+        r2g_vals[r2g_indices[1] == r2g_indices[1][0]] = 0.0  # one gene with zero total
+
+        expected = r2g_vals.copy()
+        for gene_idx in np.unique(r2g_indices[1]):
+            mask = r2g_indices[1] == gene_idx
+            total = r2g_vals[mask].sum()
+            if total > 0:
+                expected[mask] = r2g_vals[mask] / total
+
+        result = _normalize_r2g_per_gene(r2g_vals, r2g_indices)
+        assert result.dtype == expected.dtype
+        np.testing.assert_array_equal(result, expected)
+
 
 class TestExtractR2gMatrixNormalization:
     """Tests for normalization in extract_r2g_matrix."""
@@ -706,6 +726,15 @@ class TestExtractR2gMatrixNormalization:
         result = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True, normalize=True)
         assert all(result["weight"] >= 0)
         assert all(result["weight"] <= 1.0 + 1e-6)
+
+    @pytest.mark.parametrize("normalize", [True, False])
+    def test_gene_subset_matches_filtered_edgelist(self, mock_deepscenic_model, normalize):
+        """The gene-subset edge list equals filtering the full edge list, bit for bit."""
+        genes = [mock_deepscenic_model.gene_names[i] for i in (3, 0, 7)] + ["NOT_A_GENE"]
+        full = extract_r2g_matrix(mock_deepscenic_model, as_edgelist=True, normalize=normalize)
+        expected = full[full["gene"].isin(genes)].reset_index(drop=True)
+        result = _r2g_edgelist_for_genes(mock_deepscenic_model, genes, normalize)
+        pd.testing.assert_frame_equal(result, expected, check_exact=True)
 
 
 class TestGetTFTargetsNormalization:

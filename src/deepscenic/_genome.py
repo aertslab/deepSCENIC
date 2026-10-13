@@ -29,6 +29,7 @@ SOFTWARE.
 from __future__ import annotations
 
 import logging
+import mmap
 import random
 from functools import cached_property
 from pathlib import Path
@@ -105,6 +106,7 @@ class Genome:
         state = self.__dict__.copy()
         # Remove cached properties that contain unpicklable objects
         state.pop("_fasta", None)
+        state.pop("_mmap_reader", None)
         state.pop("_chrom_map", None)
         state.pop("_has_chr_prefix", None)
         return state
@@ -119,6 +121,29 @@ class Genome:
         import pyfaidx
 
         return pyfaidx.Fasta(str(self.fasta_file))
+
+    @cached_property
+    def _mmap_reader(self) -> _MmapFastaReader | None:
+        """Memory-mapped reader for uncompressed FASTA, or None to read through pyfaidx.
+
+        pyfaidx still opens the file (building the ``.fai`` index if needed). Reading
+        sequence through a memory map avoids a system call per fetch, which is much
+        faster on network filesystems; compressed (BGZF) files keep using pyfaidx.
+        """
+        faidx = self._fasta.faidx
+        if getattr(faidx, "_bgzf", True):
+            return None
+        try:
+            return _MmapFastaReader(self.fasta_file, faidx.index)
+        except (OSError, ValueError):  # e.g. a file that cannot be memory-mapped
+            return None
+
+    def _read(self, chrom: str, start: int, end: int) -> str:
+        """Sequence ``[start, end)`` of a FASTA chromosome, as stored (no case change)."""
+        reader = self._mmap_reader
+        if reader is not None:
+            return reader.fetch(chrom, start, end)
+        return str(self._fasta[chrom][start:end])
 
     @cached_property
     def _has_chr_prefix(self) -> bool:
@@ -219,7 +244,7 @@ class Genome:
         fetch_start = max(0, start)
         fetch_end = min(chrom_len, end)
 
-        seq = str(self._fasta[chrom][fetch_start:fetch_end]).upper()
+        seq = self._read(chrom, fetch_start, fetch_end).upper()
         seq = "N" * pad_left + seq + "N" * pad_right
 
         if rc:
@@ -238,7 +263,7 @@ class Genome:
         """Fetch one-hot encoded sequence.
 
         Returns tensor of shape (4, length) with channels A, C, G, T.
-        N bases are encoded as 0.25 for each channel.
+        N bases are encoded as all zeros.
 
         Parameters
         ----------
@@ -316,6 +341,42 @@ class Genome:
         seq_bytes = np.frombuffer(seq.encode("ascii"), dtype=np.uint8)
         onehot = _HOT_ENCODING_TABLE[seq_bytes]  # (seq_len, 4)
         return torch.from_numpy(onehot).T  # (4, seq_len)
+
+
+class _MmapFastaReader:
+    """Read uncompressed FASTA sequence via a memory map and the pyfaidx index.
+
+    Gives the same sequence as pyfaidx (line breaks removed, case unchanged).
+
+    Parameters
+    ----------
+    fasta_file
+        Path to the uncompressed FASTA file.
+    index
+        ``pyfaidx.Faidx.index``: per sequence ``rlen`` (length), ``offset`` (byte of the
+        first base), ``lenc`` (bases per line) and ``lenb`` (bytes per line).
+    """
+
+    def __init__(self, fasta_file: str | Path, index: dict) -> None:
+        self._index = index
+        self._file = open(fasta_file, "rb")  # noqa: SIM115 - kept open for the mmap's lifetime
+        try:
+            self._mmap = mmap.mmap(self._file.fileno(), 0, access=mmap.ACCESS_READ)
+        except (OSError, ValueError):
+            self._file.close()
+            raise
+
+    def fetch(self, chrom: str, start: int, end: int) -> str:
+        """Sequence ``[start, end)`` of ``chrom`` (0-based, within the chromosome)."""
+        if end <= start:
+            return ""
+        record = self._index[chrom]
+
+        def byte_of(pos: int) -> int:
+            return record.offset + (pos // record.lenc) * record.lenb + pos % record.lenc
+
+        raw = self._mmap[byte_of(start) : byte_of(end)]
+        return raw.decode().replace("\n", "").replace("\r", "")
 
 
 class GenomeIntervalDataset(Dataset):
