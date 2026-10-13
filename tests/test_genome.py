@@ -184,6 +184,71 @@ class TestGenome:
         assert len(seq) == 100
 
 
+class TestMmapFastaReader:
+    """The memory-mapped reader must return exactly what pyfaidx returns."""
+
+    @staticmethod
+    def _windows(genome):
+        """Windows crossing line breaks, chromosome ends, and empty/out-of-range ranges."""
+        rng = random.Random(0)
+        windows = []
+        for chrom in genome.chromosomes:
+            length = len(genome._fasta[chrom])
+            line = genome._fasta.faidx.index[chrom].lenc
+            for start in [0, 1, line - 1, line, line + 1, 2 * line, length - line, length - 1, length]:
+                for size in [0, 1, line - 1, line, line + 1, 3 * line + 7]:
+                    windows.append((chrom, start, min(start + size, length)))
+            if length > 500:
+                windows += [(chrom, s, s + rng.randint(1, 500)) for s in rng.sample(range(length - 500), 50)]
+        return windows
+
+    def _assert_matches_pyfaidx(self, fasta_path):
+        genome = Genome(fasta_path)
+        assert genome._mmap_reader is not None
+        for chrom, start, end in self._windows(genome):
+            assert genome._read(chrom, start, end) == str(genome._fasta[chrom][start:end]), (chrom, start, end)
+
+    def test_matches_pyfaidx(self, tmp_fasta):
+        """Unix line endings, sequence wrapped at 80 bases."""
+        self._assert_matches_pyfaidx(tmp_fasta)
+
+    def test_matches_pyfaidx_windows_line_endings_and_lowercase(self, tmp_path):
+        """CRLF line endings and soft-masked (lowercase) bases are read as stored."""
+        rng = random.Random(1)
+        fasta_path = tmp_path / "crlf.fa"
+        with open(fasta_path, "wb") as f:
+            for name, length in [("chr1", 3001), ("chrM", 60), ("chrUn", 7)]:
+                seq = "".join(rng.choice("ACGTNacgtn") for _ in range(length))
+                f.write(f">{name}\r\n".encode())
+                for i in range(0, length, 60):
+                    f.write(seq[i : i + 60].encode() + b"\r\n")
+        self._assert_matches_pyfaidx(fasta_path)
+
+    def test_fetch_uses_mmap_and_matches_pyfaidx_path(self, tmp_fasta):
+        """Fetch output (with padding and reverse complement) is unchanged by the mmap reader."""
+        mmap_genome = Genome(tmp_fasta)
+        pyfaidx_genome = Genome(tmp_fasta)
+        pyfaidx_genome.__dict__["_mmap_reader"] = None  # force the pyfaidx path
+        for start, end, rc in [(-50, 100, False), (9950, 10100, True), (10005, 10010, False), (3, 3, True)]:
+            assert mmap_genome.fetch("chr1", start, end, rc=rc) == pyfaidx_genome.fetch("chr1", start, end, rc=rc)
+
+    def test_compressed_fasta_falls_back_to_pyfaidx(self, tmp_fasta):
+        """BGZF-compressed FASTA cannot be memory-mapped and keeps using pyfaidx."""
+        genome = Genome(tmp_fasta)
+        genome._fasta.faidx._bgzf = True
+        assert genome._mmap_reader is None
+        genome._fasta.faidx._bgzf = False  # the file is not really compressed; read it through pyfaidx
+        assert genome.fetch("chr1", 0, 100) == str(genome._fasta["chr1"][0:100]).upper()
+
+    def test_pickle_drops_mmap(self, tmp_fasta):
+        """The mmap is not pickled; a restored genome reopens it lazily."""
+        genome = Genome(tmp_fasta)
+        expected = genome.fetch("chr2", 100, 400)
+        restored = pickle.loads(pickle.dumps(genome))
+        assert "_mmap_reader" not in restored.__dict__
+        assert restored.fetch("chr2", 100, 400) == expected
+
+
 class TestGenomeRegistration:
     """Tests for global genome registration."""
 
