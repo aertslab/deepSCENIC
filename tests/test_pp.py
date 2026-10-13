@@ -148,6 +148,56 @@ class TestRemoveZeroVarianceGenes:
 class TestComputeR2GPenalty:
     """Tests for compute_r2g_penalty function."""
 
+    @pytest.mark.parametrize("method", ["gaussian", "linear"])
+    def test_matches_dense_distance_reference(self, method):
+        """Window search gives exactly the links, values and order of all-pairs distances."""
+        from scipy.sparse import csr_matrix
+
+        from deepscenic.pp.search_space import _compute_r2g_matrix
+
+        rng = np.random.default_rng(0)
+        n_regions, n_genes = 400, 120
+        chroms = np.array(["chr1", "chr2", "chrX"])
+        starts = rng.integers(0, 3_000_000, n_regions)
+        regions = pd.DataFrame(
+            {
+                "chromosome": rng.choice(chroms, n_regions),
+                "start": starts,
+                "end": starts + rng.integers(1, 2000, n_regions),
+            },
+            index=[f"r{i}" for i in range(n_regions)],
+        )
+        genes = pd.DataFrame(
+            # TSS exactly max_distance away from some region centers exercises the boundary
+            {"chromosome": rng.choice(chroms[:2], n_genes), "tss": rng.integers(0, 3_000_000, n_genes)},
+            index=[f"g{i}" for i in range(n_genes)],
+        )
+        centers = (regions["start"] + regions["end"]) // 2
+        genes.iloc[:5, 1] = centers.iloc[:5].to_numpy() + 200_000
+        genes.iloc[:5, 0] = regions["chromosome"].iloc[:5].to_numpy()
+        max_distance, sigma = 200_000, 50_000
+
+        result, config = _compute_r2g_matrix(regions, genes, max_distance, sigma, method)
+
+        # Reference: all-pairs distances per chromosome, links in np.where order
+        rows, cols, values = [], [], []
+        for chrom in sorted(set(regions["chromosome"]) & set(genes["chromosome"])):
+            r_idx = np.flatnonzero(regions["chromosome"].to_numpy() == chrom)
+            g_idx = np.flatnonzero(genes["chromosome"].to_numpy() == chrom)
+            distances = np.abs(centers.to_numpy()[r_idx, None] - genes["tss"].to_numpy()[None, g_idx])
+            for r_local, g_local in zip(*np.where(distances <= max_distance), strict=True):
+                d = distances[r_local, g_local]
+                penalty = 1 - np.exp(-(d**2) / (2 * sigma**2)) if method == "gaussian" else d / max_distance
+                rows.append(r_idx[r_local])
+                cols.append(g_idx[g_local])
+                values.append(float(penalty))
+        expected = csr_matrix((values, (rows, cols)), shape=(n_regions, n_genes))
+
+        assert config["n_links"] == len(values) > 0
+        for attr in ["indptr", "indices", "data"]:
+            np.testing.assert_array_equal(getattr(result, attr), getattr(expected, attr))
+            assert getattr(result, attr).dtype == getattr(expected, attr).dtype
+
     @pytest.fixture
     def mdata_with_regions(self, sample_rna, sample_atac):
         """Create MuData with parsed region coordinates."""
