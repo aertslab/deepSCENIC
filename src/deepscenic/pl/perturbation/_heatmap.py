@@ -92,7 +92,7 @@ def heatmap_perturbation(
 
     # Filter to top N genes by max absolute effect
     if top_n is not None:
-        gene_effect = df.groupby(gene_col)[value_col].apply(lambda x: x.abs().max())
+        gene_effect = df[value_col].abs().groupby(df[gene_col]).max()
         top_genes = gene_effect.nlargest(top_n).index.tolist()
         df = df[df[gene_col].isin(top_genes)]
 

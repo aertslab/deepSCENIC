@@ -235,13 +235,11 @@ def enhancer_activity_histogram(
         from deepscenic.tl._model import _check_mdata_matches_model
 
         _check_mdata_matches_model(model, mdata)
-        rna_data = mdata.mod["rna"].X
-        if hasattr(rna_data, "toarray"):
-            rna_data = rna_data.toarray()
-
-        # Get TF expression and compute enhancer activity
+        # Get TF expression (select TF columns before densifying) and compute enhancer activity
         tf_indices = model.vae.tf_indices.cpu().numpy()
-        tf_expression = rna_data[:, tf_indices]
+        tf_expression = mdata.mod["rna"].X[:, tf_indices]
+        if hasattr(tf_expression, "toarray"):
+            tf_expression = tf_expression.toarray()
 
         # Enhancer activity = TF expression @ E1
         tf_tensor = torch.tensor(tf_expression, dtype=torch.float32, device=device)
@@ -250,11 +248,11 @@ def enhancer_activity_histogram(
         _, mu, _ = model.vae.encoder(tf_tensor, use_mean=True)
         z_tf = mu.squeeze(-1)
 
-        # Compute enhancer activity: z_tf @ E1
-        enh_act = (z_tf @ model.adj_tf2r).cpu().numpy()
+        # Compute enhancer activity: z_tf @ E1 (adj_tf2r is stored regions x TFs)
+        enh_act = (z_tf @ model.adj_tf2r.T).cpu().numpy()
 
     # Flatten and optionally exclude zeros
-    values = enh_act.flatten()
+    values = enh_act.ravel()
     if exclude_zeros:
         values = values[values != 0]
 

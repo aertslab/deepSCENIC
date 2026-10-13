@@ -298,13 +298,15 @@ def read_bed(
         chromsizes_dict = dict(zip(chromsizes["Chromosome"], chromsizes["End"], strict=False))
 
         # Filter regions: chromosome must exist in chromsizes
-        valid_mask = regions.apply(
-            lambda row: (
-                row["chromosome"] in chromsizes_dict
-                and row["start"] >= 0
-                and row["end"] <= chromsizes_dict[row["chromosome"]]
-            ),
-            axis=1,
+        chrom_sizes = regions["chromosome"].map(chromsizes_dict)
+        valid_mask = (
+            (
+                regions["chromosome"].isin(list(chromsizes_dict))
+                & (regions["start"] >= 0)
+                & (regions["end"] <= chrom_sizes)
+            )
+            .fillna(False)
+            .astype(bool)
         )
 
         n_filtered = (~valid_mask).sum()

@@ -129,7 +129,10 @@ def genome_browser(
     region_mask = []
     region_coords = []
     if region_names is not None:
-        for i, r in enumerate(region_names):
+        # Only regions named "<chrom>:..." can be on this chromosome; parse just those
+        on_chrom = np.flatnonzero(pd.Index(region_names).str.startswith(f"{chrom}:", na=False))
+        for i in on_chrom.tolist():
+            r = region_names[i]
             r_chrom, r_start, r_end = parse_region(r)
             if r_chrom == chrom and r_start < end and r_end > start:
                 region_mask.append(i)
@@ -238,8 +241,8 @@ def genome_browser(
 
     # Link arcs track
     if show_links and links is not None:
+        import matplotlib
         import matplotlib.patches as mpatches
-        from matplotlib import cm
         from matplotlib.colors import Normalize
 
         ax = axes[track_idx]
@@ -254,7 +257,7 @@ def genome_browser(
         if links_in_view:
             links_df = pd.DataFrame(links_in_view)
             norm = Normalize(vmin=links_df["weight"].min(), vmax=links_df["weight"].max())
-            cmap_obj = cm.get_cmap(link_cmap)
+            cmap_obj = matplotlib.colormaps.get_cmap(link_cmap)
 
             for _, link in links_df.iterrows():
                 r_chrom, r_start, r_end = parse_region(link["region"])

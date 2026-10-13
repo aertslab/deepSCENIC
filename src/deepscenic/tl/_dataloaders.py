@@ -191,7 +191,7 @@ def build_cell_dataloader(
         classes = mdata.obs.loc[cell_mask, class_key].values
         unique_classes = np.unique(classes)
         weights = compute_class_weight("balanced", classes=unique_classes, y=classes)
-        sample_weights = [weights[np.where(unique_classes == c)[0][0]] for c in classes]
+        sample_weights = weights[np.searchsorted(unique_classes, classes)]
         sampler = WeightedRandomSampler(sample_weights, len(dataset))  # type: ignore
         shuffle = False  # Sampler handles shuffling
 

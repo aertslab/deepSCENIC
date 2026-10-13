@@ -138,7 +138,7 @@ def network_grn(
         pos,
         ax=ax,
         edge_color=edge_weights,
-        edge_cmap=plt.cm.get_cmap(edge_cmap),
+        edge_cmap=plt.colormaps.get_cmap(edge_cmap),
         alpha=0.6,
         arrows=True,
         arrowsize=10,

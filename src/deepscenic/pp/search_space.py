@@ -64,14 +64,19 @@ def _compute_r2g_matrix(
     region_by_chr = regions.groupby("chromosome")
     gene_by_chr = genes.groupby("chromosome")
 
-    rows: list[int] = []
-    cols: list[int] = []
-    values: list[float] = []
+    rows: list[np.ndarray] = []
+    cols: list[np.ndarray] = []
+    values: list[np.ndarray] = []
 
     region_names = regions.index.tolist()
     gene_names = genes.index.tolist()
     region_to_idx: dict[str, int] = {r: i for i, r in enumerate(region_names)}
     gene_to_idx: dict[str, int] = {g: i for i, g in enumerate(gene_names)}
+    # Matrix row/column of each region/gene position (by name, as duplicate names map to the last one)
+    region_pos_to_idx = np.array([region_to_idx[r] for r in region_names], dtype=np.int64)
+    gene_pos_to_idx = np.array([gene_to_idx[g] for g in gene_names], dtype=np.int64)
+    region_positions = region_by_chr.indices
+    gene_positions = gene_by_chr.indices
 
     # Process each chromosome
     chromosomes = set(regions["chromosome"]) & set(genes["chromosome"])
@@ -83,46 +88,57 @@ def _compute_r2g_matrix(
         chr_regions = pd.DataFrame(region_by_chr.get_group(chrom))
         chr_genes = pd.DataFrame(gene_by_chr.get_group(chrom))
 
-        # Vectorized approach for speed
         region_centers = np.array(chr_regions["center"].values)
         gene_tss = np.array(chr_genes["tss"].values)
 
-        # Compute all pairwise distances
-        # Using broadcasting: (n_regions, 1) - (1, n_genes)
-        distances = np.abs(region_centers[:, np.newaxis] - gene_tss[np.newaxis, :])
+        # Candidate pairs from a window search on sorted TSS (memory O(links), not
+        # O(regions x genes)); the window is padded by one, and the exact distance test
+        # below decides which pairs are kept.
+        tss_order = np.argsort(gene_tss, kind="stable")
+        sorted_tss = gene_tss[tss_order]
+        lo = np.searchsorted(sorted_tss, region_centers - max_distance - 1, side="left")
+        hi = np.searchsorted(sorted_tss, region_centers + max_distance + 1, side="right")
+        counts = hi - lo
+        region_local_idx = np.repeat(np.arange(len(region_centers)), counts)
+        offsets = np.arange(counts.sum()) - np.repeat(np.cumsum(counts) - counts, counts)
+        gene_local_idx = tss_order[np.repeat(lo, counts) + offsets]
 
-        # Find pairs within max_distance
-        valid_mask = distances <= max_distance
+        distances = np.abs(region_centers[region_local_idx] - gene_tss[gene_local_idx])
+        valid = distances <= max_distance
+        region_local_idx, gene_local_idx, distances = (
+            region_local_idx[valid],
+            gene_local_idx[valid],
+            distances[valid],
+        )
 
-        # Get indices of valid pairs
-        region_local_idx, gene_local_idx = np.where(valid_mask)
+        # Same pair order as np.where on a (regions x genes) mask: by region, then gene
+        pair_order = np.lexsort((gene_local_idx, region_local_idx))
+        region_local_idx = region_local_idx[pair_order]
+        gene_local_idx = gene_local_idx[pair_order]
+        distances = distances[pair_order]
 
-        for r_local, g_local in zip(region_local_idx, gene_local_idx, strict=False):
-            region_name = str(chr_regions.index[r_local])
-            gene_name = str(chr_genes.index[g_local])
-            distance = distances[r_local, g_local]
+        if method == "gaussian":
+            penalty = 1 - np.exp(-(distances**2) / (2 * sigma**2))
+        elif method == "linear":
+            penalty = distances / max_distance
 
-            region_idx = region_to_idx[region_name]
-            gene_idx = gene_to_idx[gene_name]
+        rows.append(region_pos_to_idx[region_positions[chrom][region_local_idx]])
+        cols.append(gene_pos_to_idx[gene_positions[chrom][gene_local_idx]])
+        values.append(np.asarray(penalty, dtype=np.float64))
 
-            if method == "gaussian":
-                penalty = float(1 - np.exp(-(distance**2) / (2 * sigma**2)))
-            elif method == "linear":
-                penalty = float(distance / max_distance)
-
-            rows.append(region_idx)
-            cols.append(gene_idx)
-            values.append(penalty)
+    rows_arr = np.concatenate(rows) if rows else np.array([], dtype=np.int64)
+    cols_arr = np.concatenate(cols) if cols else np.array([], dtype=np.int64)
+    values_arr = np.concatenate(values) if values else np.array([], dtype=np.float64)
 
     # Create sparse matrix
-    r2g = csr_matrix((values, (rows, cols)), shape=(len(region_names), len(gene_names)))
+    r2g = csr_matrix((values_arr, (rows_arr, cols_arr)), shape=(len(region_names), len(gene_names)))
 
     config = {
         "max_distance": max_distance,
         "sigma": sigma,
         "method": method,
-        "n_links": len(values),
-        "density": len(values) / (len(region_names) * len(gene_names))
+        "n_links": len(values_arr),
+        "density": len(values_arr) / (len(region_names) * len(gene_names))
         if (len(region_names) * len(gene_names)) > 0
         else 0,
     }
@@ -333,19 +349,13 @@ def compute_r2g_penalty(
     # Convert to COO for efficient iteration and remapping
     r2g_coo = r2g_matrix.tocoo()
 
-    new_rows = []
-    new_cols = []
-    new_data = []
-
-    for row, col, val in zip(r2g_coo.row, r2g_coo.col, r2g_coo.data, strict=False):
-        # Get the gene name from the computed matrix
-        gene_name = computed_gene_names[col]
-
-        # Map to the new column index in final gene order
-        if gene_name in final_gene_to_idx:
-            new_rows.append(row)
-            new_cols.append(final_gene_to_idx[gene_name])
-            new_data.append(val)
+    # Map each computed gene column to its column in the final gene order (-1: dropped)
+    col_map = np.array([final_gene_to_idx.get(g, -1) for g in computed_gene_names], dtype=np.int64)
+    mapped_cols = col_map[r2g_coo.col]
+    keep = mapped_cols >= 0
+    new_rows = r2g_coo.row[keep]
+    new_cols = mapped_cols[keep]
+    new_data = r2g_coo.data[keep]
 
     # Create expanded sparse matrix with all genes
     r2g_expanded = csr_matrix(
