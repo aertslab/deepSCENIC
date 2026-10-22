@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved docstrings with numpy-style format
 - Package structure follows scverse conventions
 
+### Fixed
+- Asynchronous checkpoints are snapshotted on the CPU instead of deep-copied on the GPU, which could run a 16 GB GPU out of memory after the first `best.pt`
+
 ### Deprecated
 - Legacy `deepSCENIC` class (use `ds.tl.train()` instead)
 - Old file-based data loading (use `ds.read()` with MuData)

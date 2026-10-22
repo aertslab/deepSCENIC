@@ -50,6 +50,22 @@ def _get_checkpoint_executor() -> ThreadPoolExecutor:
     return _checkpoint_executor
 
 
+def _copy_to_cpu(obj):
+    """Copy all tensors in a (nested) state dict to CPU for an async checkpoint save.
+
+    ``copy.deepcopy`` of a GPU state dict duplicates it on the GPU while training continues; with Enformer and
+    its Adam state that is several GB and can run a 16 GB GPU out of memory. A CPU copy is an equally safe
+    snapshot (``Tensor.to`` is synchronous) and uses no extra GPU memory.
+    """
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().to("cpu", copy=True)
+    if isinstance(obj, dict):
+        return {k: _copy_to_cpu(v) for k, v in obj.items()}
+    if isinstance(obj, list | tuple):
+        return type(obj)(_copy_to_cpu(v) for v in obj)
+    return copy.deepcopy(obj)
+
+
 def _save_checkpoint_data(
     path: Path,
     vae_state_dict: dict,
@@ -918,7 +934,7 @@ def train(
             best_loss = test_chrom_metrics["atac_recon"]
             best_path = Path(checkpoint_dir) / "best.pt"
             best_path.parent.mkdir(parents=True, exist_ok=True)
-            # Deep copy state dicts for async save (training continues modifying them)
+            # Snapshot state dicts on CPU for async save (training continues modifying them)
             vae_metadata = {
                 "n_tfs": vae.n_tfs,
                 "n_genes": vae.n_genes,
@@ -934,18 +950,18 @@ def train(
             _get_checkpoint_executor().submit(
                 _save_checkpoint_data,
                 best_path,
-                copy.deepcopy(vae.state_dict()),
-                copy.deepcopy(motifnet.state_dict()),
-                copy.deepcopy(sequence_model.state_dict()),
-                adj_tf2r_cache.clone().cpu(),
+                _copy_to_cpu(vae.state_dict()),
+                _copy_to_cpu(motifnet.state_dict()),
+                _copy_to_cpu(sequence_model.state_dict()),
+                _copy_to_cpu(adj_tf2r_cache),
                 model_config,
                 tf_names,
                 gene_names,
                 region_names,
                 vae_metadata,
                 copy.deepcopy(history),
-                copy.deepcopy(optimizer.state_dict()),
-                copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
+                _copy_to_cpu(optimizer.state_dict()),
+                _copy_to_cpu(scheduler.state_dict()) if scheduler is not None else None,
                 epoch,
                 best_loss,
                 not _is_enformer(sequence_model),
@@ -958,7 +974,7 @@ def train(
         if checkpoint_dir is not None and checkpoint_every > 0 and (epoch + 1) % checkpoint_every == 0:
             checkpoint_path = Path(checkpoint_dir) / f"epoch_{epoch + 1}.pt"
             checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-            # Deep copy state dicts for async save (training continues modifying them)
+            # Snapshot state dicts on CPU for async save (training continues modifying them)
             vae_metadata = {
                 "n_tfs": vae.n_tfs,
                 "n_genes": vae.n_genes,
@@ -974,18 +990,18 @@ def train(
             _get_checkpoint_executor().submit(
                 _save_checkpoint_data,
                 checkpoint_path,
-                copy.deepcopy(vae.state_dict()),
-                copy.deepcopy(motifnet.state_dict()),
-                copy.deepcopy(sequence_model.state_dict()),
-                adj_tf2r_cache.clone().cpu(),
+                _copy_to_cpu(vae.state_dict()),
+                _copy_to_cpu(motifnet.state_dict()),
+                _copy_to_cpu(sequence_model.state_dict()),
+                _copy_to_cpu(adj_tf2r_cache),
                 model_config,
                 tf_names,
                 gene_names,
                 region_names,
                 vae_metadata,
                 copy.deepcopy(history),
-                copy.deepcopy(optimizer.state_dict()),
-                copy.deepcopy(scheduler.state_dict()) if scheduler is not None else None,
+                _copy_to_cpu(optimizer.state_dict()),
+                _copy_to_cpu(scheduler.state_dict()) if scheduler is not None else None,
                 epoch,
                 best_loss,
                 not _is_enformer(sequence_model),
